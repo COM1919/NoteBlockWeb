@@ -2,13 +2,9 @@
   <a href="./Readme_CN.md">简体中文</a>
 </p>
 
+![Note Block Web Logo](https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEYEUNqaKjpHDkb7K_WGrkAAa55urEJ_x4AAhYxAAKo-ElXbws4z3rBvtA9BA.png)
+
 <p align="center">
-  <a href="https://github.com/COM1919/NoteBlockWeb/releases/latest">
-    <img src="https://img.shields.io/github/v/release/COM1919/NoteBlockWeb?label=latest" alt="Latest version">
-  </a>
-  <a href="https://github.com/COM1919/NoteBlockWeb/releases/latest">
-    <img src="https://img.shields.io/github/downloads/COM1919/NoteBlockWeb/total" alt="Total Downloads">
-  </a>
   <a href="https://github.com/COM1919/NoteBlockWeb/stargazers">
     <img src="https://img.shields.io/github/stars/COM1919/NoteBlockWeb?style=social" alt="GitHub Stars">
   </a>

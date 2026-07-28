@@ -1,12 +1,6 @@
 ![Note Block Web Logo](https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEYEUNqaKjpHDkb7K_WGrkAAa55urEJ_x4AAhYxAAKo-ElXbws4z3rBvtA9BA.png)
 
 <p align="center">
-  <a href="https://github.com/COM1919/NoteBlockWeb/releases/latest">
-    <img src="https://img.shields.io/github/v/release/COM1919/NoteBlockWeb?label=最新版本" alt="Latest version">
-  </a>
-  <a href="https://github.com/COM1919/NoteBlockWeb/releases/latest">
-    <img src="https://img.shields.io/github/downloads/COM1919/NoteBlockWeb/total" alt="下载总量">
-  </a>
   <a href="https://github.com/COM1919/NoteBlockWeb/stargazers">
     <img src="https://img.shields.io/github/stars/COM1919/NoteBlockWeb?style=social" alt="Stars">
   </a>
