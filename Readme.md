@@ -2,7 +2,7 @@
   <a href="./Readme_CN.md">简体中文</a>
 </p>
 
-![Note Block Web Logo](https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEYEUNqaKjpHDkb7K_WGrkAAa55urEJ_x4AAhYxAAKo-ElXbws4z3rBvtA9BA.png)
+![Note Block Web Logo](https://user18807.cn.imgto.link/public/20260728/1000172951.avif)
 
 <p align="center">
   <a href="https://github.com/COM1919/NoteBlockWeb/stargazers">
