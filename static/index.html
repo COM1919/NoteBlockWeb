@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#202020">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>NoteBlockWeb - Minecraft Note Block Studio</title>
+    <script defer src="https://analytics.xozet.com/script.js" data-website-id="b89726f0-3b37-4bfe-8b8d-69f6cb487cfa"></script>
+    <link rel="icon" href="/static/logo.png" type="image/png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260728h">
+</head>
+<body>
+
+<div id="app">
+    <!-- ========== 顶部工具栏 ========== -->
+    <div class="toolbar" id="toolbar">
+        <div class="toolbar-section">
+            <button class="toolbar-btn" id="btn-file" title="文件">
+                <i class="fa-solid fa-file icon"></i>
+            </button>
+            <span class="toolbar-divider"></span>
+            <span class="toolbar-title" id="toolbar-title" style="font-size:14px;font-weight:600;color:var(--text-primary);margin:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">
+                <span id="song-name">NoteBlockWeb</span>
+            </span>
+        </div>
+
+        <div class="toolbar-section">
+            <button class="toolbar-btn" id="btn-undo" title="撤销 (Ctrl+Z)" disabled>
+                <i class="fa-solid fa-rotate-left icon"></i>
+            </button>
+            <button class="toolbar-btn" id="btn-redo" title="重做 (Ctrl+Y)" disabled>
+                <i class="fa-solid fa-rotate-right icon"></i>
+            </button>
+        </div>
+
+        <div class="toolbar-section">
+            <span style="font-size:12px;color:var(--text-secondary);margin-right:2px;white-space:nowrap;">速度</span>
+            <input type="number" id="tempo-value" value="20" min="0" max="512" step="0.01" placeholder="t/s" style="width:60px;padding:2px 6px;font-size:12px;text-align:center;background:transparent;border:1px solid var(--ctrl-stroke-default);border-radius:4px;color:var(--text-primary);font-variant-numeric:tabular-nums;" title="速度 (Tick/秒)">
+            <button class="toolbar-btn" id="btn-keyboard-piano" title="使用键盘触发钢琴">
+                <i class="fa-solid fa-keyboard"></i>
+            </button>
+        </div>
+
+        <div class="toolbar-section toolbar-right">
+            <button class="toolbar-btn toolbar-collapsible" id="btn-settings" data-group="overflow" title="设置">
+                <i class="fa-solid fa-gear icon"></i>
+            </button>
+            <button class="toolbar-btn toolbar-collapsible" id="btn-about" data-group="overflow" title="关于">
+                <i class="fa-solid fa-circle-info icon"></i>
+            </button>
+            <button class="toolbar-btn toolbar-collapsible" id="btn-functions" data-group="overflow" title="功能">
+                <i class="fa-solid fa-table-cells-large icon"></i>
+            </button>
+            <button class="toolbar-more-btn" id="btn-toolbar-more" title="更多" style="display:none;">
+                <i class="fa-solid fa-ellipsis"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- ========== 功能菜单 ========== -->
+    <div class="functions-menu" id="functions-menu" style="display:none;">
+        <div class="functions-menu-item" data-action="scale-precision">
+            <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+            <span>缩放精度</span>
+        </div>
+        <div class="functions-menu-item" data-action="pitch-shift">
+            <i class="fa-solid fa-music"></i>
+            <span>音调偏移</span>
+        </div>
+        <div class="functions-menu-item" data-action="sustain-fill">
+            <i class="fa-solid fa-fill-drip"></i>
+            <span>延音填充</span>
+        </div>
+        <div class="functions-menu-item" data-action="clear-sustain">
+            <i class="fa-solid fa-eraser"></i>
+            <span>清除延音</span>
+        </div>
+        <div class="functions-menu-item" data-action="arpeggio-tracks">
+            <i class="fa-solid fa-arrows-up-down"></i>
+            <span>上下起伏</span>
+        </div>
+        <div class="functions-menu-item" data-action="transpose-octave">
+            <i class="fa-solid fa-arrow-up"></i>
+            <span>转8度内</span>
+        </div>
+        <div class="functions-menu-item" data-action="range-process">
+            <i class="fa-solid fa-sliders"></i>
+            <span>音域处理</span>
+        </div>
+        <div class="functions-menu-item" data-action="remove-empty-tracks">
+            <i class="fa-solid fa-trash-can"></i>
+            <span>清除空轨道</span>
+        </div>
+        <div class="functions-menu-item" data-action="snap-notes">
+            <i class="fa-solid fa-magnet"></i>
+            <span>音符吸附</span>
+        </div>
+        <div class="functions-menu-item" data-action="export">
+            <i class="fa-solid fa-file-export"></i>
+            <span>导出 NBS</span>
+        </div>
+    </div>
+
+    <!-- ========== 更多菜单 (工具栏溢出) ========== -->
+    <div class="toolbar-more-menu" id="toolbar-more-menu" style="display:none;"></div>
+
+    <!-- ========== 主内容区 ========== -->
+    <div id="main-content" style="flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;">
+        <!-- 钢琴卷帘容器 -->
+        <div id="piano-roll-container" style="flex:1;position:relative;overflow:hidden;">
+            <button class="track-panel-toggle" id="track-panel-toggle" title="折叠音轨列表" aria-label="折叠音轨列表">
+                <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <canvas id="piano-roll" style="display:block;width:100%;height:100%;"></canvas>
+            <!-- 工具条 -->
+            <div class="tool-bar" id="tool-bar">
+                <button class="tool-btn active" data-tool="default" title="默认工具 (D)"><i class="fa-solid fa-arrow-pointer"></i></button>
+                <button class="tool-btn" data-tool="select" title="选择工具 (S)"><i class="fa-solid fa-vector-square"></i></button>
+                <button class="tool-btn" data-tool="eraser" title="橡皮擦 (E)"><i class="fa-solid fa-eraser"></i></button>
+                <button class="tool-btn" data-tool="brush" title="画笔 (B)"><i class="fa-solid fa-paintbrush"></i></button>
+                <button class="tool-btn" data-tool="performance" title="演奏模式 (P)"><i class="fa-solid fa-music"></i></button>
+            </div>
+        </div>
+
+        <!-- 状态栏 -->
+        <div class="status-bar" id="status-bar" style="display:flex;align-items:center;height:28px;padding:0 8px;background:rgba(0,0,0,0.3);border-top:1px solid var(--ctrl-stroke-default);flex-shrink:0;gap:10px;font-size:12px;color:var(--text-secondary);">
+            <div class="status-controls" style="display:flex;align-items:center;gap:8px;">
+                <button class="toolbar-btn play-btn" id="btn-play" title="播放/暂停 (Space)" style="min-width:28px;min-height:24px;font-size:11px;border-radius:4px;">
+                    <i class="fa-solid fa-play"></i>
+                </button>
+                <button class="toolbar-btn performance-record-btn" id="btn-performance-record" title="开始录制 (Space)" style="display:none;min-width:28px;min-height:24px;font-size:11px;border-radius:4px;">
+                    <i class="fa-solid fa-circle"></i>
+                </button>
+                <button class="toolbar-btn" id="btn-stop" title="停止 (Esc)" style="min-width:24px;min-height:24px;font-size:11px;">
+                    <i class="fa-solid fa-stop"></i>
+                </button>
+                <span id="progress-time" style="font-family:var(--font-family-mono);font-size:11px;white-space:nowrap;">0 / 0 tick</span>
+                <span id="note-count" style="font-size:11px;color:var(--text-tertiary);">音符: 0</span>
+                <span id="current-pos" style="font-size:11px;color:var(--text-tertiary);display:none;"></span>
+            </div>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+                <button class="status-control-btn" id="btn-instrument-selector" title="选择乐器" style="display:flex;align-items:center;gap:4px;background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:12px;padding:2px 6px;border-radius:4px;">
+                    <span id="inst-color-dot" style="display:inline-block;width:16px;height:16px;border-radius:3px;background:#d4a96a;position:relative;overflow:hidden;vertical-align:middle;"></span>
+                    <span id="inst-name-text" style="vertical-align:middle;">竖琴</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== FLS 模式界面 ========== -->
+    <div id="fls-app" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+        <!-- FLS 工具栏 -->
+        <div class="fls-toolbar" id="fls-toolbar" style="display:flex;align-items:center;height:32px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--ctrl-stroke-default);padding:0 8px;gap:8px;flex-shrink:0;">
+            <span id="fls-song-name" style="font-size:12px;font-weight:600;color:var(--text-primary);">FLS Playlist</span>
+            <button class="fls-add-track-btn" id="fls-add-track" title="添加音轨" style="margin-left:auto;background:none;border:1px solid var(--ctrl-stroke-default);color:var(--text-secondary);padding:2px 10px;border-radius:4px;cursor:pointer;font-size:11px;">
+                <i class="fa-solid fa-plus"></i> 音轨
+            </button>
+        </div>
+
+        <div style="flex:1;display:flex;overflow:hidden;position:relative;">
+            <!-- FLS 播放列表 (轨道行 + 时间线) -->
+            <div class="fls-playlist" id="fls-playlist" style="flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;">
+                <div class="fls-timeline" id="fls-timeline" style="flex:1;display:flex;overflow:hidden;">
+                    <div class="fls-track-rows" id="fls-track-rows" style="width:180px;flex-shrink:0;overflow:hidden auto;background:rgba(0,0,0,0.15);"></div>
+                    <div class="fls-timeline-body" id="fls-timeline-body" style="flex:1;overflow:auto;position:relative;">
+                        <div class="fls-timeline-ruler" id="fls-timeline-ruler" style="height:24px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--ctrl-stroke-default);position:sticky;top:0;z-index:2;"></div>
+                        <div class="fls-playhead" id="fls-playhead" style="position:absolute;top:0;left:0;width:2px;height:100%;background:var(--accent-red);z-index:3;display:none;pointer-events:none;"></div>
+                    </div>
+                </div>
+                <!-- Clip 右键菜单 -->
+                <div class="fls-clip-menu" id="fls-clip-menu" style="display:none;position:fixed;z-index:10000;background:rgba(22,33,62,0.96);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:4px 0;min-width:140px;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+                    <div class="fls-clip-menu-item" data-action="open">打开钢琴卷帘</div>
+                    <div class="fls-clip-menu-item" data-action="rename">重命名</div>
+                    <div class="fls-clip-menu-item" data-action="duplicate">复制片段</div>
+                    <div class="fls-clip-menu-item" data-action="delete">删除片段</div>
+                </div>
+            </div>
+
+            <!-- FLS 音轨设置抽屉 -->
+            <div class="fls-settings-drawer" id="fls-settings-drawer" style="display:none;width:280px;flex-shrink:0;background:rgba(0,0,0,0.25);border-left:1px solid var(--ctrl-stroke-default);overflow-y:auto;padding:12px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                    <h4 id="fls-settings-title" style="margin:0;font-size:14px;flex:1;">音轨设置</h4>
+                    <button id="fls-settings-close" style="background:none;border:none;color:var(--text-secondary);font-size:18px;cursor:pointer;">&times;</button>
+                </div>
+                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">名称</label>
+                <input type="text" id="fls-set-name" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);margin-bottom:10px;">
+                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">乐器</label>
+                <select id="fls-set-instrument" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);margin-bottom:10px;"></select>
+                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">音量</label>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                    <input type="range" id="fls-set-vol" min="0" max="100" value="100" style="flex:1;">
+                    <span id="fls-vol-value" style="font-size:11px;min-width:30px;text-align:right;">100</span>
+                </div>
+                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">声像</label>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                    <input type="range" id="fls-set-pan" min="0" max="100" value="50" style="flex:1;">
+                    <span id="fls-pan-value" style="font-size:11px;min-width:30px;text-align:right;">50</span>
+                </div>
+                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">混响</label>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                    <input type="range" id="fls-set-reverb" min="0" max="100" value="0" style="flex:1;">
+                    <span id="fls-reverb-value" style="font-size:11px;min-width:30px;text-align:right;">0</span>
+                </div>
+                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">淡入</label>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                    <input type="range" id="fls-set-fadein" min="0" max="100" value="0" style="flex:1;">
+                    <span id="fls-fadein-value" style="font-size:11px;min-width:30px;text-align:right;">0</span>
+                </div>
+                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">淡出</label>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                    <input type="range" id="fls-set-fadeout" min="0" max="100" value="0" style="flex:1;">
+                    <span id="fls-fadeout-value" style="font-size:11px;min-width:30px;text-align:right;">0</span>
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:10px;">
+                    <button id="fls-set-mute" style="flex:1;padding:6px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-secondary);cursor:pointer;">静音</button>
+                    <button id="fls-set-solo" style="flex:1;padding:6px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-secondary);cursor:pointer;">独奏</button>
+                </div>
+                <button id="fls-delete-track" style="width:100%;padding:6px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:rgba(255,60,60,0.15);color:var(--accent-red);cursor:pointer;">
+                    <i class="fa-solid fa-trash"></i> 删除音轨
+                </button>
+            </div>
+
+            <!-- FLS 钢琴卷帘编辑器 (覆盖层) -->
+            <div class="fls-full-piano-roll" id="fls-piano-roll" style="display:none;position:absolute;inset:0;z-index:40;background:var(--app-bg);flex-direction:column;">
+                <div style="display:flex;align-items:center;height:36px;padding:0 8px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--ctrl-stroke-default);gap:8px;flex-shrink:0;">
+                    <button id="fls-pr-back" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:16px;padding:4px 8px;">
+                        <i class="fa-solid fa-arrow-left"></i>
+                    </button>
+                    <span id="fls-pr-title" style="font-size:13px;font-weight:600;color:var(--text-primary);"></span>
+                    <span id="fls-pr-info" style="font-size:11px;color:var(--text-tertiary);"></span>
+                </div>
+                <div style="flex:1;position:relative;overflow:hidden;">
+                    <canvas id="fls-pr-canvas" style="display:block;width:100%;height:100%;"></canvas>
+                    <div id="fls-pr-playhead" style="position:absolute;top:0;left:0;width:2px;height:100%;background:var(--accent-red);z-index:3;display:none;pointer-events:none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== FLS 底部控制栏 ========== -->
+    <div class="fls-bottom-bar" id="fls-bottom-bar" style="display:none;align-items:center;height:32px;background:rgba(0,0,0,0.3);border-top:1px solid var(--ctrl-stroke-default);padding:0 8px;gap:8px;flex-shrink:0;">
+        <button class="toolbar-btn" id="fls-btn-play" title="播放/暂停" style="min-width:28px;min-height:24px;font-size:11px;">
+            <i class="fa-solid fa-play"></i>
+        </button>
+        <button class="toolbar-btn" id="fls-btn-stop" title="停止" style="min-width:24px;min-height:24px;font-size:11px;">
+            <i class="fa-solid fa-stop"></i>
+        </button>
+        <button class="toolbar-btn" id="fls-btn-rev" title="回到开头" style="min-width:24px;min-height:24px;font-size:11px;">
+            <i class="fa-solid fa-backward-step"></i>
+        </button>
+        <div style="flex:1;min-width:0;">
+            <div id="fls-progress-bar" style="position:relative;height:4px;background:var(--ctrl-fill-default);border-radius:2px;overflow:visible;cursor:pointer;touch-action:none;">
+                <div id="fls-progress-fill" style="height:100%;width:0%;background:var(--accent);border-radius:2px;transition:none;pointer-events:none;"></div>
+                <div id="fls-progress-handle" style="position:absolute;top:-4px;width:12px;height:12px;border-radius:50%;background:var(--accent);border:2px solid var(--app-bg);left:0%;transition:none;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,0.4);"></div>
+            </div>
+        </div>
+        <span id="fls-progress-time" style="font-family:var(--font-family-mono);font-size:11px;color:var(--text-secondary);white-space:nowrap;min-width:80px;">0:00 / 0:00</span>
+        <label style="font-size:11px;color:var(--text-secondary);white-space:nowrap;display:flex;align-items:center;gap:4px;">
+            BPM:
+            <input type="number" id="fls-tempo-input" value="20" min="1" max="400" style="width:50px;padding:2px 4px;font-size:11px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);text-align:center;">
+        </label>
+    </div>
+
+    <!-- ========== 隐藏的文件输入 ========== -->
+    <input type="file" id="file-input" accept=".nbs,.mid,.midi" style="display:none;">
+
+    <!-- ========== 移动端 FAB (竖屏) ========== -->
+    <div class="mobile-fab-deselect" id="mobile-fab-deselect" style="display:none;position:fixed;bottom:84px;right:72px;z-index:9997;width:40px;height:40px;border-radius:50%;background:rgba(30,30,46,0.92);border:1px solid rgba(255,255,255,0.12);color:#eaeaea;cursor:pointer;font-size:15px;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.3);">
+        <i class="fa-solid fa-xmark"></i>
+    </div>
+
+    <div class="mobile-fab-single" id="mobile-fab-single" style="display:none;position:fixed;bottom:80px;right:16px;z-index:9997;width:48px;height:48px;border-radius:50%;background:var(--accent);color:#fff;border:none;box-shadow:0 4px 16px rgba(0,0,0,0.3);cursor:pointer;font-size:18px;align-items:center;justify-content:center;">
+        <i class="fa-solid fa-plus"></i>
+    </div>
+
+    <div class="fab-context-menu" id="fab-context-menu" style="display:none;position:fixed;z-index:9996;bottom:140px;right:16px;background:rgba(22,33,62,0.96);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:6px 0;min-width:150px;box-shadow:0 8px 32px rgba(0,0,0,0.5);color:#eaeaea;font-size:13px;">
+        <div class="fab-context-menu-item" data-action="select-all" id="fab-select-all" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-object-group"></i> 全选</div>
+        <div class="fab-context-menu-divider" style="height:1px;background:rgba(255,255,255,0.06);margin:4px 0;"></div>
+        <div class="fab-context-menu-item" data-action="copy" id="fab-copy" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-copy"></i> 复制</div>
+        <div class="fab-context-menu-item" data-action="cut" id="fab-cut" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-scissors"></i> 剪切</div>
+        <div class="fab-context-menu-item" data-action="paste" id="fab-paste" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-paste"></i> 粘贴</div>
+        <div class="fab-context-menu-item" data-action="delete" id="fab-delete" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-trash"></i> 删除</div>
+        <div class="fab-context-menu-divider" style="height:1px;background:rgba(255,255,255,0.06);margin:4px 0;"></div>
+        <div class="fab-context-menu-item" data-action="change-instrument" id="fab-change-instrument" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-music"></i> 更改乐器</div>
+        <div class="fab-context-menu-item" data-action="change-volume" id="fab-change-volume" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-volume-high"></i> 更改音量</div>
+    </div>
+
+    <!-- ========== 设置弹窗 ========== -->
+    <div class="popup" id="settings-popup" style="display:none;">
+        <div class="popup-content settings-dialog">
+            <div class="settings-header">
+                <i class="fa-solid fa-gear"></i>
+                <h4>设置</h4>
+                <button class="settings-close-btn" id="settings-close-btn">&times;</button>
+            </div>
+            <div class="settings-body">
+                <div class="settings-row">
+                    <label class="settings-label">
+                        <input type="checkbox" id="settings-smooth-scroll"> 平滑翻页 (播放头居中)
+                    </label>
+                </div>
+                <div class="settings-row">
+                    <label class="settings-label">
+                        <input type="checkbox" id="settings-highlight-animation"> 音符播放高亮动画
+                    </label>
+                </div>
+                <div class="settings-row">
+                    <label class="settings-label">
+                        <input type="checkbox" id="settings-recording-animation"> 录制时显示音符动画 (关闭可提升录制性能)
+                    </label>
+                </div>
+                <div class="settings-row">
+                    <label class="settings-label">
+                        <input type="checkbox" id="settings-audio-enhance"> 音效优化 (混响/立体声)
+                    </label>
+                </div>
+                <div class="settings-row" style="display:flex;align-items:center;gap:8px;">
+                    <label class="settings-label" style="margin:0;">NBS 导出版本:</label>
+                    <select id="settings-nbs-version" style="padding:3px 6px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);">
+                        <option value="4">V4</option>
+                        <option value="5" selected>V5</option>
+                        <option value="6">V6</option>
+                    </select>
+                    <span style="font-size:11px;color:var(--text-tertiary);">含铜号角乐器时自动 V6</span>
+                </div>
+                <div class="settings-row" style="display:flex;align-items:center;gap:8px;">
+                    <label class="settings-label" style="margin:0;" for="settings-language">语言:</label>
+                    <select id="settings-language" class="settings-control" aria-label="语言">
+                        <option value="zh-CN">🇨🇳 简体中文</option>
+                        <option value="en-US">🇺🇸 English (United States)</option>
+                        <option value="pt-BR">🇧🇷 Português (Brasil)</option>
+                        <option value="id-ID">🇮🇩 Bahasa Indonesia</option>
+                    </select>
+                </div>
+                <button class="popup-btn" id="settings-about-btn" style="margin-top:8px;width:100%;">关于 NoteBlockWeb</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 速度弹窗 ========== -->
+    <div class="popup" id="tempo-popup" style="display:none;">
+        <div class="popup-content" style="max-width:320px;">
+            <div class="settings-header">
+                <i class="fa-solid fa-gauge-high"></i>
+                <h4>调节速度</h4>
+                <button class="settings-close-btn" id="tempo-close-btn">&times;</button>
+            </div>
+            <div class="settings-body">
+                <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+                    <label class="settings-label" style="font-size:12px;">速度 (Tick/秒):</label>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <input type="range" id="settings-tempo-slider" min="5" max="80" step="0.5" value="20" style="flex:1;">
+                        <input type="text" id="settings-tempo-input" value="20" style="width:60px;padding:4px 6px;font-size:13px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);text-align:center;">
+                        <span id="settings-tempo-value" style="font-size:13px;color:var(--accent);min-width:40px;text-align:right;">20</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 关于弹窗 ========== -->
+    <div class="popup" id="about-popup" style="display:none;">
+        <div class="popup-content" style="max-width:380px;">
+            <div class="settings-header">
+                <i class="fa-solid fa-circle-info"></i>
+                <h4>关于 NoteBlockWeb</h4>
+                <button class="settings-close-btn" id="about-close-x">&times;</button>
+            </div>
+            <div class="settings-body" style="text-align:center;padding:20px 16px;">
+                <img src="/static/logo.png" alt="NoteBlockWeb" style="width:64px;height:64px;margin-bottom:12px;border-radius:12px;">
+                <h3 style="margin:0 0 4px;font-size:16px;">NoteBlockWeb</h3>
+                <p style="margin:0 0 12px;font-size:12px;color:var(--text-secondary);">基于 Web 的 Minecraft 音符盒编辑器</p>
+                <p style="margin:0 0 4px;font-size:11px;color:var(--text-tertiary);">支持 NBS 格式导入/导出, MIDI 导入, 钢琴卷帘编辑</p>
+                <p style="margin:0 0 8px;font-size:12px;color:var(--text-secondary);">版本: <strong>2.4.5</strong></p>
+                <p style="margin:0 0 4px;font-size:12px;color:var(--text-secondary);">开发者: <strong>COM1919</strong></p>
+                <p style="margin:0;font-size:12px;color:var(--text-secondary);">QQ交流群: <strong>2156069838</strong></p>
+                <p style="margin:8px 0 0;font-size:12px;color:var(--text-secondary);">反馈邮箱: <a href="mailto:3451392772@qq.com">3451392772@qq.com</a></p>
+            </div>
+            <div class="popup-actions">
+                <button class="popup-btn popup-btn-primary" id="about-close-btn" style="margin:0 auto;">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 八度警告弹窗 ========== -->
+    <div class="popup" id="octave-popup" style="display:none;">
+        <div class="popup-content" style="max-width:360px;">
+            <div class="settings-header">
+                <i class="fa-solid fa-triangle-exclamation" style="color:var(--accent-orange);"></i>
+                <h4>音符超出范围</h4>
+                <button class="settings-close-btn" id="octave-close-x">&times;</button>
+            </div>
+            <div class="settings-body">
+                <p style="margin:0 0 8px;font-size:13px;">部分音符超出了 Minecraft 标准音域 (F#3 ~ F#5):</p>
+                <p style="margin:0 0 8px;font-size:24px;font-weight:700;text-align:center;color:var(--accent-orange);">
+                    <span id="octave-count">0</span> 个音符
+                </p>
+                <p style="margin:0;font-size:12px;color:var(--text-tertiary);">超出范围的音符在 Minecraft 中播放可能音色异常。你可以在"功能"菜单中使用"转8度内"修正。</p>
+            </div>
+            <div class="popup-actions">
+                <button class="popup-btn popup-btn-primary" id="octave-close-btn">知道了</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 演奏模式设置弹窗 ========== -->
+    <div class="popup" id="performance-setup-popup" style="display:none;">
+        <div class="popup-content settings-dialog" style="max-width:480px;">
+            <div class="settings-header">
+                <i class="fa-solid fa-music"></i>
+                <h4>演奏模式设置</h4>
+                <button class="settings-close-btn" id="performance-setup-close-btn">&times;</button>
+            </div>
+            <div class="settings-body">
+                <div class="settings-row">
+                    <label class="settings-label">节拍器:</label>
+                    <select id="perf-beat" style="padding:4px 8px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);font-size:12px;">
+                        <option value="4">4/4</option>
+                        <option value="2">2/4</option>
+                        <option value="3">3/4</option>
+                    </select>
+                    <label style="display:flex;align-items:center;gap:4px;margin-left:12px;cursor:pointer;font-size:12px;">
+                        <input type="checkbox" id="perf-metronome-enabled" checked> 启用
+                    </label>
+                </div>
+                <div class="settings-row">
+                    <label class="settings-label">速度:</label>
+                    <input type="number" id="perf-tempo" value="20" min="0" max="512" step="0.01" style="width:70px;padding:4px 6px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);text-align:center;">
+                    <span style="font-size:11px;color:var(--text-tertiary);">TPS</span>
+                </div>
+                <div class="settings-row" style="flex-direction:column;align-items:flex-start;gap:4px;">
+                    <label class="settings-label" style="display:flex;align-items:center;gap:6px;">
+                        <input type="checkbox" id="perf-snap-enabled"> 音符吸附
+                    </label>
+                    <select id="perf-snap-beat" style="padding:4px 8px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);font-size:12px;">
+                        <option value="2">1/2</option>
+                        <option value="4" selected>1/4</option>
+                        <option value="8">1/8</option>
+                        <option value="16">1/16</option>
+                        <option value="32">1/32</option>
+                    </select>
+                    <span id="perf-snap-info" style="font-size:11px;color:var(--text-tertiary);display:none;"></span>
+                </div>
+                <div class="settings-row" style="font-size:12px;padding:8px;background:var(--ctrl-fill-tertiary);border-radius:4px;flex-direction:column;align-items:flex-start;gap:4px;">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                        <input type="checkbox" id="perf-sustain-record"> 延音录制
+                    </label>
+                    <div style="font-size:11px;color:var(--text-tertiary);padding-left:22px;">按住琴键会按持续时长补齐音符</div>
+                </div>
+                <div class="settings-row" id="perf-track-info" style="font-size:12px;color:var(--text-secondary);padding:8px;background:var(--ctrl-fill-tertiary);border-radius:4px;flex-direction:column;align-items:flex-start;gap:4px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <i class="fa-solid fa-layer-group"></i>
+                        <span id="perf-track-name">请在画布中点击选择要录制的音轨</span>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-tertiary);">提示: 在画布中点击音轨行可选择/取消选择，可多选</div>
+                </div>
+                <div class="settings-row" style="font-size:12px;padding:8px;background:var(--ctrl-fill-tertiary);border-radius:4px;flex-direction:column;align-items:flex-start;gap:6px;">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                        <input type="checkbox" id="perf-midi-device"> 外部 MIDI 设备输入
+                    </label>
+                    <div id="perf-midi-device-status" style="font-size:11px;color:var(--text-tertiary);padding-left:22px;">未连接</div>
+                    <div style="font-size:11px;color:var(--text-tertiary);padding-left:22px;">勾选后可连接外部 MIDI 键盘/架子鼓进行输入</div>
+                </div>
+            </div>
+            <div class="popup-actions">
+                <button class="popup-btn popup-btn-cancel" id="perf-cancel-btn">取消</button>
+                <button class="popup-btn popup-btn-primary" id="perf-start-btn">开始演奏</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 演奏倒计时覆盖层 ========== -->
+    <div id="performance-countdown" style="display:none;position:fixed;inset:0;z-index:10002;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;">
+        <div id="performance-countdown-text" style="font-size:120px;font-weight:700;color:var(--accent);text-shadow:0 0 40px rgba(76,194,255,0.6);font-family:var(--font-family);"></div>
+    </div>
+
+    <!-- ========== MIDI 导入弹窗 (核心) ========== -->
+    <div class="popup" id="midi-popup" style="display:none;">
+        <div class="popup-content midi-import-dialog" style="display:flex;flex-direction:column;">
+            <!-- 标题 -->
+            <div class="midi-import-header">
+                <i class="fa-solid fa-file-import"></i>
+                <h3>MIDI 导入</h3>
+                <button class="midi-close-btn" id="midi-close-btn">&times;</button>
+            </div>
+
+            <!-- 文件信息 -->
+            <div class="midi-file-info">
+                <span><strong>文件:</strong> <span id="midi-file-name"></span></span>
+                <span><strong>类型:</strong> <span id="midi-type"></span></span>
+                <span><strong>时长:</strong> <span id="midi-duration"></span></span>
+                <span><strong>轨道:</strong> <span id="midi-tracks"></span></span>
+                <span><strong>音符:</strong> <span id="midi-notes"></span></span>
+            </div>
+
+            <!-- 主标签页 -->
+            <div class="midi-tabs">
+                <button class="midi-tab active" data-tab="midi-basic">基本设置</button>
+                <button class="midi-tab" data-tab="midi-tracks">音轨</button>
+                <button class="midi-tab" data-tab="midi-timbre">音色拟合</button>
+            </div>
+
+            <!-- ======= 标签页内容区域 ======= -->
+            <div class="midi-tab-content">
+
+                <!-- 基本设置面板 -->
+                <div class="midi-tab-panel active" id="midi-tab-basic">
+                    <div class="midi-settings">
+                        <div class="midi-settings-row">
+                            <label style="margin-right:16px;"><input type="checkbox" id="midi-remove-silent" checked> 移除无音符轨道</label>
+                            <label><input type="checkbox" id="midi-name-layers" checked> 自动命名轨道</label>
+                        </div>
+                        <div class="midi-settings-row" style="padding-left:20px;">
+                            <span style="font-size:12px;color:var(--text-tertiary);">命名依据:</span>
+                            <label style="margin-left:8px;"><input type="radio" name="midi-name-mode" value="channels" checked> 通道号</label>
+                            <label style="margin-left:8px;"><input type="radio" name="midi-name-mode" value="patches"> 音色名</label>
+                        </div>
+                        <div class="midi-settings-row">
+                            <label><input type="checkbox" id="midi-tempo-changes"> 导入速度变化事件</label>
+                        </div>
+                        <div class="midi-settings-row">
+                            <label style="white-space:nowrap;">
+                                音域处理:
+                                <select id="midi-octave-mode" style="padding:2px 4px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);margin-left:4px;">
+                                    <option value="0">不启用</option>
+                                    <option value="1" selected>单独音符归一法</option>
+                                    <option value="2">整体八度偏移法</option>
+                                    <option value="3">整体音调偏移法</option>
+                                </select>
+                            </label>
+                            <label style="margin-left:8px;white-space:nowrap;display:none;" id="midi-smart-substitute-label">
+                                <input type="checkbox" id="midi-smart-substitute" checked> 启用智能音色替代
+                                <i class="fa-solid fa-circle-question" id="midi-smart-substitute-tip" style="cursor:help;color:var(--text-tertiary);font-size:12px;margin-left:2px;" title="优先使用音色替代解决超限音符，替代无法完全覆盖时才动用整体偏移。仅在模式2/3可用，模式0/1下灰显无效"></i>
+                            </label>
+                            <label style="margin-left:8px;white-space:nowrap;display:none;" id="midi-force-fold-label">
+                                <input type="checkbox" id="midi-force-fold"> 启用溢出强制归位 (Fallback)
+                                <i class="fa-solid fa-circle-question" id="midi-force-fold-tip" style="cursor:help;color:var(--text-tertiary);font-size:12px;margin-left:2px;" title="勾选后音色替代链用尽仍有超限时，强制对 MIDI 数值进行 ±12 取模归位。仅在模式2/3可用"></i>
+                            </label>
+                            <button class="midi-track-btn" id="midi-substitute-settings-btn" style="margin-left:8px;padding:1px 10px;font-size:12px;white-space:nowrap;width:auto;min-width:auto;height:auto;min-height:22px;" title="配置超出音域音符的音色替代方案">
+                                <i class="fa-solid fa-shuffle" style="margin-right:3px;"></i>音色替代
+                            </button>
+                        </div>
+                        <div class="midi-settings-row" id="midi-octave-mode-hint" style="display:none;padding-left:20px;cursor:help;" title="Minecraft 标准音域 MIDI 54~78 (NBS key 33~57, F#3~F#5)">
+                            <i class="fa-solid fa-circle-info" style="color:var(--accent-orange,#ff8c42);font-size:12px;margin-right:4px;"></i>
+                            <span id="midi-octave-mode-hint-text" style="font-size:11px;color:var(--accent-orange,#ff8c42);">MC 音域 F#3~F#5 (MIDI 54~78)</span>
+                        </div>
+                        <div class="midi-settings-row">
+                            <label style="margin-right:12px;"><input type="checkbox" id="midi-read-velocity" checked> 读取音符力度</label>
+                            <label style="white-space:nowrap;margin-right:8px;">
+                                <input type="checkbox" id="midi-snap-enabled"> 音符吸附
+                            </label>
+                            <label id="midi-snap-beat-label" style="white-space:nowrap;">
+                                拍子:
+                                <select id="midi-snap-beat" style="padding:2px 4px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);margin-left:4px;">
+                                    <option value="2">1/2</option>
+                                    <option value="4" selected>1/4</option>
+                                    <option value="8">1/8</option>
+                                    <option value="16">1/16</option>
+                                    <option value="32">1/32</option>
+                                </select>
+                            </label>
+                            <span id="midi-snap-grid-info" style="margin-left:8px;font-size:11px;color:var(--text-secondary);"></span>
+                        </div>
+                        <div class="midi-settings-row">
+                            <label style="white-space:nowrap;">
+                                歌曲精度:
+                                <select id="midi-precision" style="padding:2px 4px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);margin-left:4px;">
+                                    <option value="0">1x</option>
+                                    <option value="1" selected>2x</option>
+                                    <option value="3">4x</option>
+                                    <option value="7">8x</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div class="midi-settings-row">
+                            <label style="white-space:nowrap;">
+                                延音处理:
+                                <select id="midi-keep-note-length" style="padding:2px 4px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);margin-left:4px;">
+                                    <option value="none">不保留</option>
+                                    <option value="all">全部保留</option>
+                                    <option value="sustain">按轨道选择</option>
+                                </select>
+                            </label>
+                            <button class="midi-track-btn" id="midi-sustain-tracks-btn" style="margin-left:8px;padding:1px 10px;font-size:11px;display:none;height:auto;min-height:22px;width:auto;min-width:64px;white-space:nowrap;">选择轨道</button>
+                            <span id="midi-sustain-tracks-count" style="display:none;font-size:11px;color:var(--text-secondary);margin-left:4px;"></span>
+                        </div>
+                        <div class="midi-settings-row" style="margin-top:4px;">
+                            <label style="font-size:12px;color:var(--text-tertiary);">
+                                <input type="checkbox" id="midi-remember"> 记住以上设置
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 音轨面板 -->
+                <div class="midi-tab-panel" id="midi-tab-tracks">
+                    <div class="midi-sub-tabs">
+                        <button class="midi-sub-tab active" data-subtab="instruments">通道映射</button>
+                        <button class="midi-sub-tab" data-subtab="percussion">打击乐</button>
+                        <button class="midi-sub-tab" data-subtab="tracks">轨道</button>
+                    </div>
+                    <div class="midi-sub-panel active" id="midi-sub-instruments">
+                        <div class="midi-table-wrap">
+                            <table class="midi-table midi-table-panel">
+                                <thead>
+                                    <tr>
+                                        <th style="width:42px;">通道</th>
+                                        <th>音色</th>
+                                        <th style="width:110px;">NBS 乐器</th>
+                                        <th style="width:96px;">偏移前音域</th>
+                                        <th style="width:62px;">八度</th>
+                                        <th style="width:62px;">音调</th>
+                                        <th style="width:96px;">偏移后音域</th>
+                                        <th style="width:72px;">试听</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="midi-channel-rows"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="midi-sub-panel" id="midi-sub-percussion">
+                        <div class="midi-table-wrap">
+                            <table class="midi-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:80px;">MIDI 音符</th>
+                                        <th>名称</th>
+                                        <th>NBS 乐器</th>
+                                        <th style="width:80px;">NBS 音高</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="midi-percussion-rows"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="midi-sub-panel" id="midi-sub-tracks">
+                        <div class="midi-track-panel-wrap">
+                            <div class="midi-table-wrap" id="midi-track-table-wrap">
+                                <table class="midi-table midi-track-table">
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>名称</th>
+                                            <th>事件</th>
+                                            <th>音符</th>
+                                            <th style="width:40px;">M</th>
+                                            <th style="width:40px;">S</th>
+                                            <th style="width:40px;">X</th>
+                                            <th>预览</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="midi-track-rows"></tbody>
+                                </table>
+                            </div>
+                            <div class="midi-track-player" id="midi-track-player">
+                                <button class="midi-track-player-btn play" id="midi-track-play"><i class="fa-solid fa-play"></i></button>
+                                <button class="midi-track-player-btn" id="midi-track-stop"><i class="fa-solid fa-stop"></i></button>
+                                <div class="midi-track-progress-wrap">
+                                    <div class="midi-track-progress" id="midi-track-progress">
+                                        <div class="midi-track-progress-fill" id="midi-track-progress-fill"></div>
+                                        <div class="midi-track-progress-handle" id="midi-track-progress-handle"></div>
+                                    </div>
+                                    <span class="midi-track-progress-time" id="midi-track-progress-time">0:00 / 0:00</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 音色拟合面板 -->
+                <div class="midi-tab-panel" id="midi-tab-timbre">
+                    <div class="midi-sub-tabs">
+                        <button class="midi-sub-tab active" data-subtab="timbre-melody">旋律</button>
+                        <button class="midi-sub-tab" data-subtab="timbre-percussion">打击乐</button>
+                    </div>
+                    <div class="midi-sub-panel active" id="midi-sub-timbre-melody">
+                        <div class="midi-timbre-desc">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            <span>为每个 MIDI 通道指定至多 3 个音色槽进行拟合，点击音色槽选择乐器。</span>
+                        </div>
+                        <div class="midi-table-wrap">
+                            <table class="midi-table midi-table-timbre">
+                                <thead>
+                                    <tr>
+                                        <th class="timbre-col-name">乐器</th>
+                                        <th class="timbre-col-preview">MIDI 试听</th>
+                                        <th class="timbre-col-preview">NBS 试听</th>
+                                        <th>音色槽 1</th>
+                                        <th>音色槽 2</th>
+                                        <th>音色槽 3</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="midi-timbre-melody-rows"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="midi-sub-panel" id="midi-sub-timbre-percussion">
+                        <div class="midi-timbre-desc">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            <span>为每个打击乐音符指定至多 3 个音色槽进行拟合。</span>
+                        </div>
+                        <div class="midi-table-wrap">
+                            <table class="midi-table midi-table-timbre">
+                                <thead>
+                                    <tr>
+                                        <th class="timbre-col-name">打击乐</th>
+                                        <th class="timbre-col-preview">MIDI 试听</th>
+                                        <th class="timbre-col-preview">NBS 试听</th>
+                                        <th>音色槽 1</th>
+                                        <th>音色槽 2</th>
+                                        <th>音色槽 3</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="midi-timbre-percussion-rows"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- 底部按钮 -->
+            <div class="midi-import-footer">
+                <button class="midi-btn midi-btn-cancel" id="midi-cancel-btn">取消</button>
+                <button class="midi-btn midi-btn-import" id="midi-import-btn">导入</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 音色替代设置弹窗 ========== -->
+    <div class="popup" id="midi-substitute-popup" style="display:none;">
+        <div class="popup-content" style="max-width:760px;max-height:90vh;display:flex;flex-direction:column;">
+            <div class="settings-header">
+                <i class="fa-solid fa-shuffle"></i>
+                <h4>音色替代设置</h4>
+                <button class="settings-close-btn" id="midi-substitute-close-btn">&times;</button>
+            </div>
+            <div class="midi-sub-tab-bar">
+                <button class="midi-sub-tab active" data-subtab="sub-track">应用音轨</button>
+                <button class="midi-sub-tab" data-subtab="sub-instrument">音色替代配置</button>
+            </div>
+            <div class="settings-body" style="padding:10px 16px;min-height:240px;overflow-y:auto;">
+                <!-- Tab 1: 应用音轨 -->
+                <div id="midi-substitute-tab-track" class="midi-sub-tab-content">
+                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;line-height:1.5;">
+                        <i class="fa-solid fa-circle-info"></i>
+                        选择需要应用音色替代的 MIDI 音轨。未选中的音轨中超出音域的音符将保留原状。右侧迷你图为该轨道音符预览（Y=音高，X=时间），点击可从该位置开始试听。
+                    </div>
+                    <div id="midi-substitute-tracks" class="sustain-tracks-list"></div>
+                </div>
+                <!-- Tab 2: 音色替代配置 -->
+                <div id="midi-substitute-tab-instrument" class="midi-sub-tab-content" style="display:none;">
+                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;line-height:1.5;">
+                        <i class="fa-solid fa-circle-info"></i>
+                        为每个 NBS 音色配置高音/低音替代乐器。超出 MC 音域 (F#3~F#5) 的音符将切换到替代音色并使用等音高换算，保证实际播放音高不变。点击音色槽打开菜单试听当前音色，选择新音色后也会立即试听。
+                    </div>
+                    <div id="midi-substitute-warning" style="display:none;font-size:11px;color:var(--accent-orange,#ff8c42);margin-bottom:10px;padding:6px 8px;background:rgba(255,140,66,0.08);border-radius:4px;border:1px solid rgba(255,140,66,0.3);"></div>
+                    <div style="max-height:320px;overflow-y:auto;">
+                        <table class="midi-table midi-substitute-table" style="width:100%;font-size:11px;">
+                            <thead>
+                                <tr>
+                                    <th style="width:110px;">NBS 音色</th>
+                                    <th style="width:70px;">音域</th>
+                                    <th>高音替代</th>
+                                    <th>低音替代</th>
+                                </tr>
+                            </thead>
+                            <tbody id="midi-substitute-rows"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="popup-actions" style="flex-shrink:0;">
+                <button class="popup-btn" id="midi-substitute-reset-btn" style="margin-right:auto;">恢复默认</button>
+                <button class="popup-btn popup-btn-cancel" id="midi-substitute-cancel-btn">取消</button>
+                <button class="popup-btn popup-btn-primary" id="midi-substitute-save-btn">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 上传进度弹窗 ========== -->
+    <div class="popup" id="upload-progress-popup" style="display:none;">
+        <div class="popup-content" style="max-width:340px;">
+            <div class="settings-header">
+                <i class="fa-solid fa-cloud-upload-alt"></i>
+                <h4 id="upload-progress-title">处理中</h4>
+            </div>
+            <div class="settings-body">
+                <p id="upload-progress-filename" style="margin:0 0 8px;font-size:12px;color:var(--text-secondary);"></p>
+                <div style="height:6px;background:var(--ctrl-fill-default);border-radius:3px;overflow:hidden;margin-bottom:8px;">
+                    <div id="upload-progress-bar" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width 0.2s;"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-tertiary);">
+                    <span id="upload-progress-percent">0%</span>
+                    <span id="upload-progress-speed">0 B/s</span>
+                    <span id="upload-progress-eta">计算中…</span>
+                </div>
+                <p id="upload-progress-phase" style="margin:4px 0 0;font-size:11px;color:var(--text-tertiary);"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 隐私政策弹窗 ========== -->
+    <div class="privacy-popup-mask" id="privacy-popup-mask" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;padding:16px;">
+        <div class="privacy-popup">
+            <h3 class="privacy-popup-title">隐私声明</h3>
+            <p id="privacy-popup-message" style="margin:0 0 16px;font-size:13px;color:var(--text-secondary);line-height:1.6;"></p>
+            <div class="privacy-popup-links">
+                <a href="https://github.com/kevincennis/TinySynth" target="_blank" rel="noopener noreferrer">TinySynth</a>
+                <a href="https://github.com/Tonejs/Midi" target="_blank" rel="noopener noreferrer">@tonejs/midi</a>
+                <a href="mailto:3451392772@qq.com">3451392772@qq.com</a>
+            </div>
+            <label class="privacy-language-label" for="privacy-language">语言
+                <select id="privacy-language" class="settings-control" aria-label="语言">
+                    <option value="zh-CN">🇨🇳 简体中文</option>
+                    <option value="en-US">🇺🇸 English (United States)</option>
+                    <option value="pt-BR">🇧🇷 Português (Brasil)</option>
+                    <option value="id-ID">🇮🇩 Bahasa Indonesia</option>
+                </select>
+            </label>
+            <button class="popup-btn popup-btn-primary" id="privacy-popup-agree" style="display:block;margin:12px auto 0;">同意</button>
+        </div>
+    </div>
+
+    <!-- ========== 横屏抽屉 (移动端) ========== -->
+    <button id="landscape-menu-btn" style="display:none;position:fixed;top:4px;right:4px;z-index:1001;width:36px;height:36px;border-radius:8px;background:rgba(255,255,255,0.08);border:1px solid var(--ctrl-stroke-default);color:var(--text-primary);cursor:pointer;font-size:16px;">
+        <i class="fa-solid fa-bars"></i>
+    </button>
+    <div class="landscape-drawer" id="landscape-drawer" style="display:none;position:fixed;top:0;right:0;width:280px;height:100vh;z-index:10005;background:rgba(22,33,62,0.98);backdrop-filter:blur(16px);border-left:1px solid var(--ctrl-stroke-default);box-shadow:-4px 0 20px rgba(0,0,0,0.3);transform:translateX(100%);transition:transform 0.25s ease;">
+        <div style="display:flex;align-items:center;padding:8px;border-bottom:1px solid var(--ctrl-stroke-default);">
+            <span style="font-size:14px;font-weight:600;flex:1;">菜单</span>
+            <button id="landscape-drawer-close" style="background:none;border:none;color:var(--text-secondary);font-size:20px;cursor:pointer;padding:4px;">&times;</button>
+        </div>
+        <div id="landscape-drawer-body" style="padding:8px;overflow-y:auto;height:calc(100vh - 44px);"></div>
+    </div>
+    <div class="landscape-drawer-mask" id="landscape-drawer-mask" style="display:none;position:fixed;inset:0;z-index:10004;background:rgba(0,0,0,0.4);"></div>
+
+    <!-- ========== 音色槽菜单 (由 JS 动态填充) ========== -->
+    <div id="timbre-slot-menu" style="display:none;position:fixed;z-index:9999;background:rgba(22,33,62,0.96);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:4px 0;min-width:160px;box-shadow:0 8px 32px rgba(0,0,0,0.5);font-size:12px;color:#eaeaea;"></div>
+</div>
+
+<!-- ========== Scripts ========== -->
+<script src="https://cdn.jsdelivr.net/npm/webaudio-tinysynth"></script>
+<script type="module">
+    try {
+        const { Midi } = await import("https://esm.run/@tonejs/midi@2.0.28");
+        window.__ToneMidi = Midi;
+    } catch (e) {
+        console.warn("[WebNBS] @tonejs/midi 加载失败, 将使用回退 MIDI 解析器:", e);
+        window.__ToneMidiLoadError = true;
+    }
+</script>
+<!-- nbs_client.js 必须在 api_client.js 之前加载 (api_client.js 引用 NBSClient 全局对象) -->
+<script src="/static/js/nbs_client.js?v=20260728b"></script>
+<script src="/static/js/api_client.js?v=20260718m"></script>
+<script src="/static/js/custom_dropdown.js?v=20260728d"></script>
+<script src="/static/js/i18n.js?v=20260728f"></script>
+<script src="/static/js/audio_engine.js?v=20260728a"></script>
+<script src="/static/js/piano_roll.js?v=20260728e"></script>
+<script src="/static/js/fls_core.js?v=20260728a"></script>
+<script src="/static/js/fls_track_panel.js?v=20260718m"></script>
+<script src="/static/js/fls_playlist.js?v=20260728e"></script>
+<script src="/static/js/fls_group_roll.js?v=20260728d"></script>
+<script src="/static/js/fls_pianoroll.js?v=20260728d"></script>
+<script src="/static/js/main.js?v=20260728h"></script>
+
+</body>
+</html>

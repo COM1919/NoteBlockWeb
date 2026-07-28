@@ -1,0 +1,23 @@
+# SoundFont 配置文件
+# 本文件位于项目根目录的 sf2/ 文件夹内，便于维护 SF2 音色库下载地址。
+#
+# 每个平台可配置以下两种形式之一：
+# 1. 直链地址（url）：服务器不会下载该文件，而是把地址推送给客户端，由客户端在浏览器中直接下载，减少服务器带宽压力。
+# 2. 本地文件名（file）：填写当前 sf2/ 目录下的文件名，客户端会通过 /sf2/<filename> 从本服务器下载。
+#
+# 提示：
+# - 如果 url 和 file 同时填写，优先使用 url（客户端直链下载）。
+# - 如果留空或字段缺失，则该平台不可用 SoundFont，前端会回退到 TinySynth。
+# - 文件名形式需要先把 sf2/sf3 文件放到本目录中。
+
+mobile:
+  # 移动端使用的音色库（建议 30-60MB 的轻量 SF2）
+  name: "移动端音色库"
+  # url: "https://example.com/mobile_soundfont.sf2"
+  # file: "mobile_soundfont.sf2"
+
+pc:
+  # PC 端使用的音色库（建议 100MB 以上的高质量 SF2）
+  name: "PC 端音色库"
+  # url: "https://example.com/pc_soundfont.sf2"
+  # file: "pc_soundfont.sf2"

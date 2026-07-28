@@ -1,0 +1,5 @@
+fastapi>=0.100.0
+uvicorn>=0.22.0
+pynbs>=1.1.0
+python-multipart>=0.0.6
+mido>=1.2.10
