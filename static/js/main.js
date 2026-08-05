@@ -796,7 +796,11 @@
         $setValue('tempo-slider', state.tempo);
         $setValue('tempo-value', state.tempo);
         $setValue('fls-tempo-input', Math.round(state.tempo));
+<<<<<<< HEAD
         $setValue('settings-tempo-slider', Math.max(5, Math.min(655, state.tempo)));
+=======
+        $setValue('settings-tempo-slider', Math.max(5, Math.min(80, state.tempo)));
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
         $setValue('settings-tempo-input', state.tempo);
         $setText('settings-tempo-value', state.tempo.toFixed(1));
         updateSongInfo();
@@ -893,9 +897,12 @@
 
         var tempoSlider = $('tempo-slider');
         if (tempoSlider) {
+<<<<<<< HEAD
             tempoSlider.addEventListener('mousedown', function(e) {
                 pushUndo(); // 开始拖拽时记录快照, 避免每次 input 事件都创建 undo
             });
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             tempoSlider.addEventListener('input', function(e) {
                 state.tempo = parseFloat(e.target.value);
                 $('tempo-value').value = state.tempo;
@@ -927,9 +934,12 @@
         // tempo-value 数字输入框
         var tempoValueInput = $('tempo-value');
         if (tempoValueInput) {
+<<<<<<< HEAD
             tempoValueInput.addEventListener('focus', function(e) {
                 pushUndo(); // 聚焦时记录快照, 避免每次 keystroke 都创建 undo
             });
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             tempoValueInput.addEventListener('input', function(e) {
                 var val = parseFloat(e.target.value);
                 if (isNaN(val)) return;
@@ -1072,6 +1082,7 @@
             });
         }
 
+<<<<<<< HEAD
         // 音量透明度开关
         var volOpacityChk = $('settings-volume-opacity');
         if (volOpacityChk) {
@@ -1277,6 +1288,8 @@
             });
         }
 
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
         // 设置弹窗标签页切换
         var settingsTabs = document.querySelectorAll('.settings-tab');
         for (var st = 0; st < settingsTabs.length; st++) {
@@ -1645,7 +1658,11 @@
         var flsStopBtn = $('fls-btn-stop');
         if (flsStopBtn) flsStopBtn.addEventListener('click', handleStop);
         var flsRevBtn = $('fls-btn-rev');
+<<<<<<< HEAD
         if (flsRevBtn) flsRevBtn.addEventListener('click', function() { seekToTick(0); if (state.pianoRoll) state.pianoRoll._scrollToPlayhead(); });
+=======
+        if (flsRevBtn) flsRevBtn.addEventListener('click', function() { seekToTick(0); });
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
         var flsTempoInput = $('fls-tempo-input');
         if (flsTempoInput) flsTempoInput.addEventListener('change', function(e) {
             var v = parseInt(e.target.value) || 20;
@@ -1941,10 +1958,13 @@
                 markDirty();
             };
 
+<<<<<<< HEAD
             state.pianoRoll.onNoteDragStart = function() {
                 pushUndo();
             };
 
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             state.pianoRoll.onContextMenu = function(x, y, noteIds, isLongPress) {
                 showContextMenu(x, y, noteIds, isLongPress);
             };
@@ -1955,7 +1975,10 @@
 
             // 轨道 M/S/删除 按钮变化回调 (与 canvas 交互)
             state.pianoRoll.onTrackChanged = function(layer, updatedInfo) {
+<<<<<<< HEAD
                 pushUndo();
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
                 // 同步 state.tracks 与 pianoRoll.trackInfo
                 var track = findTrackByLayer(layer);
                 if (track) {
@@ -1986,7 +2009,10 @@
 
             // 轨道重命名回调
             state.pianoRoll.onTrackRename = function(layer, newName) {
+<<<<<<< HEAD
                 pushUndo();
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
                 updateTrackName(layer, newName);
             };
 
@@ -3483,7 +3509,11 @@
         }
         // 同步当前速度值
         var tempoVal = parseFloat(state.tempo) || 20;
+<<<<<<< HEAD
         $setValue('settings-tempo-slider', Math.max(5, Math.min(655, tempoVal)));
+=======
+        $setValue('settings-tempo-slider', Math.max(5, Math.min(80, tempoVal)));
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
         $setValue('settings-tempo-input', tempoVal);
         $setText('settings-tempo-value', tempoVal.toFixed(1));
     }
@@ -3648,8 +3678,11 @@
         if (tick < 0) tick = 0;
         if (tick > totalTicks) tick = totalTicks;
         state.currentTick = tick;
+<<<<<<< HEAD
         // 记录用户主动 seek 的位置 (用于暂停后重新播放时跳回此位置)
         state._lastSeekTick = tick;
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
         updateProgressUI();
         if (state.pianoRoll) {
             state.pianoRoll.playheadTick = tick;
@@ -3698,10 +3731,13 @@
             // 开始播放: 播放时自动保存
             saveOnPlay();
             if (window.AudioEngine && AudioEngine.init) AudioEngine.init();
+<<<<<<< HEAD
             // 暂停后重新播放: 跳转到上次 seek 的位置 (用户点击时间栏的位置)
             if (typeof state._lastSeekTick === 'number' && state._lastSeekTick >= 0) {
                 state.currentTick = state._lastSeekTick;
             }
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             // B 方案: 开始播放时立即把面板跳到 progress bar 当前 tick
             if (state.pianoRoll) {
                 state.pianoRoll.isPlaying = true;
@@ -3745,8 +3781,11 @@
         if (window.AudioEngine && AudioEngine.stopAll) AudioEngine.stopAll();
         setPlayButtonIcon(false);
         state.currentTick = 0;
+<<<<<<< HEAD
         // 清除上次 seek 位置 (停止后从头开始, 暂停重播才跳回 seek 位置)
         state._lastSeekTick = null;
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
         updateProgressUI();
         if (state.performanceRecording) {
             commitPerformanceNotes();
@@ -5225,11 +5264,18 @@
             + '<label class="settings-label" style="font-size:12px;">选择缩放倍数：</label>'
             + '<div style="display:flex;gap:4px;flex-wrap:wrap;">'
             + '<button class="scale-btn" data-factor="0.125">1/8x</button>'
+<<<<<<< HEAD
             + '<button class="scale-btn" data-factor="0.25">1/4x</button>'
             + '<button class="scale-btn" data-factor="0.5">1/2x</button>'
             + '<button class="scale-btn selected" data-factor="2">x2</button>'
             + '<button class="scale-btn" data-factor="3">x3</button>'
             + '<button class="scale-btn" data-factor="4">x4</button>'
+=======
+            + '<button class="scale-btn" data-factor="4">4/1x</button>'
+            + '<button class="scale-btn" data-factor="2">2/1x</button>'
+            + '<button class="scale-btn selected" data-factor="2">x2</button>'
+            + '<button class="scale-btn" data-factor="3">x3</button>'
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             + '<button class="scale-btn" data-factor="6">x6</button>'
             + '<button class="scale-btn" data-factor="8">x8</button>'
             + '</div></div>'
@@ -6774,13 +6820,21 @@
 
             var loadedTempo = parseFloat(data.song.tempo);
             if (!isFinite(loadedTempo) || loadedTempo <= 0) loadedTempo = 10;
+<<<<<<< HEAD
             if (loadedTempo > 655) loadedTempo = 655;
+=======
+            if (loadedTempo > 400) loadedTempo = 400;
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             state.tempo = loadedTempo;
 
             $setValue('tempo-slider', state.tempo);
             $('tempo-value').value = state.tempo;
             $setValue('fls-tempo-input', Math.round(state.tempo));
+<<<<<<< HEAD
             $setValue('settings-tempo-slider', Math.max(5, Math.min(655, state.tempo)));
+=======
+            $setValue('settings-tempo-slider', Math.max(5, Math.min(80, state.tempo)));
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             $setValue('settings-tempo-input', state.tempo);
             $setText('settings-tempo-value', (state.tempo).toFixed(1));
 
@@ -11759,7 +11813,11 @@ function buildTimbreFittingRows(info) {
             $setValue('tempo-slider', state.tempo);
             $('tempo-value').value = state.tempo;
             $setValue('fls-tempo-input', Math.round(state.tempo));
+<<<<<<< HEAD
             $setValue('settings-tempo-slider', Math.max(5, Math.min(655, state.tempo)));
+=======
+            $setValue('settings-tempo-slider', Math.max(5, Math.min(80, state.tempo)));
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             $setValue('settings-tempo-input', state.tempo);
             $setText('settings-tempo-value', (state.tempo).toFixed(1));
             buildNoteIndex(state.notes);
@@ -11778,7 +11836,10 @@ function buildTimbreFittingRows(info) {
             updateSongInfo();
             checkOctaveRange(state.notes);
             updateTrackPanelUI();
+<<<<<<< HEAD
             updateProgressUI();
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             handleStop();
             markDirty();
             $('file-input').value = '';
@@ -12352,7 +12413,11 @@ function buildTimbreFittingRows(info) {
             $setValue('tempo-slider', state.tempo);
             $('tempo-value').value = state.tempo;
             $setValue('fls-tempo-input', Math.round(state.tempo));
+<<<<<<< HEAD
             $setValue('settings-tempo-slider', Math.max(5, Math.min(655, state.tempo)));
+=======
+            $setValue('settings-tempo-slider', Math.max(5, Math.min(80, state.tempo)));
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             $setValue('settings-tempo-input', state.tempo);
             $setText('settings-tempo-value', (state.tempo).toFixed(1));
             buildNoteIndex(state.notes);
@@ -12633,7 +12698,11 @@ function buildTimbreFittingRows(info) {
             $setValue('tempo-slider', state.tempo);
             $('tempo-value').value = state.tempo;
             $setValue('fls-tempo-input', Math.round(state.tempo));
+<<<<<<< HEAD
             $setValue('settings-tempo-slider', Math.max(5, Math.min(655, state.tempo)));
+=======
+            $setValue('settings-tempo-slider', Math.max(5, Math.min(80, state.tempo)));
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             $setValue('settings-tempo-input', state.tempo);
             $setText('settings-tempo-value', (state.tempo).toFixed(1));
 

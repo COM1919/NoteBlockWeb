@@ -309,6 +309,7 @@ function _decodeLatin1(bytes) {
     return s;
 }
 
+<<<<<<< HEAD
 // 积分所有 tempo 变化计算 MIDI 实际时长 (秒)
 // 旧代码仅用 initialTempoUs 计算全长, tempo 变化频繁的 MIDI 偏差可达数百倍
 function _calcMidiDurationSeconds(tempoChangesList, startTick, endTick, ticksPerBeat, defaultTempoUs) {
@@ -338,6 +339,8 @@ function _calcMidiDurationSeconds(tempoChangesList, startTick, endTick, ticksPer
     return totalSeconds;
 }
 
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
 // ====================================================================
 // NBS 二进制读取器 (小端序)
 // ====================================================================
@@ -684,18 +687,27 @@ function _writeNBS(songData) {
     writer.wShort(0);                        // song_length = 0 (新格式标记)
     writer.wByte(version);                    // NBS version
     writer.wByte(vanillaCount);              // vanilla 乐器数 (V6=20, V5=16)
+<<<<<<< HEAD
     // NBS 的 song_length 字段是 unsigned short, 超出 65535 会溢出回绕 (导致其他软件读到异常长度)
     // 截断到格式上限; 实际音符以 notes 段为准 (长间隔已由空和弦桥接)
     writer.wShort(Math.min(songLength, 65535)); // song_length
     // song_layers 是 unsigned short, 超过 65535 会溢出回绕
     writer.wShort(Math.min(layers.length, 65535)); // song_layers
+=======
+    writer.wShort(songLength);                // song_length
+    writer.wShort(layers.length);             // song_layers
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
     writer.wString(songData.name || songData.song_name || '');
     writer.wString(songData.author || '');
     writer.wString(songData.original_author || '');
     writer.wString(songData.description || '');
+<<<<<<< HEAD
     // tempo * 100, 钳制到 unsigned short 上限 65535 (即 tempo <= 655.35), 防止溢出回绕
     var tempoRaw100 = Math.floor(Math.min(655, (songData.tempo || 20)) * 100);
     writer.wShort(tempoRaw100); // tempo * 100
+=======
+    writer.wShort(Math.floor((songData.tempo || 20) * 100)); // tempo * 100
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
     writer.wByte(songData.auto_save ? 1 : 0);  // auto_save
     writer.wByte(songData.auto_save_minutes || 0); // auto_save_duration
     writer.wByte(songData.time_signature || 4); // time_signature
@@ -708,13 +720,18 @@ function _writeNBS(songData) {
     // version >= 4
     writer.wByte(songData.loop ? 1 : 0);     // loop
     writer.wByte(songData.max_loop_count || 0); // max_loop_count
+<<<<<<< HEAD
     // loop_start 是 unsigned short, 钳制到 65535 防止溢出
     writer.wShort(Math.min(songData.loop_start || 0, 65535)); // loop_start
+=======
+    writer.wShort(songData.loop_start || 0); // loop_start
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
 
     // ---- Notes (按 tick 分组, 按 layer 排序, jump 格式) ----
     if (notes.length > 0) {
         // 预处理: 确保 tick 和 layer 为整数, 过滤无效音符
         var cleanNotes = [];
+<<<<<<< HEAD
         var _negTickCount = 0;
         // NBS 格式不支持同一 (tick, layer) 位置有多个音符:
         // 同一 chord 内两个音符 layer 相同时, layer jump = 0 会被 _parseNBS 误认为 end of chord,
@@ -753,6 +770,21 @@ function _writeNBS(songData) {
         if (_dupCount > 0 && typeof console !== 'undefined' && console.warn) {
             console.warn('[WebNBS] _writeNBS: 检测到 ' + _dupCount + ' 个 (tick,layer) 冲突, 已自动分配新 layer');
         }
+=======
+        for (var ci = 0; ci < notes.length; ci++) {
+            var cn = notes[ci];
+            if (!cn || typeof cn.tick !== 'number' || typeof cn.layer !== 'number') continue;
+            cleanNotes.push({
+                tick: Math.floor(cn.tick),
+                layer: Math.floor(cn.layer),
+                instrument: cn.instrument || 0,
+                key: cn.key || 33,
+                velocity: cn.velocity !== undefined ? cn.velocity : 100,
+                pan: cn.pan !== undefined ? cn.pan : 50,
+                pitch: cn.pitch || 0
+            });
+        }
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
 
         // 按 (tick, layer) 排序
         cleanNotes.sort(function (a, b) {
@@ -777,6 +809,7 @@ function _writeNBS(songData) {
         for (var ti = 0; ti < tickOrder.length; ti++) {
             var tick = tickOrder[ti];
             var chord = grouped[tick];
+<<<<<<< HEAD
             // NBS 的 tick jump 是 unsigned short, 单次最大 65535
             // 若相邻两个 tick 的间隔超过 65535, wShort 会溢出回绕, 导致音符错位/空洞/长度异常
             // 用「65535 跳转 + 空和弦」的合法结构桥接长间隔 (推进 tick 但不产生音符)
@@ -788,10 +821,14 @@ function _writeNBS(songData) {
                 delta -= MAX_TICK_JUMP;
             }
             writer.wShort(delta);
+=======
+            writer.wShort(tick - currentTick);
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             currentTick = tick;
             var currentLayer = -1;
             for (var ni = 0; ni < chord.length; ni++) {
                 var n = chord[ni];
+<<<<<<< HEAD
                 // layer jump 是 unsigned short, 钳制到 65535 防止溢出回绕
                 writer.wShort(Math.min(n.layer - currentLayer, 65535));
                 currentLayer = n.layer;
@@ -804,6 +841,16 @@ function _writeNBS(songData) {
                 writer.wByte(_clamp(n.pan * 2, 0, 200));
                 // pitch 是 signed short, 钳制到 [-32768, 32767] 防止溢出
                 writer.wSShort(_clamp(n.pitch || 0, -32768, 32767));
+=======
+                writer.wShort(n.layer - currentLayer);
+                currentLayer = n.layer;
+                writer.wByte(n.instrument);
+                writer.wByte(n.key);
+                // version >= 4
+                writer.wByte(_clamp(n.velocity, 0, 100));
+                writer.wByte(_clamp(n.pan * 2, 0, 200));
+                writer.wSShort(n.pitch || 0);
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             }
             writer.wShort(0); // end of chord
         }
@@ -1656,6 +1703,7 @@ function _convertMidiToNBS(arrayBuffer, settings) {
         if (events[i].tick > maxTick) maxTick = events[i].tick;
     }
 
+<<<<<<< HEAD
     // ---- 异常远端音符检测与过滤 ----
     // 某些 MIDI 文件包含位于极远位置的异常音符（可能因编辑器残留、未关闭的 Note On、
     // 或损坏的 delta time 导致），会使 maxTick 异常巨大（如 3 亿+ MIDI tick ≈ 92 小时）。
@@ -1698,6 +1746,8 @@ function _convertMidiToNBS(arrayBuffer, settings) {
         }
     }
 
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
     // ---- delta_per_tick ----
     var precisionMap = { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5 };
     var precVal = precisionMap[precision] !== undefined ? precisionMap[precision] : 1;
@@ -1717,6 +1767,7 @@ function _convertMidiToNBS(arrayBuffer, settings) {
     }
 
     // ---- 计算 TPS ----
+<<<<<<< HEAD
     // NBS tempo 存储为 tempo * 100 的 unsigned short, 格式上限 = 65535/100 = 655.35 TPS
     // 通过积分所有 tempo 变化计算实际 MIDI 时长, 避免仅用初始 tempo 导致的巨大偏差
     if (maxNbsTick > 0 && initialTempoUs > 0 && maxTick > 0) {
@@ -1727,6 +1778,14 @@ function _convertMidiToNBS(arrayBuffer, settings) {
         if (midiSonglengthSeconds > 0) {
             var tempoRaw = enda / midiSonglengthSeconds;
             songTempo = Math.max(5.0, Math.min(655.0, tempoRaw));
+=======
+    if (maxNbsTick > 0 && initialTempoUs > 0 && maxTick > 0) {
+        var midiSonglengthSeconds = (maxTick - silentOffset) / ticksPerBeat * (initialTempoUs / 1000000.0);
+        var enda = parseFloat(maxNbsTick);
+        if (midiSonglengthSeconds > 0) {
+            var tempoRaw = 10.0 / (midiSonglengthSeconds / (enda / 10.0));
+            songTempo = Math.max(5.0, Math.min(80.0, tempoRaw));
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
             songTempo = Math.round(songTempo);
         }
     }

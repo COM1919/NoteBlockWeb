@@ -22,6 +22,7 @@ from nbs.nbs_handler import NBSHandler, INSTRUMENT_NAMES
 from nbs.midi_handler import MIDIHandler
 
 # ============ 加载配置文件 ============
+<<<<<<< HEAD
 # 默认配置文件模板 (带注释, 首次启动时自动写入 config.yaml)
 _DEFAULT_CONFIG_YAML = """# WebNBS 配置文件
 # 修改后需重启服务生效
@@ -68,6 +69,10 @@ advanced:
 
 def load_config():
     """加载 config.yaml 配置文件, 不存在则自动创建默认配置"""
+=======
+def load_config():
+    """加载 config.yaml 配置文件, 不存在则使用默认配置"""
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
     config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
     default_config = {
         'server': {'host': '0.0.0.0', 'port': 8000},
@@ -77,8 +82,13 @@ def load_config():
             'message': '本服务会上传MIDI或NBS文件用于解析，解析后会立即清除数据，不会保留，也不会收集用户隐私。'
         },
         'release': {
+<<<<<<< HEAD
             'version': '2.4.9',
             'notes': 'See config.yaml for the current release notes.'
+=======
+            'version': '2.4.8',
+            'notes': '无'
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
         },
         'advanced': {
             'workers': 4,
@@ -87,6 +97,7 @@ def load_config():
         }
     }
     if not os.path.exists(config_path):
+<<<<<<< HEAD
         # 配置文件不存在, 自动创建带注释的默认配置
         try:
             import yaml
@@ -97,6 +108,8 @@ def load_config():
             print("[警告] 未安装 PyYAML, 无法写入默认配置文件, 使用内存默认配置. pip install pyyaml")
         except Exception as e:
             print(f"[警告] 创建默认 config.yaml 失败: {e}, 使用内存默认配置")
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
         return default_config
     try:
         import yaml

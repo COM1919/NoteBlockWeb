@@ -3,7 +3,11 @@
     'use strict';
 
     var STORAGE_KEY = 'webnbs_language';
+<<<<<<< HEAD
     var SUPPORTED = ['zh-CN', 'en-US', 'es-ES', 'pt-BR', 'ru-RU', 'de-DE', 'fr-FR', 'ja-JP', 'ko-KR', 'id-ID'];
+=======
+    var SUPPORTED = ['zh-CN', 'en-US', 'pt-BR', 'id-ID'];
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
     // Keep both the Chinese source and the last rendered value. UI state is
     // updated frequently (counts, device names, etc.), so a plain source string
     // would otherwise leave dynamic content stuck on an old translation.
@@ -308,6 +312,7 @@
         '配置超出音域音符的音色替代方案': 'Atur pengganti timbre untuk not di luar rentang'
     });
 
+<<<<<<< HEAD
     // New locales inherit the complete English runtime vocabulary first. This keeps
     // controls added by future editor updates readable until their local wording is
     // added, while the main editor and all instrument labels are localized here.
@@ -414,11 +419,17 @@
         '静音': '음소거', '取消静音': '음소거 해제', '独奏': '솔로', '取消独奏': '솔로 해제', '删除音轨': '트랙 삭제', '上移轨道': '트랙 위로', '下移轨道': '트랙 아래로', '音量:': '음량:', '关闭': '닫기'
     }, ['하프', '더블 베이스', '베이스 드럼', '스네어 드럼', '클릭', '기타', '플루트', '종', '차임', '실로폰', '철 실로폰', '카우벨', '디저리두', '비트', '밴조', '플링', '구리 뿔피리', '노출된 구리 뿔피리', '풍화된 구리 뿔피리', '산화된 구리 뿔피리']);
 
+=======
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
     function normalize(locale) {
         if (typeof locale !== 'string') return null;
         var value = locale.replace(/_/g, '-').trim();
         for (var i = 0; i < SUPPORTED.length; i++) if (value.toLowerCase() === SUPPORTED[i].toLowerCase()) return SUPPORTED[i];
+<<<<<<< HEAD
         var fallback = { zh: 'zh-CN', en: 'en-US', es: 'es-ES', pt: 'pt-BR', ru: 'ru-RU', de: 'de-DE', fr: 'fr-FR', ja: 'ja-JP', ko: 'ko-KR', id: 'id-ID' };
+=======
+        var fallback = { zh: 'zh-CN', en: 'en-US', pt: 'pt-BR', id: 'id-ID' };
+>>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
         return fallback[value.split('-')[0].toLowerCase()] || null;
     }
 
