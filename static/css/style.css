@@ -150,13 +150,10 @@
     /* 工具栏专用 Mica 背景 */
     --toolbar-glass-bg: rgba(32, 32, 32, 0.78);
 
-<<<<<<< HEAD
     /* 表面材质 (个性化): 控制工具栏/状态栏/面板的毛玻璃效果 */
     --surface-blur: blur(24px) saturate(160%);
     --surface-bg-alpha: 0.72;
 
-=======
->>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
     /* 音色块颜色 (Minecraft Note Block Studio) */
     --inst-0: #F5E6B8;
     --inst-1: #8B4513;
@@ -199,7 +196,6 @@ html, body {
     text-rendering: optimizeLegibility;
 }
 
-<<<<<<< HEAD
 /* ==================================================================
    0a. 全网页背景图片层 (个性化设置, 位于最底层)
    ================================================================== */
@@ -245,8 +241,6 @@ body.bg-active .piano-roll-container {
     background: transparent;
 }
 
-=======
->>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
 /* ----- 应用容器 ----- */
 #app {
     display: flex;
@@ -255,11 +249,8 @@ body.bg-active .piano-roll-container {
     height: 100dvh;
     position: relative;
     overflow: hidden;
-<<<<<<< HEAD
     /* 确保内容绘制在 #page-bg 之上 */
     z-index: 1;
-=======
->>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
 }
 
 /* ==================================================================
@@ -1875,15 +1866,12 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     touch-action: pan-x pan-y;
 }
 
-<<<<<<< HEAD
 /* 音色拟合面板: 禁用外层 .midi-tab-content 滚动, 由内层 .midi-table-wrap 负责滚动。
    避免手机端出现嵌套双滚动条 (两个滑块重叠) 导致列表无法划到底。 */
 .midi-tab-content:has(#midi-tab-timbre.active) {
     overflow: hidden;
 }
 
-=======
->>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
 .midi-table {
     min-width: 560px;
 }
@@ -2506,7 +2494,6 @@ input[type="number"]:hover::-webkit-outer-spin-button {
 }
 
 /* 设置弹窗标签页 */
-<<<<<<< HEAD
 .settings-tabs {
     display: flex;
     gap: 2px;
@@ -2523,23 +2510,13 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     transition: all 0.15s;
     padding: 7px 14px;
     font-size: 12px;
-=======
-.settings-tab {
-    transition: all 0.15s;
-    padding: 3px 8px;
-    font-size: 11px;
->>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
     border: none;
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
-<<<<<<< HEAD
     border-radius: 0;
     position: relative;
     font-weight: 500;
-=======
-    border-radius: var(--radius-sm);
->>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
 }
 .settings-tab:hover {
     color: var(--text-primary);
@@ -2547,7 +2524,6 @@ input[type="number"]:hover::-webkit-outer-spin-button {
 }
 .settings-tab.active {
     color: var(--accent);
-<<<<<<< HEAD
     background: transparent;
 }
 .settings-tab.active::after {
@@ -2559,9 +2535,6 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     height: 2px;
     border-radius: 1px;
     background: var(--accent);
-=======
-    background: var(--ctrl-fill-secondary);
->>>>>>> 7039004e02f7c1c62e62002cb1455cd226beae59
 }
 .settings-tab-panel {
     display: none;
