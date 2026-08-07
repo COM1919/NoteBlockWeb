@@ -127,6 +127,8 @@
         this._dragStartX = 0;
         this._dragStartY = 0;
         this._dragNoteStart = {};
+        // 音符拖动预览: 拖动中音符跟随鼠标实时预览 + 目标格描边
+        this._dragPreview = null;
         this._hasMoved = false;
         this._isSelecting = false;
         this._selectionRect = null;
@@ -338,9 +340,10 @@
         this.canvas.style.width = this.displayWidth + 'px';
         this.canvas.style.height = this.displayHeight + 'px';
 
-        // 浏览器底层渲染优化: alpha:false 避免合成器混合开销
+        // 浏览器底层渲染优化: alpha:true 透明画布, 透出容器 CSS 背景/网页背景图
+        // (不能使用 alpha:false, 否则 clearRect 会填为不透明黑色, 背景图被遮挡)
         try {
-            var newCtx = this.canvas.getContext('2d', { alpha: false });
+            var newCtx = this.canvas.getContext('2d', { alpha: true });
             if (newCtx) { this.ctx = newCtx; }
         } catch(e) { /* 降级到默认上下文 */ }
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -707,6 +710,61 @@
         if (this.onNoteDragStart) this.onNoteDragStart();
     };
 
+    // 开始拖动预览: 记录鼠标相对锚点音符的浮点偏移, 使音符始终跟随鼠标而不跳格
+    // anchorId: 被按住的音符 (默认取第一个选中音符), 保证拖动的音符精确跟随鼠标
+    // 设计要点:
+    //   1) previewTick/previewLayer: 浮点预览位置, 抓取点始终贴着鼠标 (平滑 1:1 跟随)
+    //   2) targetTick/targetLayer: 吸附目标格 = 鼠标当前所在格 (floor), 保证"鼠标放在哪格, 松手就落在哪格"
+    PianoRoll.prototype._beginDragPreview = function(x, y, anchorId) {
+        if (Object.keys(this.selectedNotes).length === 0) { this._dragPreview = null; return; }
+        var cfg = this._cfg;
+        var pw = this._currentPanelWidth;
+        var cellW = cfg.cellW * this.zoom, cellH = cfg.cellH * this.zoom;
+        if (cellW <= 0 || cellH <= 0) { this._dragPreview = null; return; }
+        var ids = Object.keys(this.selectedNotes);
+        var aid = (anchorId && this.selectedNotes[anchorId]) ? anchorId : ids[0];
+        var idx = this._findNoteById(aid);
+        if (idx < 0) { this._dragPreview = null; return; }
+        var base = this.notes[idx];
+        // 鼠标在格坐标中的浮点位置 (相对锚点音符的偏移被固定, 移动时音符不跳格)
+        var floatTick = (x - pw + this.scrollX) / cellW;
+        var floatLayer = (y - cfg.timelineHeight + this.scrollY) / cellH;
+        this._dragPreview = {
+            anchorId: aid,
+            anchorOffTick: floatTick - base.tick,
+            anchorOffLayer: floatLayer - base.layer,
+            baseTick: base.tick,
+            baseLayer: base.layer,
+            previewTick: base.tick,
+            previewLayer: base.layer,
+            targetTick: base.tick,
+            targetLayer: base.layer,
+            moved: false
+        };
+    };
+
+    // 更新拖动预览: 音符视觉跟随鼠标 (浮点), 吸附目标格 = 鼠标所在格
+    PianoRoll.prototype._updateDragPreview = function(currentX, currentY) {
+        var pv = this._dragPreview;
+        if (!pv) return;
+        var cfg = this._cfg;
+        var pw = this._currentPanelWidth;
+        var cellW = cfg.cellW * this.zoom, cellH = cfg.cellH * this.zoom;
+        if (cellW <= 0 || cellH <= 0) return;
+        var floatTick = (currentX - pw + this.scrollX) / cellW;
+        var floatLayer = (currentY - cfg.timelineHeight + this.scrollY) / cellH;
+        // 预览渲染位置: 抓取点贴着鼠标 (浮点, 平滑跟随, 无跳格)
+        pv.previewTick = floatTick - pv.anchorOffTick;
+        pv.previewLayer = floatLayer - pv.anchorOffLayer;
+        // 吸附目标: 鼠标所在格 (floor). 相比 round 锚点偏移, floor 保证无论从音符哪个位置抓取,
+        // 松手后音符都落在鼠标当前所在的格子, 避免"永远差一格/有偏差"的感觉
+        var tTick = Math.floor(floatTick);
+        var tLayer = Math.floor(floatLayer);
+        pv.targetTick = Math.max(0, tTick);
+        pv.targetLayer = Math.max(0, Math.min(this.trackCount - 1, tLayer));
+        if (pv.targetTick !== pv.baseTick || pv.targetLayer !== pv.baseLayer) pv.moved = true;
+    };
+
     PianoRoll.prototype._moveSelectedNotes = function(tickDelta, layerDelta) {
         if (tickDelta === 0 && layerDelta === 0) return;
         var ids = Object.keys(this.selectedNotes);
@@ -728,24 +786,15 @@
         if (tickDelta !== 0) this._markNoteIndexDirty();
     };
 
-    // 实时跟随手指移动：使用连续偏移, 而不是累加 cell 偏移
-    PianoRoll.prototype._applyDragMove = function(currentX, currentY) {
-        if (!this._dragStartX && this._dragStartX !== 0) return;
-        var cfg = this._cfg;
-        var pw = this._currentPanelWidth;
-        // Use the same coordinate helpers as placement and selection.  This keeps the
-        // drag anchor stable while scrolling and avoids half-cell jumps on touch input.
-        var startTick = this._screenToTickNearest(this._dragStartX);
-        var startLayer = this._screenToLayer(this._dragStartY);
-        var curTick = this._screenToTickNearest(currentX);
-        var curLayer = this._screenToLayer(currentY);
-        this._moveSelectedNotes(curTick - startTick, curLayer - startLayer);
-    };
-
-    PianoRoll.prototype._finalizeDragMove = function(currentX, currentY) {
-        this._applyDragMove(currentX, currentY);
+    // 松手: 把预览目标格提交到音符 (音符在 _updateDragPreview 中已跟随鼠标预览)
+    PianoRoll.prototype._finalizeDragMove = function() {
+        var pv = this._dragPreview;
+        if (pv && pv.moved) {
+            this._moveSelectedNotes(pv.targetTick - pv.baseTick, pv.targetLayer - pv.baseLayer);
+        }
         this._removeOverlappedNotes();
         this._dragNoteStart = {};
+        this._dragPreview = null;
         if (this.onNotesChanged) this.onNotesChanged(this.getSelectedNotes());
     };
 
@@ -1382,6 +1431,9 @@
                 } else {
                     this._selectNote(clickedNote, false);
                 }
+                // 允许直接拖动选中音符 (与默认工具一致的拖动预览)
+                this._snapDragPositions();
+                this._beginDragPreview(x, y, clickedNote.id);
             } else {
                 this._isSelecting = true;
                 this._selectionRect = this._makeSelectionRect(x, y, x, y);
@@ -1455,6 +1507,7 @@
                     this._selectNote(clickedNote, false);
                 }
                 this._snapDragPositions();
+                this._beginDragPreview(x, y, clickedNote.id);
                 // 左键点击已有音符时给出声音反馈
                 if (this.onNotePreview) {
                     this.onNotePreview(clickedNote.instrument, clickedNote.key);
@@ -1644,7 +1697,7 @@
                 this.requestRender();
             } else if (this._hasMoved && Object.keys(this.selectedNotes).length > 0) {
                 this._isDraggingNote = true;
-                this._applyDragMove(x, y);
+                this._updateDragPreview(x, y);
                 this._lastTouchX = x;
                 this._lastTouchY = y;
                 this._fullRedrawNeeded = true;
@@ -1656,6 +1709,8 @@
     PianoRoll.prototype._onMouseUp = function(e) {
         if (!this._mouseDown) return;
         this._mouseDown = false;
+        // 若本次不是音符拖动, 清理拖动预览状态
+        if (!this._isDraggingNote) this._dragPreview = null;
         var rect = this.canvas.getBoundingClientRect();
         var x = e.clientX - rect.left;
         var y = e.clientY - rect.top;
@@ -1719,7 +1774,7 @@
             }
         } else if (this._isDraggingNote && Object.keys(this.selectedNotes).length > 0) {
             this._stopEdgeAutoScroll();
-            this._finalizeDragMove(x, y);
+            this._finalizeDragMove();
             this._isDraggingNote = false;
             this._fullRedrawNeeded = true;
             this.render();
@@ -1931,6 +1986,9 @@
                 // 移动端: 点击空白处不清除选区, 只能通过取消选择按钮清除
             }
 
+            // 触摸按下音符时记录拖动预览锚点 (移动时音符跟随手指, 不跳格)
+            if (clickedNote) this._beginDragPreview(x, y, clickedNote.id);
+
             this._touchMode = 'tap';
             this._startLongPressTimer(clickedNote);
         }
@@ -2068,9 +2126,8 @@
             }
 
             if (this._touchMode === 'select' && this._isDraggingNote) {
-                // Keep the drag anchor in the original viewport while the finger nears
-                // an edge; otherwise touch moves become impossible to place precisely.
-                this._applyDragMove(x, y);
+                // 音符跟随手指实时预览, 并吸附到最近格 (显示目标格描边)
+                this._updateDragPreview(x, y);
                 this._lastTouchX = x;
                 this._lastTouchY = y;
                 this._fullRedrawNeeded = true;
@@ -2100,6 +2157,9 @@
     };
 
     PianoRoll.prototype._onTouchEnd = function(e) {
+        // 若本次不是音符拖动, 清理拖动预览状态
+        if (this._touchMode !== 'select' || !this._isDraggingNote) this._dragPreview = null;
+
         if (this._touchMode === 'playhead-drag') {
             this._isDraggingPlayhead = false;
             this._touchMode = 'none';
@@ -2176,7 +2236,7 @@
 
         if (this._touchMode === 'select' && this._isDraggingNote) {
             if (Object.keys(this.selectedNotes).length > 0) {
-                this._finalizeDragMove(this._lastTouchX, this._lastTouchY);
+                this._finalizeDragMove();
             }
             this._touchMode = 'none';
             this._isDraggingNote = false;
@@ -2618,8 +2678,9 @@
     PianoRoll.prototype.hasClipboard = function() { return this.clipboard.length > 0; };
 
     PianoRoll.prototype.paste = function(offsetTick, offsetLayer) {
-        offsetTick = offsetTick || 1;
-        offsetLayer = offsetLayer || 0;
+        // 注意: 不能用 || 默认值, offset 为 0 时会被错误替换为 1, 导致粘贴位置偏移一格
+        offsetTick = (typeof offsetTick === 'number') ? offsetTick : 1;
+        offsetLayer = (typeof offsetLayer === 'number') ? offsetLayer : 0;
         var newNotes = [];
         var minNewTick = Infinity, maxNewTick = -Infinity;
         var minNewLayer = Infinity, maxNewLayer = -Infinity;
@@ -3062,9 +3123,18 @@
 
         // ======== 直接渲染 (离屏缓存方案已移除: scrollX/Y 变化时每帧重建适得其反) ========
 
-        // 背景
-        ctx.fillStyle = 'rgba(26, 26, 46, ' + this.panelAlpha + ')';
-        ctx.fillRect(0, 0, w, h);
+        // 清除上一帧内容: 画布透明, 必须清空否则滑动时旧帧像素残留产生残影
+        ctx.clearRect(0, 0, w, h);
+
+        // 背景:
+        // - 无背景图 (body 无 bg-active): 画布绘制默认双色背景, 与重构前观感一致 (网格默认可见)
+        // - 有背景图 (body.bg-active): 画布保持透明, 由容器半透明 + 网格材质透出网页背景图片
+        if (!document.body.classList.contains('bg-active')) {
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, w, h);
+            ctx.fillStyle = '#16162a';
+            ctx.fillRect(pw, cfg.timelineHeight, w - pw, h - cfg.timelineHeight);
+        }
 
         // 进度条
         this._drawProgressBar();
@@ -3075,11 +3145,7 @@
         // 左侧音轨信息区
         this._drawTrackPanel();
 
-        // 编辑区背景 (半透明, 透出网页背景图片)
-        ctx.fillStyle = 'rgba(22, 22, 42, ' + this.panelAlpha + ')';
-        ctx.fillRect(pw, cfg.timelineHeight, w - pw, h - cfg.timelineHeight);
-
-        // 网格
+        // 网格 (交替行底色 + 网格线, 受网格透明度控制)
         this._drawGrid();
 
         // 静音轨道叠加半透明黑色蒙版
@@ -3815,6 +3881,15 @@
         var notePad = Math.max(0, Math.min(16, this.notePadding || 0));
         var now = performance.now();
 
+        // 拖动预览状态: 选中音符跟随鼠标渲染 (浮点平滑) + 目标格描边 (吸附格)
+        // 注意: 只要正在拖动就渲染预览 (即使尚未跨格, 音符也应平滑跟随鼠标)
+        var dragActive = !!(this._dragPreview && this._isDraggingNote);
+        var dragDeltaTick = 0, dragDeltaLayer = 0;
+        if (dragActive) {
+            dragDeltaTick = this._dragPreview.previewTick - this._dragPreview.baseTick;
+            dragDeltaLayer = this._dragPreview.previewLayer - this._dragPreview.baseLayer;
+        }
+
         // 检查哪些音符正在动画中
         var animIds = {};
         for (var ai = 0; ai < this._noteAnims.length; ai++) {
@@ -3850,18 +3925,29 @@
                 if (!note) continue;
                 if (animIds[note.id]) continue;
 
-                var nx = this._tickToScreen(note.tick);
-                var ny = this._layerToScreen(note.layer);
+                var isSelected = !!this.selectedNotes[note.id];
+
+                // 拖动预览: 选中音符按浮点预览位置渲染 (抓取点贴着鼠标平滑跟随), 并轻微放大
+                var drawTick = note.tick, drawLayer = note.layer;
+                if (dragActive && isSelected) {
+                    var dragStart = this._dragNoteStart[note.id];
+                    if (dragStart) {
+                        drawTick = Math.max(0, dragStart.tick + dragDeltaTick);
+                        drawLayer = Math.max(0, Math.min(this.trackCount - 1, dragStart.layer + dragDeltaLayer));
+                    }
+                }
+
+                var nx = this._tickToScreen(drawTick);
+                var ny = this._layerToScreen(drawLayer);
 
                 if (nx + cellW < pw || nx > w || ny + cellH < cfg.timelineHeight || ny > h) continue;
 
                 var color = INSTRUMENT_COLORS[note.instrument % INSTRUMENT_COLORS.length];
-                var isSelected = !!this.selectedNotes[note.id];
                 var pitchKey = (typeof note.key === 'number' && note.key >= 0) ? note.key : note.layer;
                 var pitchLabel = PITCH_LABELS[(pitchKey + 9) % 12];
                 var isAnimatingLP = animNoteSet && animNoteSet[note.id];
 
-                var scale = isAnimatingLP ? animScale : 1;
+                var scale = isAnimatingLP ? animScale : (dragActive && isSelected ? 1.15 : 1);
                 var drawX = nx + notePad;
                 var drawW = Math.max(2, cellW - notePad * 2);
 
@@ -3892,6 +3978,30 @@
                 this._drawNoteBlock(ctx, item.drawX, item.ny, item.drawW, cellH, color,
                     item.isSelected, item.pitchLabel, item.note, item.scale, item.highlightAlpha);
             }
+        }
+
+        // 拖动预览: 描边显示所有选中音符的吸附目标格 (松手后会落在的格子)
+        // 注意: 目标格使用整数 targetTick/targetLayer (鼠标所在格), 与音符的浮点预览位置分离
+        if (dragActive) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.lineWidth = 2;
+            if (ctx.setLineDash) ctx.setLineDash([4, 3]);
+            var pv2 = this._dragPreview;
+            var tDeltaTick = pv2.targetTick - pv2.baseTick;
+            var tDeltaLayer = pv2.targetLayer - pv2.baseLayer;
+            var dragIds = Object.keys(this.selectedNotes);
+            for (var di = 0; di < dragIds.length; di++) {
+                var ds = this._dragNoteStart[dragIds[di]];
+                if (!ds) continue;
+                var dt = Math.max(0, ds.tick + tDeltaTick);
+                var dl = Math.max(0, Math.min(this.trackCount - 1, ds.layer + tDeltaLayer));
+                var tx = this._tickToScreen(dt);
+                var ty = this._layerToScreen(dl);
+                if (tx + cellW < pw || tx > w || ty + cellH < cfg.timelineHeight || ty > h) continue;
+                ctx.strokeRect(tx + 1, ty + 1, cellW - 2, cellH - 2);
+            }
+            ctx.restore();
         }
     };
 

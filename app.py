@@ -63,6 +63,16 @@ advanced:
   temp_cleanup_seconds: 3600
   # MIDI/NBS 文件最大大小 (MB)
   max_upload_size_mb: 50
+
+# MIDI 音色库配置 (SF3/SF2 格式)
+# 配置下载链接后, 客户端会异步下载并缓存, 用于高质量 MIDI 播放
+# 留空 url 则使用浏览器内置合成器 (质量较低, 无法准确拟合)
+soundfont:
+  # SF3/SF2 音色文件下载链接 (支持 http/https 直链)
+  # 文件格式: .sf3 (推荐, Vorbis 压缩, 体积小质量好) 或 .sf2 (未压缩 PCM)
+  url: ""
+  # 音色库名称 (仅用于显示, 如 "GeneralUser GS")
+  name: ""
 """
 
 
@@ -84,6 +94,10 @@ def load_config():
             'workers': 4,
             'temp_cleanup_seconds': 3600,
             'max_upload_size_mb': 50
+        },
+        'soundfont': {
+            'url': '',
+            'name': ''
         }
     }
     if not os.path.exists(config_path):
@@ -374,6 +388,10 @@ async def get_config():
         "release": {
             "version": str(CONFIG.get('release', {}).get('version', '')),
             "notes": str(CONFIG.get('release', {}).get('notes', ''))
+        },
+        "soundfont": {
+            "url": str(CONFIG.get('soundfont', {}).get('url', '')),
+            "name": str(CONFIG.get('soundfont', {}).get('name', ''))
         }
     }
 

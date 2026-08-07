@@ -154,6 +154,10 @@
     --surface-blur: blur(24px) saturate(160%);
     --surface-bg-alpha: 0.72;
 
+    /* 网格区域材质 (个性化): 独立于工具栏材质, 控制画布容器透出背景 */
+    --grid-blur: none;
+    --grid-bg-alpha: 0.5;
+
     /* 音色块颜色 (Minecraft Note Block Studio) */
     --inst-0: #F5E6B8;
     --inst-1: #8B4513;
@@ -210,22 +214,34 @@ html, body {
     background-size: cover;
     opacity: 0;
     transition: opacity 0.25s ease;
+    will-change: opacity;
 }
+/* 背景图不透明度由 --bg-image-opacity 变量控制 (JS 设置), 缺省为完全可见 */
 body.bg-active #page-bg {
-    opacity: 1;
+    opacity: var(--bg-image-opacity, 1);
 }
-/* 材质: 毛玻璃 / 亚克力 (应用于工具栏等表面) */
+/* 背景图显示模式 (平铺/拉伸/缩放适配), 由 body class 控制, 避免内联样式冲突 */
+body.bg-mode-tile #page-bg {
+    background-size: auto;
+    background-repeat: repeat;
+}
+body.bg-mode-stretch #page-bg {
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+}
+body.bg-mode-fit #page-bg {
+    background-size: contain;
+    background-repeat: no-repeat;
+}
+/* 表面材质: 毛玻璃 / 亚克力 (应用于工具栏等表面, 仅控制模糊, 透明度由面板滑块控制) */
 body.material-plain {
     --surface-blur: none;
-    --surface-bg-alpha: 0.9;
 }
 body.material-frosted {
     --surface-blur: blur(18px) saturate(150%);
-    --surface-bg-alpha: 0.72;
 }
 body.material-acrylic {
     --surface-blur: blur(40px) saturate(200%);
-    --surface-bg-alpha: 0.6;
 }
 body.bg-active .toolbar,
 body.bg-active .status-bar,
@@ -236,9 +252,53 @@ body.bg-active .tool-bar {
     backdrop-filter: var(--surface-blur);
     -webkit-backdrop-filter: var(--surface-blur);
 }
-/* 背景激活时: 钢琴卷帘容器背景透明, 让 canvas 半透明底色透出背景图片 */
-body.bg-active .piano-roll-container {
-    background: transparent;
+/* 网格区域材质: 独立设置 (普通半透明/毛玻璃/亚克力), 控制画布容器透出背景图片 */
+body.grid-material-plain {
+    --grid-blur: none;
+    --grid-bg-alpha: 0.5;
+}
+body.grid-material-frosted {
+    --grid-blur: blur(18px) saturate(150%);
+    --grid-bg-alpha: 0.42;
+}
+body.grid-material-acrylic {
+    --grid-blur: blur(40px) saturate(200%);
+    --grid-bg-alpha: 0.35;
+}
+/* 背景激活时: 钢琴卷帘容器半透明 (透出网页背景图片), 画布本身保持透明 */
+body.bg-active #piano-roll-container {
+    background: rgba(18, 18, 38, var(--grid-bg-alpha));
+    backdrop-filter: var(--grid-blur);
+    -webkit-backdrop-filter: var(--grid-blur);
+}
+/* 背景激活时: FLS 视图同样透出背景图 */
+body.bg-active .fls-track-rows,
+body.bg-active .fls-playlist {
+    background: rgba(18, 18, 38, var(--grid-bg-alpha)) !important;
+    backdrop-filter: var(--grid-blur);
+    -webkit-backdrop-filter: var(--grid-blur);
+}
+body.bg-active .fls-track-row-line {
+    background: rgba(18, 18, 38, var(--grid-bg-alpha)) !important;
+}
+/* 不支持 backdrop-filter 的浏览器: 关闭模糊, 提高底色不透明度保证可读性 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    body.bg-active .toolbar,
+    body.bg-active .status-bar,
+    body.bg-active .fls-toolbar,
+    body.bg-active .fls-bottom-bar,
+    body.bg-active .tool-bar,
+    body.bg-active #piano-roll-container,
+    body.bg-active .fls-track-rows,
+    body.bg-active .fls-playlist {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+    body.bg-active #piano-roll-container,
+    body.bg-active .fls-track-rows,
+    body.bg-active .fls-playlist {
+        background: rgba(18, 18, 38, 0.72) !important;
+    }
 }
 
 /* ----- 应用容器 ----- */
@@ -898,7 +958,7 @@ input[type="number"]:hover::-webkit-outer-spin-button {
 }
 
 /* ----- 钢琴卷帘容器 ----- */
-.piano-roll-container {
+#piano-roll-container {
     flex: 1;
     position: relative;
     overflow: hidden;
@@ -909,76 +969,14 @@ input[type="number"]:hover::-webkit-outer-spin-button {
 }
 
 /* 底部钢琴键盘展开时预留空间，避免遮挡卷帘 */
-.piano-roll-container.keyboard-open {
+#piano-roll-container.keyboard-open {
     padding-bottom: 64px;
-}
-.piano-roll-container.keyboard-open .piano-roll-hscrollbar {
-    bottom: 66px;
 }
 
 #piano-roll {
     display: block;
     cursor: crosshair;
     touch-action: none;
-}
-
-/* 钢琴卷帘底部水平滚动条 */
-.piano-roll-hscrollbar {
-    position: absolute;
-    bottom: 2px;
-    left: 0;
-    right: 0;
-    height: 14px;
-    z-index: 30;
-    background: rgba(18, 18, 42, 0.85);
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    opacity: 0;
-    transition: opacity 0.2s ease;
-    pointer-events: auto;
-}
-.piano-roll-container:hover .piano-roll-hscrollbar,
-.piano-roll-hscrollbar:hover,
-.piano-roll-hscrollbar:active {
-    opacity: 1;
-}
-.piano-roll-hscrollbar input[type="range"] {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    -webkit-appearance: none;
-    appearance: none;
-    background: transparent;
-    cursor: pointer;
-}
-.piano-roll-hscrollbar input[type="range"]::-webkit-slider-runnable-track {
-    height: 4px;
-    margin-top: 5px;
-    background: rgba(255, 255, 255, 0.12);
-    border-radius: 2px;
-}
-.piano-roll-hscrollbar input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 10px;
-    height: 10px;
-    margin-top: -3px;
-    background: #4ecdc4;
-    border-radius: 50%;
-    box-shadow: 0 0 6px rgba(78, 205, 196, 0.5);
-}
-.piano-roll-hscrollbar input[type="range"]::-moz-range-track {
-    height: 4px;
-    background: rgba(255, 255, 255, 0.12);
-    border-radius: 2px;
-}
-.piano-roll-hscrollbar input[type="range"]::-moz-range-thumb {
-    width: 10px;
-    height: 10px;
-    background: #4ecdc4;
-    border: none;
-    border-radius: 50%;
-    box-shadow: 0 0 6px rgba(78, 205, 196, 0.5);
 }
 
 /* ----- 钢琴卷帘工具条 ----- */
@@ -1534,14 +1532,25 @@ input[type="number"]:hover::-webkit-outer-spin-button {
 }
 
 .popup-content {
-    background: var(--mica-base);
-    border: 1px solid var(--ctrl-stroke-default);
-    border-radius: var(--radius-md);
+    /* WinUI 3 Acrylic 表面: 半透明 + 背景模糊 */
+    background: rgba(26, 26, 40, 0.86);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 12px;
     padding: 8px;
     min-width: 280px;
     max-width: 90vw;
-    box-shadow: var(--shadow-dialog);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
     animation: dialogShow var(--anim-control);
+}
+/* 不支持 backdrop-filter 的浏览器: 回退为高不透明度实底 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .popup-content {
+        background: rgba(26, 26, 40, 0.98);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
 }
 
 .popup-content h4 {
@@ -1598,22 +1607,22 @@ input[type="number"]:hover::-webkit-outer-spin-button {
 .popup-actions {
     display: flex;
     justify-content: flex-end;
-    gap: var(--space-1);
+    gap: 6px;
     margin-top: 8px;
 }
 
 .popup-btn {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-1);
-    padding: 2px 10px;
-    min-height: 24px;
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    font-weight: 500;
+    gap: 6px;
+    padding: 5px 14px;
+    min-height: 28px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
     font-family: var(--font-family);
     cursor: pointer;
-    transition: background var(--anim-fast), transform var(--anim-fast);
+    transition: background var(--anim-fast), border-color var(--anim-fast), transform var(--anim-fast);
     border: 1px solid transparent;
     user-select: none;
     line-height: 1.3;
@@ -1652,21 +1661,11 @@ input[type="number"]:hover::-webkit-outer-spin-button {
 }
 
 .popup-content button {
-    padding: 10px 20px;
-    margin-right: 8px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    /* 仅重置基础字体/颜色, 不强制尺寸背景, 避免污染 .midi-tab / .midi-sub-tab 等专用按钮 */
+    font-family: var(--font-family);
+    font-size: 13px;
     color: var(--text-primary);
     cursor: pointer;
-    font-size: 14px;
-    transition: all 0.2s;
-    min-height: 44px;
-}
-
-.popup-content button:hover {
-    background: var(--accent);
-    border-color: var(--accent);
 }
 
 .popup-buttons {
@@ -1680,17 +1679,26 @@ input[type="number"]:hover::-webkit-outer-spin-button {
    7a. MIDI 导入弹窗 — WinUI 3 ContentDialog 风格
    ================================================================== */
 .midi-import-dialog {
-    background: var(--mica-base);
-    border: 1px solid var(--ctrl-stroke-default);
-    border-radius: var(--radius-md);
+    background: rgba(26, 26, 40, 0.86);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 12px;
     width: 620px;
     max-width: 95vw;
     max-height: 88vh;
     display: flex;
     flex-direction: column;
-    box-shadow: var(--shadow-dialog);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
     overflow: hidden;
     animation: dialogShow var(--anim-control);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .midi-import-dialog {
+        background: rgba(26, 26, 40, 0.98);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
 }
 
 /* 大屏幕: MIDI 导入弹窗自动放大 */
@@ -1774,33 +1782,36 @@ input[type="number"]:hover::-webkit-outer-spin-button {
 }
 .midi-file-info strong { color: var(--accent-teal); }
 
-/* WinUI 3 PivotView 标签页 */
+/* WinUI 3 PivotView 标签页: 透明文字按钮, 选中时底部横条 + 文字亮起 */
 .midi-tabs {
     display: flex;
     border-bottom: 1px solid var(--ctrl-stroke-default);
     flex-shrink: 0;
-    padding: 0 6px;
-    gap: 4px;
+    padding: 0 4px;
+    gap: 2px;
 }
 .midi-tab {
     flex: 1;
-    padding: 4px 8px;
+    padding: 3px 8px;
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    color: #ffffff;
-    font-size: var(--font-size-body);
+    color: var(--text-secondary);
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
-    transition: all var(--anim-fast);
+    transition: color var(--anim-fast), border-color var(--anim-fast);
     font-family: var(--font-family);
+    border-radius: 0;
+    line-height: 1.4;
+    white-space: nowrap;
 }
 .midi-tab:hover {
-    color: #ffffff;
-    background: var(--ctrl-fill-tertiary);
+    color: var(--text-primary);
+    background: transparent;
 }
 .midi-tab.active {
-    color: #ffffff;
+    color: var(--accent);
     border-bottom-color: var(--accent);
 }
 
@@ -1826,7 +1837,7 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     overflow-y: hidden;
 }
 .midi-sub-tab {
-    padding: 6px 14px;
+    padding: 4px 10px;
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
@@ -1835,14 +1846,15 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     font-size: 12px;
     cursor: pointer;
     white-space: nowrap;
-    transition: color var(--anim-fast), border-bottom-color var(--anim-fast), background var(--anim-fast);
+    border-radius: 0;
+    transition: color var(--anim-fast), border-bottom-color var(--anim-fast);
 }
 .midi-sub-tab:hover {
     color: var(--text-primary);
-    background: var(--ctrl-fill-tertiary);
+    background: none;
 }
 .midi-sub-tab.active {
-    color: var(--text-primary);
+    color: var(--accent);
     border-bottom-color: var(--accent-default, #4c9aff);
 }
 
@@ -1857,19 +1869,13 @@ input[type="number"]:hover::-webkit-outer-spin-button {
 .midi-sub-panel { display: none; }
 .midi-sub-panel.active { display: block; }
 
-/* 表格 */
+/* 表格: 滚动统一由外层 .midi-tab-content 负责。
+   原先内层固定 max-height(360px / 移动端 54vh) + overflow:auto 自行滚动,
+   当可视区较矮时 wrap 底部被裁掉, 内层滚动条滚到底也看不到最后一行。
+   用 !important 压过文件末尾 "Final WinUI flyout pass" 与移动端媒体查询的同名规则。 */
 .midi-table-wrap {
-    max-height: 360px;
-    overflow-y: auto;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x pan-y;
-}
-
-/* 音色拟合面板: 禁用外层 .midi-tab-content 滚动, 由内层 .midi-table-wrap 负责滚动。
-   避免手机端出现嵌套双滚动条 (两个滑块重叠) 导致列表无法划到底。 */
-.midi-tab-content:has(#midi-tab-timbre.active) {
-    overflow: hidden;
+    max-height: none !important;
+    overflow: visible !important;
 }
 
 .midi-table {
@@ -1880,14 +1886,10 @@ input[type="number"]:hover::-webkit-outer-spin-button {
 .midi-track-panel-wrap {
     display: flex;
     flex-direction: column;
-    height: 100%;
-    min-height: 0;
 }
 
 #midi-track-table-wrap {
-    flex: 1;
-    min-height: 0;
-    max-height: none;
+    overflow: visible !important;
 }
 
 .midi-track-table {
@@ -2297,24 +2299,6 @@ input[type="number"]:hover::-webkit-outer-spin-button {
 .midi-import-body { display: none; }
 
 /* --- 音色拟合 --- */
-.midi-timbre-desc {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 10px;
-    background: var(--ctrl-fill-default);
-    border-radius: var(--radius-sm);
-    margin-bottom: 6px;
-    font-size: 13px;
-    color: var(--text-secondary);
-    line-height: 1.5;
-}
-
-.midi-timbre-desc i {
-    color: var(--accent);
-    font-size: 16px;
-    flex-shrink: 0;
-}
 
 .midi-table-timbre th {
     font-size: 11px;
@@ -2499,16 +2483,14 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     gap: 2px;
     padding: 0 10px;
     border-bottom: 1px solid var(--ctrl-stroke-default);
-    background: rgba(22, 22, 34, 0.92);
+    background: rgba(255, 255, 255, 0.02);
     position: sticky;
     top: 0;
     z-index: 3;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
 }
 .settings-tab {
     transition: all 0.15s;
-    padding: 7px 14px;
+    padding: 5px 12px;
     font-size: 12px;
     border: none;
     background: transparent;
@@ -2813,7 +2795,10 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     background: var(--app-bg);
     z-index: 10;
 }
-
+/* 背景激活时: FLS 应用层透明, 由内部容器透出背景图 */
+body.bg-active #fls-app {
+    background: transparent;
+}
 /* FLS 左侧音轨列表 — WinUI 3 NavigationView 风格 */
 .fls-track-list-panel {
     width: 220px;
@@ -3638,7 +3623,7 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: 8px 10px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--ctrl-stroke-default);
     background: transparent;
 }
@@ -3701,6 +3686,36 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
+}
+
+/* 个性化: 背景图片文件选择按钮 (原生 file input 套用 Fluent 控件样式) */
+.settings-file-input {
+    font-size: 12px;
+    color: transparent; /* 隐藏原生"未选择文件"文字, 文件名由右侧 span 显示 */
+    max-width: 170px;
+    cursor: pointer;
+}
+.settings-file-input::file-selector-button {
+    padding: 5px 12px;
+    font-size: 12px;
+    border: 1px solid var(--ctrl-stroke-default);
+    border-radius: var(--radius-sm, 6px);
+    background: var(--ctrl-fill-default);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.settings-file-input::file-selector-button:hover {
+    background: var(--ctrl-fill-hover);
+    border-color: var(--ctrl-stroke-hover);
+}
+.settings-file-name {
+    font-size: 11px;
+    color: var(--text-secondary);
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .settings-label-icon {
@@ -5761,14 +5776,14 @@ textarea:disabled {
         font-size: 10px;
         white-space: nowrap;
         min-width: 0;
-        color: #ffffff;
+        color: var(--text-secondary);
         line-height: 1.35;
     }
     .midi-tab:hover {
-        color: #ffffff;
+        color: var(--text-primary);
     }
     .midi-tab.active {
-        color: #ffffff;
+        color: var(--accent);
         border-bottom-color: var(--accent);
     }
     .midi-sub-tabs {
@@ -5780,12 +5795,12 @@ textarea:disabled {
         flex: 0 0 auto;
         padding: 1px 4px;
         font-size: 10px;
-        color: #ffffff;
+        color: var(--text-secondary);
         line-height: 1.35;
     }
     .midi-sub-tab:hover,
     .midi-sub-tab.active {
-        color: #ffffff;
+        color: var(--accent);
     }
     .midi-settings {
         padding: 6px 8px;
@@ -6004,15 +6019,16 @@ textarea:disabled {
     flex: 0 0 auto;
     width: auto;
     min-width: 0;
-    color: #fff;
+    color: var(--text-secondary);
     border: 0;
     border-bottom: 2px solid transparent;
-    border-radius: 6px 6px 0 0;
+    border-radius: 0;
     background: transparent;
     white-space: nowrap;
 }
-.midi-tab:hover, .midi-tab.active, .midi-sub-tab:hover, .midi-sub-tab.active { color: #fff; }
-.midi-tab.active, .midi-sub-tab.active { border-bottom-color: var(--accent); background: rgba(255,255,255,0.06); }
+.midi-tab:hover, .midi-tab.active, .midi-sub-tab:hover, .midi-sub-tab.active { color: var(--accent); }
+.midi-tab:hover, .midi-sub-tab:hover { color: var(--text-primary); }
+.midi-tab.active, .midi-sub-tab.active { border-bottom-color: var(--accent); background: transparent; }
 .midi-table-wrap, .midi-track-table-wrap { overflow: auto; overscroll-behavior: contain; }
 .context-menu { background: rgba(26, 26, 46, 0.84) !important; border-color: transparent !important; box-shadow: 0 16px 40px rgba(0,0,0,0.48) !important; }
 
@@ -6040,8 +6056,8 @@ textarea:disabled {
     .midi-import-dialog { width: calc(100vw - 16px); }
     .midi-import-header, .midi-import-footer { padding: 6px 8px; }
     .midi-settings, .settings-body { padding: 8px 10px; }
-    .midi-tab { padding: 4px 7px; font-size: 11px; }
-    .midi-sub-tab { padding: 3px 6px; font-size: 10px; }
+    .midi-tab { padding: 3px 6px; font-size: 11px; }
+    .midi-sub-tab { padding: 2px 5px; font-size: 10px; }
 }
 
 @media (max-width: 768px) and (orientation: landscape) {
@@ -6160,4 +6176,64 @@ textarea:disabled {
     writing-mode: horizontal-tb !important;
     text-orientation: mixed !important;
     vertical-align: middle;
+}
+
+/* ==================== Toast 通知 ==================== */
+#toast-container {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    pointer-events: none;
+    max-width: 340px;
+}
+.toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    background: rgba(28, 28, 42, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #e0e0e0;
+    font-size: 13px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transform: translateX(20px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    flex-wrap: wrap;
+}
+.toast.toast-show {
+    opacity: 1;
+    transform: translateX(0);
+}
+.toast.error {
+    border-color: rgba(255, 100, 100, 0.3);
+}
+.toast .toast-message {
+    flex: 1;
+    min-width: 0;
+}
+.toast .toast-progress {
+    width: 100%;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 6px;
+}
+.toast .toast-progress-fill {
+    height: 100%;
+    background: #4ecdc4;
+    border-radius: 2px;
+    transition: width 0.2s ease;
+    width: 0%;
+}
+.toast.error .toast-progress-fill {
+    background: #ff6b6b;
 }

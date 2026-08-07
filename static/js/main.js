@@ -1086,9 +1086,53 @@
             });
         }
 
-        // ============ 个性化: 网页背景图片层 ============
+        // ============ 个性化: 网页背景图片层 (重构版) ============
         var bgLayer = $('page-bg');
         var panelOpacitySlider = $('settings-panel-opacity');
+
+        // ---- 背景图持久化: IndexedDB (支持大图, 替代 localStorage) ----
+        var BG_DB = 'webnbs_bg';
+        function _bgOpenDb() {
+            return new Promise(function(resolve, reject) {
+                var req = indexedDB.open(BG_DB, 1);
+                req.onupgradeneeded = function(e) {
+                    var db = e.target.result;
+                    if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+                };
+                req.onsuccess = function(e) { resolve(e.target.result); };
+                req.onerror = function(e) { reject(e.target.error); };
+            });
+        }
+        function _bgGetImage() {
+            return _bgOpenDb().then(function(db) {
+                return new Promise(function(resolve) {
+                    var tx = db.transaction(['kv'], 'readonly');
+                    var req = tx.objectStore('kv').get('image');
+                    req.onsuccess = function() { resolve(req.result || null); };
+                    req.onerror = function() { resolve(null); };
+                });
+            }).catch(function() { return null; });
+        }
+        function _bgPutImage(dataUrl) {
+            return _bgOpenDb().then(function(db) {
+                return new Promise(function(resolve, reject) {
+                    var tx = db.transaction(['kv'], 'readwrite');
+                    tx.objectStore('kv').put(dataUrl, 'image');
+                    tx.oncomplete = function() { resolve(); };
+                    tx.onerror = function(e) { reject(e.target.error); };
+                });
+            });
+        }
+        function _bgClearImage() {
+            return _bgOpenDb().then(function(db) {
+                return new Promise(function(resolve) {
+                    var tx = db.transaction(['kv'], 'readwrite');
+                    tx.objectStore('kv').delete('image');
+                    tx.oncomplete = function() { resolve(); };
+                    tx.onerror = function() { resolve(); };
+                });
+            }).catch(function() {});
+        }
 
         // 同步面板透明度 (仅当背景图激活时生效, 否则面板完全不透明)
         function syncPanelAlpha() {
@@ -1115,19 +1159,27 @@
             syncPanelAlpha();
         }
 
-        // 应用背景模式 (平铺/拉伸/缩放) 到全网页层
+        // 背景模式 (平铺/拉伸/缩放), 通过 body class 控制, 避免内联样式互相覆盖
         function applyPageBgMode(mode) {
-            if (!bgLayer) return;
-            if (mode === 'stretch') {
-                bgLayer.style.backgroundSize = '100% 100%';
-                bgLayer.style.backgroundRepeat = 'no-repeat';
-            } else if (mode === 'fit') {
-                bgLayer.style.backgroundSize = 'contain';
-                bgLayer.style.backgroundRepeat = 'no-repeat';
-            } else {
-                bgLayer.style.backgroundSize = 'auto';
-                bgLayer.style.backgroundRepeat = 'repeat';
+            document.body.classList.remove('bg-mode-tile', 'bg-mode-stretch', 'bg-mode-fit');
+            if (mode === 'stretch' || mode === 'fit' || mode === 'tile') {
+                document.body.classList.add('bg-mode-' + mode);
             }
+        }
+
+        // 背景图片不透明度: 0%=不透明(可见), 100%=完全透明(隐藏), 通过 CSS 变量控制
+        function applyBgOpacity(v) {
+            var opacity = Math.max(0, Math.min(100, parseInt(v) || 0));
+            document.documentElement.style.setProperty('--bg-image-opacity', ((100 - opacity) / 100).toFixed(3));
+            var valEl = $('settings-bg-opacity-value');
+            if (valEl) valEl.textContent = opacity + '%';
+            return opacity;
+        }
+
+        // 显示已选择背景图片的文件名 (标记"确实选择了图片", 刷新后依然显示)
+        function updateBgFilename(name) {
+            var el = $('settings-bg-filename');
+            if (el) el.textContent = name ? ('已选择: ' + name) : '';
         }
 
         // 背景图片选择
@@ -1140,24 +1192,15 @@
                 reader.onload = function(ev) {
                     var dataUrl = ev.target.result;
                     applyPageBgImage(dataUrl);
+                    _bgPutImage(dataUrl).catch(function() {}); // 大图也能可靠持久化
                     var modeSel = $('settings-bg-mode');
                     if (modeSel) applyPageBgMode(modeSel.value);
-                    try { localStorage.setItem('bg_image_data', dataUrl); } catch(err) {
-                        // 图片过大无法存 localStorage, 仅当前会话生效
-                        console.warn('背景图片过大, 无法持久化保存');
-                    }
+                    // 记住文件名, 刷新后仍显示 (标记已选择图片)
+                    updateBgFilename(file.name);
+                    try { localStorage.setItem('bg_filename', file.name); } catch(err) {}
                 };
                 reader.readAsDataURL(file);
             });
-            // 从 localStorage 恢复背景图片
-            try {
-                var savedBg = localStorage.getItem('bg_image_data');
-                if (savedBg) {
-                    applyPageBgImage(savedBg);
-                    var savedMode = localStorage.getItem('bg_mode');
-                    applyPageBgMode(savedMode === 'stretch' || savedMode === 'fit' ? savedMode : 'tile');
-                }
-            } catch(e) {}
         }
 
         // 清除背景图片
@@ -1165,21 +1208,16 @@
         if (bgClearBtn) {
             bgClearBtn.addEventListener('click', function() {
                 applyPageBgImage(null);
-                try { localStorage.removeItem('bg_image_data'); } catch(e) {}
+                _bgClearImage();
                 if (bgImageInput) bgImageInput.value = '';
+                updateBgFilename('');
+                try { localStorage.removeItem('bg_filename'); } catch(err) {}
             });
         }
 
         // 背景图片透明度滑块 (0-100, 0=不透明, 100=完全透明)
         var bgOpacitySlider = $('settings-bg-opacity');
-        var bgOpacityValue = $('settings-bg-opacity-value');
         if (bgOpacitySlider) {
-            function applyBgOpacityFromSlider() {
-                if (!bgLayer) return;
-                var v = parseInt(bgOpacitySlider.value) || 0;
-                bgLayer.style.opacity = ((100 - v) / 100).toFixed(2);
-                if (bgOpacityValue) bgOpacityValue.textContent = v + '%';
-            }
             try {
                 var savedBgOp = localStorage.getItem('bg_opacity');
                 if (savedBgOp !== null) {
@@ -1187,9 +1225,9 @@
                     if (!isNaN(bop)) bgOpacitySlider.value = bop;
                 }
             } catch(e) {}
-            applyBgOpacityFromSlider();
+            applyBgOpacity(bgOpacitySlider.value);
             bgOpacitySlider.addEventListener('input', function() {
-                applyBgOpacityFromSlider();
+                applyBgOpacity(this.value);
             });
             bgOpacitySlider.addEventListener('change', function() {
                 try { localStorage.setItem('bg_opacity', this.value); } catch(e) {}
@@ -1234,6 +1272,28 @@
             });
         }
 
+        // 网格材质选择 (独立于工具栏材质, 控制音符网格区域)
+        var gridMaterialSelect = $('settings-grid-material');
+        if (gridMaterialSelect) {
+            function applyGridMaterial(mat) {
+                document.body.classList.remove('grid-material-plain', 'grid-material-frosted', 'grid-material-acrylic');
+                if (mat === 'plain' || mat === 'frosted' || mat === 'acrylic') {
+                    document.body.classList.add('grid-material-' + mat);
+                }
+            }
+            try {
+                var savedGridMat = localStorage.getItem('grid_material');
+                if (savedGridMat && (savedGridMat === 'plain' || savedGridMat === 'frosted' || savedGridMat === 'acrylic')) {
+                    gridMaterialSelect.value = savedGridMat;
+                }
+            } catch(e) {}
+            applyGridMaterial(gridMaterialSelect.value);
+            gridMaterialSelect.addEventListener('change', function() {
+                applyGridMaterial(this.value);
+                try { localStorage.setItem('grid_material', this.value); } catch(e) {}
+            });
+        }
+
         // 面板透明度滑块 (0-100, 100=面板几乎透明露出背景, 0=不透明)
         if (panelOpacitySlider) {
             try {
@@ -1259,16 +1319,14 @@
             try {
                 var savedGridOp = localStorage.getItem('grid_opacity');
                 if (savedGridOp !== null) {
-                    var op = parseFloat(savedGridOp);
-                    if (!isNaN(op)) {
-                        gridOpacitySlider.value = op;
-                        if (state.pianoRoll) state.pianoRoll.setGridOpacity(op);
-                    }
+                    gridOpacitySlider.value = parseFloat(savedGridOp) || 0;
                 }
             } catch(e) {}
-            if (gridOpacityValue) gridOpacityValue.textContent = Math.round(parseFloat(gridOpacitySlider.value) * 100) + '%';
+            var gop = Math.max(0, Math.min(1, parseFloat(gridOpacitySlider.value) || 0));
+            if (state.pianoRoll) state.pianoRoll.setGridOpacity(gop);
+            if (gridOpacityValue) gridOpacityValue.textContent = Math.round(gop * 100) + '%';
             gridOpacitySlider.addEventListener('input', function() {
-                var op = parseFloat(this.value);
+                var op = Math.max(0, Math.min(1, parseFloat(this.value) || 0));
                 if (state.pianoRoll) state.pianoRoll.setGridOpacity(op);
                 if (gridOpacityValue) gridOpacityValue.textContent = Math.round(op * 100) + '%';
             });
@@ -1276,6 +1334,82 @@
                 try { localStorage.setItem('grid_opacity', this.value); } catch(e) {}
             });
         }
+
+        // MIDI 音色库: 下载/加载策略 (播放时询问/自动后台下载/不使用)
+        var sfModeSelect = $('settings-midi-sf-mode');
+        if (sfModeSelect) {
+            try {
+                var savedSfMode = localStorage.getItem('midi_sf_mode');
+                if (savedSfMode && (savedSfMode === 'ask' || savedSfMode === 'auto' || savedSfMode === 'off')) {
+                    sfModeSelect.value = savedSfMode;
+                }
+            } catch(e) {}
+            sfModeSelect.addEventListener('change', function() {
+                try { localStorage.setItem('midi_sf_mode', this.value); } catch(e) {}
+            });
+        }
+        var sfDownloadBtn = $('settings-midi-sf-download');
+        if (sfDownloadBtn) {
+            sfDownloadBtn.addEventListener('click', function() {
+                if (!_sfConfig) {
+                    showAppAlert('未配置 MIDI 音色库下载地址 (服务端 config.yaml)', { icon: 'fa-solid fa-circle-info' });
+                    return;
+                }
+                startSfDownload();
+            });
+        }
+        var sfClearBtn = $('settings-midi-sf-clear');
+        if (sfClearBtn) {
+            sfClearBtn.addEventListener('click', function() {
+                showAppConfirm('确定清除已下载的 MIDI 音色库缓存吗？清除后需重新下载。', {
+                    title: '清除音色库缓存', icon: 'fa-solid fa-trash-can'
+                }).then(function(ok) {
+                    if (!ok) return;
+                    if (window.SoundfontLoader) SoundfontLoader.clearCache();
+                    updateSfStatusText('idle');
+                });
+            });
+        }
+        // 初始化状态文字
+        if (window.SoundfontLoader) {
+            updateSfStatusText(SoundfontLoader.getStatus());
+        } else {
+            updateSfStatusText('idle');
+        }
+
+        // ---- 恢复背景图: 迁移旧 localStorage 数据到 IndexedDB, 否则从 IndexedDB 读取 ----
+        (function restoreBgImage() {
+            var oldBg = null;
+            try { oldBg = localStorage.getItem('bg_image_data'); } catch(e) {}
+            if (oldBg) {
+                // 旧版本将图片存 localStorage (仅小图可存), 迁移到 IndexedDB 后删除
+                _bgPutImage(oldBg).then(function() {
+                    try {
+                        localStorage.removeItem('bg_image_data');
+                        localStorage.setItem('bg_migrated_v2', '1');
+                    } catch(e) {}
+                    applyPageBgImage(oldBg);
+                    var fname = null;
+                    try { fname = localStorage.getItem('bg_filename'); } catch(e) {}
+                    updateBgFilename(fname || '');
+                }).catch(function() {
+                    // 迁移失败: 本次仍用 localStorage 数据, 下次访问再试
+                    applyPageBgImage(oldBg);
+                    var fname2 = null;
+                    try { fname2 = localStorage.getItem('bg_filename'); } catch(e) {}
+                    updateBgFilename(fname2 || '');
+                });
+                return;
+            }
+            _bgGetImage().then(function(dataUrl) {
+                if (dataUrl) {
+                    applyPageBgImage(dataUrl);
+                    var fname3 = null;
+                    try { fname3 = localStorage.getItem('bg_filename'); } catch(e) {}
+                    updateBgFilename(fname3 || '');
+                }
+            });
+        })();
 
         // 设置弹窗标签页切换
         var settingsTabs = document.querySelectorAll('.settings-tab');
@@ -4665,6 +4799,173 @@
         trackPanelToggle.style.pointerEvents = 'auto';
     }
 
+    // ============ Toast 通知系统 ============
+    function _ensureToastContainer() {
+        var c = $('toast-container');
+        if (!c) { c = document.createElement('div'); c.id = 'toast-container'; document.body.appendChild(c); }
+        return c;
+    }
+    function showToast(message, options) {
+        options = options || {};
+        var container = _ensureToastContainer();
+        var toast = document.createElement('div');
+        toast.className = 'toast ' + (options.type || 'info');
+        var icon = document.createElement('i');
+        icon.className = options.icon || 'fa-solid fa-circle-info';
+        icon.style.marginRight = '8px';
+        var content = document.createElement('span');
+        content.className = 'toast-message';
+        content.textContent = message;
+        toast.appendChild(icon); toast.appendChild(content);
+        var fill = null;
+        if (options.progress !== undefined) {
+            var bar = document.createElement('div');
+            bar.className = 'toast-progress';
+            fill = document.createElement('div');
+            fill.className = 'toast-progress-fill';
+            fill.style.width = '0%';
+            bar.appendChild(fill); toast.appendChild(bar);
+        }
+        container.appendChild(toast);
+        requestAnimationFrame(function() { toast.classList.add('toast-show'); });
+        toast._content = content; toast._fill = fill;
+        if (options.duration > 0) setTimeout(function() { dismissToast(toast); }, options.duration);
+        return toast;
+    }
+    function updateToast(toast, message, progress) {
+        if (!toast) return;
+        if (message !== undefined && toast._content) toast._content.textContent = message;
+        if (progress !== undefined && toast._fill) toast._fill.style.width = Math.round(progress) + '%';
+    }
+    function dismissToast(toast, delay) {
+        if (!toast) return;
+        if (delay > 0) { setTimeout(function() { dismissToast(toast, 0); }, delay); return; }
+        toast.classList.remove('toast-show');
+        setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
+    }
+
+    // ============ SoundFont 音色库初始化 ============
+    // 策略: 页面加载只读取本地缓存; 下载由设置决定
+    //   'ask'  (默认) 真正播放 MIDI 音符时弹窗询问
+    //   'auto'         真正播放 MIDI 音符时静默后台下载
+    //   'off'          不使用 (内置合成器)
+    var _sfConfig = null;
+    var _sfOnDemandTriggered = false;
+
+    function updateSfStatusText(status, info) {
+        var el = $('settings-midi-sf-status');
+        if (!el) return;
+        var text = status;
+        switch (status) {
+            case 'idle': text = '未下载 (播放 MIDI 音符时按设置提示)'; break;
+            case 'downloading': text = '正在下载' + (info && info.name ? ' ' + info.name : '') + '...'; break;
+            case 'loading': text = '正在解析音色库...'; break;
+            case 'ready':
+                text = (info && info.name ? info.name : 'MIDI 音色库') + ' 已就绪 (' + ((info && info.presets) || 0) + ' 个预设' +
+                    (info && info.engine ? ', ' + info.engine : '') + ')';
+                break;
+            case 'failed': text = '下载/解析失败, 将使用内置合成器'; break;
+        }
+        el.textContent = text;
+    }
+
+    function getMidiSfMode() {
+        try {
+            var v = localStorage.getItem('midi_sf_mode');
+            if (v === 'auto' || v === 'off') return v;
+        } catch (e) {}
+        return 'ask';
+    }
+
+    function startSfDownload() {
+        if (!window.SoundfontLoader) return;
+        SoundfontLoader.download();
+    }
+
+    // 真正需要播放 MIDI 音符时调用: 按设置触发下载/询问 (每会话仅一次)
+    function ensureSoundfontOnDemand() {
+        if (_sfOnDemandTriggered) return;
+        if (!window.SoundfontLoader || !_sfConfig || !_sfConfig.url) return;
+        var mode = getMidiSfMode();
+        if (mode === 'off') return;
+        var st = SoundfontLoader.getStatus();
+        if (st === 'ready' || st === 'downloading' || st === 'loading') return;
+        _sfOnDemandTriggered = true;
+        if (mode === 'auto') {
+            startSfDownload();
+        } else {
+            // ask: 弹窗询问
+            showAppConfirm('播放 MIDI 音符需要音色库 (SF3/SF2) 才能获得真实音色。是否现在下载？下载后可离线使用，解析期间仍可用内置合成器播放。', {
+                title: '下载 MIDI 音色库',
+                icon: 'fa-solid fa-cloud-arrow-down',
+                okText: '下载', cancelText: '暂不'
+            }).then(function(ok) {
+                if (ok) startSfDownload();
+            });
+        }
+    }
+
+    function initSoundfontLoader(sfCfg) {
+        if (!sfCfg || !sfCfg.url) return;
+        if (!window.SoundfontLoader) return;
+        _sfConfig = sfCfg;
+        var toast = null;
+        SoundfontLoader.onStatusChange = function(status, info) {
+            updateSfStatusText(status, info);
+            switch (status) {
+                case 'downloading':
+                    toast = showToast('正在下载 ' + (info.name || 'MIDI 音色库') + '...', {
+                        icon: 'fa-solid fa-cloud-arrow-down', progress: 0
+                    });
+                    break;
+                case 'loading':
+                    if (toast) {
+                        var ic = toast.querySelector('i');
+                        if (ic) { ic.className = 'fa-solid fa-cog fa-spin'; ic.style.marginRight = '8px'; }
+                        updateToast(toast, '正在解析音色库...', 0);
+                    }
+                    break;
+                case 'ready':
+                    if (toast) {
+                        var ic2 = toast.querySelector('i');
+                        if (ic2) { ic2.className = 'fa-solid fa-circle-check'; ic2.style.marginRight = '8px'; }
+                        var fmt = info.isSF3 ? 'SF3' : 'SF2';
+                        var eng = info.engine ? ' (' + info.engine + ')' : '';
+                        updateToast(toast, fmt + ' 音色库已就绪' + eng + ' (' + (info.presets || 0) + ' 个预设)', 100);
+                        dismissToast(toast, 3000);
+                    }
+                    break;
+                case 'idle':
+                    break;
+                case 'failed':
+                    if (toast) {
+                        var ic3 = toast.querySelector('i');
+                        if (ic3) { ic3.className = 'fa-solid fa-circle-exclamation'; ic3.style.marginRight = '8px'; }
+                        updateToast(toast, '音色库下载失败, 将使用内置合成器', 0);
+                        dismissToast(toast, 5000);
+                    } else {
+                        toast = showToast('音色库下载失败, 将使用内置合成器', {
+                            icon: 'fa-solid fa-circle-exclamation', type: 'error', duration: 5000
+                        });
+                    }
+                    break;
+            }
+        };
+        SoundfontLoader.onProgress = function(loaded, total, name) {
+            if (!toast) return;
+            if (total > 0) {
+                updateToast(toast, '正在下载 ' + name + ' (' + (loaded/1048576).toFixed(1) + '/' + (total/1048576).toFixed(1) + ' MB)', (loaded/total)*100);
+            } else {
+                updateToast(toast, '正在下载 ' + name + ' (' + (loaded/1048576).toFixed(1) + ' MB)', 0);
+            }
+        };
+        SoundfontLoader.onParseProgress = function(prog) {
+            if (toast) updateToast(toast, '正在解析音色库...', Math.max(10, prog * 100));
+            updateSfStatusText('loading');
+        };
+        SoundfontLoader.init(sfCfg);
+    }
+
     // ============ 隐私政策弹窗 ============
     function initPrivacyPopup() {
         var AGREED_KEY = 'webnbs_privacy_agreed';
@@ -4680,7 +4981,12 @@
 
         // 拉取服务器配置
         fetch('/api/config').then(function(r) { return r.json(); }).then(function(cfg) {
-            if (cfg && cfg.release) showReleaseNotes(cfg.release);
+            if (cfg && cfg.release) {
+                showReleaseNotes(cfg.release);
+                // 同步"关于"弹窗版本号 (与 config.yaml 的 release.version 保持一致)
+                var aboutVer = $('about-version');
+                if (aboutVer && cfg.release.version) aboutVer.textContent = cfg.release.version;
+            }
             // 公开模式且首次访问才显示隐私弹窗
             if (!alreadyAgreed && cfg && cfg.privacy && cfg.privacy.enabled && cfg.is_public) {
                 if (msgEl) {
@@ -4690,6 +4996,8 @@
                 }
                 mask.style.display = 'flex';
             }
+            // 初始化 SoundFont 音色库 (后台异步下载)
+            if (cfg && cfg.soundfont) initSoundfontLoader(cfg.soundfont);
         }).catch(function() {
             // 拉取失败, 不显示弹窗
         });
@@ -4890,10 +5198,10 @@
                             state.notes = state.pianoRoll.getNotes();
                         } else if (action === 'paste') {
                             if (!state.pianoRoll) return;
-                            var centerX = window.innerWidth / 2;
-                            var centerY = window.innerHeight / 2;
-                            var tick = state.pianoRoll._screenToTick(centerX);
-                            var layer = state.pianoRoll._screenToLayer(centerY);
+                            // 以画布中心为粘贴目标 (需使用画布相对坐标, 不能用 window 坐标)
+                            var prRect = state.pianoRoll.canvas.getBoundingClientRect();
+                            var tick = state.pianoRoll._screenToTick(prRect.width / 2);
+                            var layer = state.pianoRoll._screenToLayer(prRect.height / 2);
                             handlePasteOrSystemClipboard(tick, layer);
                         } else if (action === 'change-instrument' || action === 'change-volume') {
                             // 复用桌面右键菜单的处理函数 (需要先设置 state.contextMenuTarget)
@@ -8414,8 +8722,13 @@
     var _midiPreviewNotes = []; // 当前正在试听的音符 {source, timeout}
 
     // TinySynth 软合成器（Web MIDI 不可用时回退使用）
+    // SF3 音色库就绪时, 优先使用 SF3Player 替代 TinySynth
     var _tinySynth = null;
     function getTinySynth() {
+        // SF3 音色库就绪 → 优先使用
+        if (window.SoundfontLoader && SoundfontLoader.isReady()) {
+            return SoundfontLoader.getPlayer();
+        }
         if (typeof WebAudioTinySynth === 'undefined') return null;
         if (!_tinySynth) {
             _tinySynth = new WebAudioTinySynth({ quality: 2, useReverb: 1, voices: 96 });
@@ -8446,14 +8759,20 @@
     function stopTinySynthAll() {
         var synth = getTinySynth();
         if (!synth) return;
-        for (var ch = 0; ch < 16; ch++) {
-            try { synth.allSoundOff(ch); } catch(e) {}
+        // SF3Player 有 noteOffAll 方法, TinySynth 逐通道 allSoundOff
+        if (synth.noteOffAll) {
+            try { synth.noteOffAll(); } catch(e) {}
+        } else {
+            for (var ch = 0; ch < 16; ch++) {
+                try { synth.allSoundOff(ch); } catch(e) {}
+            }
         }
     }
 
-    // ========== MIDI 音源选择设置（已暂时移除 SF2，仅保留 Web MIDI / TinySynth 回退） ==========
+    // ========== MIDI 音源选择设置 ==========
     function getEffectiveMidiSource() {
         if (navigator.requestMIDIAccess) return 'webmidi';
+        if (window.SoundfontLoader && SoundfontLoader.isReady()) return 'sf3';
         return 'tinysynth';
     }
 
@@ -8574,6 +8893,8 @@
 
     // Web MIDI 不可用时，使用 TinySynth 软合成器回退，严格遵循原 MIDI 乐器/音符
     function playMidiPreviewFallback(notes, channel, program) {
+        // 真正需要播放 MIDI 音符时: 按设置触发音色库下载/询问
+        ensureSoundfontOnDemand();
         var synth = getTinySynth();
         if (!synth) {
             showMidiNotice('浏览器不支持 Web MIDI，且 TinySynth 未加载，无法试听原音色。', 'error');
@@ -10548,6 +10869,8 @@
     }
 
     function startMidiTrackFallback(events) {
+        // 真正需要播放 MIDI 音符时: 按设置触发音色库下载/询问
+        ensureSoundfontOnDemand();
         var synth = getTinySynth();
         if (!synth) {
             showMidiNotice('浏览器不支持 Web MIDI，且 TinySynth 未加载，无法试听。', 'error');

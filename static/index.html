@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260807e">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260808f">
 </head>
 <body>
 
@@ -362,7 +362,8 @@
                 <div class="settings-tab-panel" id="settings-tab-personal">
                     <div class="settings-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                         <label class="settings-label" style="margin:0;">背景图片:</label>
-                        <input type="file" id="settings-bg-image" accept="image/*" style="font-size:11px;flex:1;min-width:120px;">
+                        <input type="file" id="settings-bg-image" accept="image/*" class="settings-file-input">
+                        <span id="settings-bg-filename" class="settings-file-name"></span>
                         <button id="settings-bg-clear" style="padding:3px 8px;font-size:11px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);cursor:pointer;">清除</button>
                     </div>
                     <div class="settings-row" style="display:flex;align-items:center;gap:8px;">
@@ -392,11 +393,32 @@
                         <span id="settings-panel-opacity-value" style="font-size:11px;min-width:32px;text-align:right;">30%</span>
                     </div>
                     <div class="settings-row" style="display:flex;align-items:center;gap:8px;">
+                        <label class="settings-label" style="margin:0;">网格材质:</label>
+                        <select id="settings-grid-material" style="padding:3px 6px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);">
+                            <option value="plain" selected>普通半透明</option>
+                            <option value="frosted">毛玻璃</option>
+                            <option value="acrylic">亚克力</option>
+                        </select>
+                    </div>
+                    <div class="settings-row" style="display:flex;align-items:center;gap:8px;">
                         <label class="settings-label" style="margin:0;">网格透明度:</label>
                         <input type="range" id="settings-grid-opacity" min="0" max="1" step="0.05" value="0" style="flex:1;">
                         <span id="settings-grid-opacity-value" style="font-size:11px;min-width:32px;text-align:right;">0%</span>
                     </div>
-                    <div class="settings-hint" style="font-size:11px;color:var(--text-tertiary);padding:4px 0;">提示: 背景图片覆盖整个网页; 透明度 100% 完全透明, 0% 不透明; 面板透明度控制工具栏与音轨栏的透明程度</div>
+                    <div class="settings-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <label class="settings-label" style="margin:0;">MIDI 音色库:</label>
+                        <select id="settings-midi-sf-mode" style="padding:3px 6px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);">
+                            <option value="ask" selected>播放时询问</option>
+                            <option value="auto">自动后台下载</option>
+                            <option value="off">不使用 (内置合成器)</option>
+                        </select>
+                        <button id="settings-midi-sf-download" style="padding:3px 8px;font-size:11px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);cursor:pointer;">立即下载</button>
+                        <button id="settings-midi-sf-clear" style="padding:3px 8px;font-size:11px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);cursor:pointer;">清除缓存</button>
+                    </div>
+                    <div class="settings-row" style="font-size:11px;color:var(--text-tertiary);">
+                        音色库状态: <span id="settings-midi-sf-status">未下载</span>
+                    </div>
+                    <div class="settings-hint" style="font-size:11px;color:var(--text-tertiary);padding:4px 0;">提示: 背景图片覆盖整个网页; 透明度 100% 完全透明, 0% 不透明; 表面材质控制工具栏, 网格材质单独控制音符网格区域; 面板透明度控制工具栏与音轨栏的透明程度</div>
                 </div>
             </div>
         </div>
@@ -432,14 +454,19 @@
                 <button class="settings-close-btn" id="about-close-x">&times;</button>
             </div>
             <div class="settings-body" style="text-align:center;padding:20px 16px;">
-                <img src="/static/logo.png" alt="NoteBlockWeb" style="width:64px;height:64px;margin-bottom:12px;border-radius:12px;">
+                <img src="/static/logo.png" alt="NoteBlockWeb" style="width:64px;height:64px;margin-bottom:12px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.35);">
                 <h3 style="margin:0 0 4px;font-size:16px;">NoteBlockWeb</h3>
                 <p style="margin:0 0 12px;font-size:12px;color:var(--text-secondary);">基于 Web 的 Minecraft 音符盒编辑器</p>
                 <p style="margin:0 0 4px;font-size:11px;color:var(--text-tertiary);">支持 NBS 格式导入/导出, MIDI 导入, 钢琴卷帘编辑</p>
-                <p style="margin:0 0 8px;font-size:12px;color:var(--text-secondary);">版本: <strong>2.4.5</strong></p>
+                <p style="margin:0 0 8px;font-size:12px;color:var(--text-secondary);">版本: <strong id="about-version">2.4.9</strong></p>
                 <p style="margin:0 0 4px;font-size:12px;color:var(--text-secondary);">开发者: <strong>COM1919</strong></p>
-                <p style="margin:0;font-size:12px;color:var(--text-secondary);">QQ交流群: <strong>2156069838</strong></p>
-                <p style="margin:8px 0 0;font-size:12px;color:var(--text-secondary);">反馈邮箱: <a href="mailto:3451392772@qq.com">3451392772@qq.com</a></p>
+                <p style="margin:0 0 4px;font-size:12px;color:var(--text-secondary);">QQ交流群: <strong>2156069838</strong></p>
+                <p style="margin:0 0 8px;font-size:12px;color:var(--text-secondary);">反馈邮箱: <a href="mailto:3451392772@qq.com" style="color:var(--accent);text-decoration:none;">3451392772@qq.com</a></p>
+                <p style="margin:0;font-size:12px;color:var(--text-secondary);">开源地址:
+                    <a href="https://github.com/COM1919/NoteBlockWeb" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;">
+                        github.com/COM1919/NoteBlockWeb <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:10px;"></i>
+                    </a>
+                </p>
             </div>
             <div class="popup-actions">
                 <button class="popup-btn popup-btn-primary" id="about-close-btn" style="margin:0 auto;">关闭</button>
@@ -739,10 +766,6 @@
                         <button class="midi-sub-tab" data-subtab="timbre-percussion">打击乐</button>
                     </div>
                     <div class="midi-sub-panel active" id="midi-sub-timbre-melody">
-                        <div class="midi-timbre-desc">
-                            <i class="fa-solid fa-wand-magic-sparkles"></i>
-                            <span>为每个 MIDI 通道指定至多 3 个音色槽进行拟合，点击音色槽选择乐器。</span>
-                        </div>
                         <div class="midi-table-wrap">
                             <table class="midi-table midi-table-timbre">
                                 <thead>
@@ -760,10 +783,6 @@
                         </div>
                     </div>
                     <div class="midi-sub-panel" id="midi-sub-timbre-percussion">
-                        <div class="midi-timbre-desc">
-                            <i class="fa-solid fa-wand-magic-sparkles"></i>
-                            <span>为每个打击乐音符指定至多 3 个音色槽进行拟合。</span>
-                        </div>
                         <div class="midi-table-wrap">
                             <table class="midi-table midi-table-timbre">
                                 <thead>
@@ -925,15 +944,18 @@
 <script src="/static/js/nbs_client.js?v=20260805a"></script>
 <script src="/static/js/api_client.js?v=20260718m"></script>
 <script src="/static/js/custom_dropdown.js?v=20260728d"></script>
-<script src="/static/js/i18n.js?v=20260729a"></script>
+<script src="/static/js/i18n.js?v=20260808a"></script>
 <script src="/static/js/audio_engine.js?v=20260728a"></script>
-<script src="/static/js/piano_roll.js?v=20260807e"></script>
+<script src="/static/js/sf3_player.js?v=20260808a"></script>
+<script src="/static/js/spessa_player.js?v=20260808a"></script>
+<script src="/static/js/soundfont_loader.js?v=20260808b"></script>
+<script src="/static/js/piano_roll.js?v=20260808f"></script>
 <script src="/static/js/fls_core.js?v=20260728a"></script>
 <script src="/static/js/fls_track_panel.js?v=20260718m"></script>
 <script src="/static/js/fls_playlist.js?v=20260728e"></script>
 <script src="/static/js/fls_group_roll.js?v=20260728d"></script>
 <script src="/static/js/fls_pianoroll.js?v=20260728d"></script>
-<script src="/static/js/main.js?v=20260807d"></script>
+<script src="/static/js/main.js?v=20260809a"></script>
 
 </body>
 </html>
