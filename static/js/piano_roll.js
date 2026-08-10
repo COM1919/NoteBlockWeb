@@ -134,7 +134,10 @@
         this._selectionRect = null;
         this._dragThreshold = 6;       // 桌面端点击/拖动判定阈值 (px)
         this._pendingPlace = false;    // 左键点击空白准备放置
-        this._isPanning = false;       // 中键平移画布
+        this._isPanning = false;       // 中键/右键/Space+左键平移画布
+        this._panButton = -1;          // 当前平移使用的鼠标按键 (0=左键+Space, 1=中键, 2=右键)
+        this._rightDragMoved = false;  // 本次右键是否发生过平移拖动 (决定 contextmenu 是否弹菜单)
+        this._spaceHeld = false;       // Space 键是否按住 (用于 Space+左键平移)
 
         // 触摸状态
         this._touchMode = 'none';
@@ -259,6 +262,10 @@
         this._dragTargetLayer = -1;
         this._trackDragStartY = 0;
 
+        // 音轨信息栏按钮悬浮/按下状态 (用于 hover/点击动画)
+        this._trackPanelHover = null;
+        this._trackPanelPressed = null;
+
         // 拖动缓动动画状态
         this._dragAnimRAF = null;
         this._dragAnimTargets = {};  // id -> {tick, layer}
@@ -269,6 +276,8 @@
         this.volumeOpacityEnabled = false;
         // 面板透明度 (0-1, 1=不透明; 设置网页背景图后用于透出背景)
         this.panelAlpha = 1.0;
+        // 左侧音轨信息栏透明度 (独立于面板透明度, 可单独调整)
+        this.trackPanelAlpha = 1.0;
         this.gridOpacity = 0; // 网格透明度 (0=不透明, 1=完全透明)
 
         this._init();
@@ -401,7 +410,15 @@
         // A drag can end outside the canvas. Finalize it globally to avoid a stale
         // selection or note-drag state affecting the next gesture.
         window.addEventListener('mouseup', function(e) { self._onMouseUp(e); });
-        this.canvas.addEventListener('mouseleave', function() { self._clearTrackPanelTooltip(); });
+        this.canvas.addEventListener('mouseleave', function() {
+            self._clearTrackPanelTooltip();
+            if (self._trackPanelHover || self._trackPanelPressed) {
+                self._trackPanelHover = null;
+                self._trackPanelPressed = null;
+                self._fullRedrawNeeded = true;
+                self.requestRender();
+            }
+        });
         this.canvas.addEventListener('wheel', function(e) { self._onWheel(e); }, { passive: false });
         this.canvas.addEventListener('contextmenu', function(e) { self._onContextMenu(e); });
 
@@ -413,6 +430,23 @@
         window.addEventListener('resize', function() {
             self._setupCanvas();
             self.render();
+        });
+
+        // Space+左键拖动平移 (右键平移的可靠替代, 不受浏览器手势干扰)
+        window.addEventListener('keydown', function(e) {
+            if (e.code === 'Space' && !e.repeat) {
+                self._spaceHeld = true;
+            }
+        });
+        window.addEventListener('keyup', function(e) {
+            if (e.code === 'Space') {
+                self._spaceHeld = false;
+                if (self._panButton === 0) {
+                    self._isPanning = false;
+                    self._panButton = -1;
+                    self.canvas.style.cursor = 'crosshair';
+                }
+            }
         });
     };
 
@@ -511,7 +545,38 @@
         return -1;
     };
 
-    PianoRoll.prototype._nextId = function() { return 'note_' + (this._noteIdCounter++); };
+    PianoRoll.prototype._noteIdExists = function(id) {
+        for (var i = 0; i < this.notes.length; i++) {
+            if (this.notes[i].id === id) return true;
+        }
+        return false;
+    };
+
+    // 生成全局唯一音符 id
+    // 防御: 若 _noteIdCounter 因 setNotes 重置/空洞而撞上已存在 id, 则继续递增直到唯一
+    // (id 是选中/移动/播放高亮等所有状态按 id 索引的键, 一旦重复会导致音符"共享状态"错乱)
+    PianoRoll.prototype._nextId = function() {
+        var id;
+        do {
+            id = 'note_' + (this._noteIdCounter++);
+        } while (this._noteIdExists(id));
+        return id;
+    };
+
+    // 扫描现有音符 id 的最大序号, 将计数器重置为其 + 1, 避免后续分配撞上旧 id
+    PianoRoll.prototype._recalcNoteIdCounter = function() {
+        var maxNum = 0;
+        for (var i = 0; i < this.notes.length; i++) {
+            var id = this.notes[i].id;
+            if (!id) continue;
+            var m = /^note_(\d+)$/.exec(id);
+            if (m) {
+                var num = parseInt(m[1], 10);
+                if (num > maxNum) maxNum = num;
+            }
+        }
+        this._noteIdCounter = maxNum + 1;
+    };
 
     // ============ 选定操作 ============
     PianoRoll.prototype._selectNote = function(note, additive) {
@@ -1343,6 +1408,19 @@
         this._lastMouseY = y;
         var pw = this._currentPanelWidth;
 
+        // Space+左键: 平移画布 (右键平移的可靠替代, 不受浏览器手势干扰)
+        if (e.button === 0 && this._spaceHeld) {
+            this._mouseDown = true;
+            this._hasMoved = false;
+            this._dragStartX = x;
+            this._dragStartY = y;
+            this._isPanning = true;
+            this._panButton = 0;
+            this.canvas.style.cursor = 'grabbing';
+            e.preventDefault();
+            return;
+        }
+
         // 顶部滑动条: 左右翻页 (拖动滚动视图, 不跳播放头)
         if (y < this._cfg.progressBarHeight) {
             this._isDraggingProgressBar = true;
@@ -1397,6 +1475,12 @@
                     this.render();
                     return;
                 }
+                // 按下视觉反馈 (名称区域除外)
+                if (hit.type !== 'name') {
+                    this._trackPanelPressed = { layer: hit.layer, type: hit.type };
+                    this._fullRedrawNeeded = true;
+                    this.render();
+                }
                 this._handleTrackPanelHit(hit, e);
                 return;
             }
@@ -1421,6 +1505,8 @@
         this._isErasing = false;
         this._erasedNoteIds = {};
         this._isPanning = false;
+        // 重置右键平移标记, 防止上次拖出 canvas 未消费导致菜单误判
+        this._rightDragMoved = false;
 
         var clickedNote = this._getNoteAt(x, y);
 
@@ -1436,6 +1522,9 @@
                 this._beginDragPreview(x, y, clickedNote.id);
             } else {
                 this._isSelecting = true;
+                // 存储锚点网格坐标 (mousemove/边缘自动滚动时保持框选起点不变)
+                this._selectStartTick = this._screenToTick(x);
+                this._selectStartLayer = this._screenToLayer(y);
                 this._selectionRect = this._makeSelectionRect(x, y, x, y);
                 if (!e.shiftKey) this._clearSelection();
             }
@@ -1524,28 +1613,21 @@
                     tick1: this._selectStartTick, layer1: this._selectStartLayer,
                     tick2: this._selectStartTick, layer2: this._selectStartLayer
                 };
-                this._pendingPlace = !e.shiftKey && !e.ctrlKey && !e.metaKey;
+                // 已有选中音符时, 本次点击是"取消选择", 不应在松手时放置新音符
+                this._pendingPlace = !e.shiftKey && !e.ctrlKey && !e.metaKey && !hadSelection;
                 if (!e.shiftKey && !e.ctrlKey && !e.metaKey) this._clearSelection();
                 if (hadSelection) {
                     this._fullRedrawNeeded = true;
                     this.render();
                 }
             }
-        } else if (e.button === 2) {
-            // 右键始终打开上下文菜单（不再删除）
-            var ids = [];
-            if (clickedNote) {
-                if (!this.selectedNotes[clickedNote.id]) {
-                    this._selectNote(clickedNote, false);
-                }
-                ids = this.getSelectedNoteIds();
-            }
-            if (this.onContextMenu) {
-                this.onContextMenu(e.clientX, e.clientY, ids, false);
-            }
-        } else if (e.button === 1) {
-            // 中键平移画布
+        } else if (e.button === 1 || e.button === 2) {
+            // 中键 / 右键: 按住拖动平移画布
+            // 右键原本是浏览器默认手势(上下文菜单), 这里覆盖为平移;
+            // 右键轻点(未移动)松手后仍会弹出上下文菜单 (见 _onContextMenu 的 _rightDragMoved 判断)
             this._isPanning = true;
+            this._panButton = e.button;
+            this._rightDragMoved = false;
             this.canvas.style.cursor = 'grabbing';
             e.preventDefault();
         }
@@ -1554,6 +1636,13 @@
     PianoRoll.prototype._onContextMenu = function(e) {
         e.preventDefault();
         e.stopPropagation();
+
+        // 右键按住拖动进行过平移: 只覆盖浏览器默认菜单, 不弹出应用内菜单
+        // (右键轻点未移动时, 这里会正常继续弹出上下文菜单)
+        if (this._rightDragMoved) {
+            this._rightDragMoved = false;
+            return;
+        }
 
         var rect = this.canvas.getBoundingClientRect();
         var x = e.clientX - rect.left;
@@ -1582,7 +1671,10 @@
     };
 
     PianoRoll.prototype._onMouseMove = function(e) {
-        if (this.currentTool === 'eraser') {
+        // Space 按住时显示 grab 光标 (提示可平移)
+        if (this._spaceHeld && !this._isPanning) {
+            this.canvas.style.cursor = 'grab';
+        } else if (this.currentTool === 'eraser') {
             this.canvas.style.cursor = 'crosshair';
         } else if (this.currentTool === 'brush') {
             this.canvas.style.cursor = 'crosshair';
@@ -1602,13 +1694,27 @@
 
         // 悬停在音轨名称区域时改变光标为文本样式, 提示可点击重命名
         var pw = this._currentPanelWidth;
+        var panelHit = null;
         if (pw > 0 && x < pw && y >= this._cfg.timelineHeight) {
-            var panelHit = this._hitTestTrackPanel(x, y);
+            panelHit = this._hitTestTrackPanel(x, y);
             if (panelHit && panelHit.type === 'name') {
                 this.canvas.style.cursor = 'text';
             } else if (panelHit && panelHit.type === 'drag') {
                 this.canvas.style.cursor = 'grab';
             }
+        }
+
+        // 音轨信息栏按钮悬浮高亮 (hover 状态变化时重绘; 移出面板区域自动清除)
+        var newHover = null;
+        if (panelHit && panelHit.type !== 'name' && panelHit.type !== 'drag') {
+            newHover = { layer: panelHit.layer, type: panelHit.type };
+        }
+        var oh = this._trackPanelHover;
+        if ((oh && (!newHover || oh.layer !== newHover.layer || oh.type !== newHover.type))
+            || (!oh && newHover)) {
+            this._trackPanelHover = newHover;
+            this._fullRedrawNeeded = true;
+            this.requestRender();
         }
 
         if (!this._mouseDown) return;
@@ -1645,6 +1751,8 @@
         }
 
         if (this._isPanning) {
+            // 右键拖动标记: 拖动过则 contextmenu 事件不再弹出菜单
+            if (this._panButton === 2 && this._hasMoved) this._rightDragMoved = true;
             var dx = x - this._dragStartX;
             var dy = y - this._dragStartY;
             this.scrollX = Math.max(0, this.scrollX - dx);
@@ -1709,6 +1817,12 @@
     PianoRoll.prototype._onMouseUp = function(e) {
         if (!this._mouseDown) return;
         this._mouseDown = false;
+        // 音轨信息栏按钮按下状态复位 (点击动画结束)
+        if (this._trackPanelPressed) {
+            this._trackPanelPressed = null;
+            this._fullRedrawNeeded = true;
+            this.render();
+        }
         // 若本次不是音符拖动, 清理拖动预览状态
         if (!this._isDraggingNote) this._dragPreview = null;
         var rect = this.canvas.getBoundingClientRect();
@@ -1787,7 +1901,10 @@
         }
 
         if (this._isPanning) {
+            // 松手时若右键发生过拖动, 标记本次右键为"平移"而非"打开菜单"
+            if (this._panButton === 2 && this._hasMoved) this._rightDragMoved = true;
             this._isPanning = false;
+            this._panButton = -1;
             this.canvas.style.cursor = 'crosshair';
         }
     };
@@ -2515,11 +2632,22 @@
     };
 
     PianoRoll.prototype.setNotes = function(notes) {
-        this.notes = (notes || []).slice();
-        for (var i = 0; i < this.notes.length; i++) {
-            if (!this.notes[i].id) this.notes[i].id = this._nextId();
+        var src = (notes || []).slice();
+        // 底层防重叠: 同一 (tick, layer) 只保留第一个音符, 从根源杜绝"一个格子多个音符"
+        var seen = {};
+        var cleaned = [];
+        for (var i = 0; i < src.length; i++) {
+            var key = src[i].tick + '_' + src[i].layer;
+            if (seen[key]) continue;
+            seen[key] = true;
+            cleaned.push(src[i]);
         }
-        this._noteIdCounter = this.notes.length + 1;
+        this.notes = cleaned;
+        for (var j = 0; j < this.notes.length; j++) {
+            if (!this.notes[j].id) this.notes[j].id = this._nextId();
+        }
+        // 计数器基于现有 id 最大序号, 不能简单用 length+1 (删除音符留下 id 空洞时会撞上旧 id)
+        this._recalcNoteIdCounter();
         this.selectedNotes = {};
         this._playHighlights = {};
         this._markNoteIndexDirty();
@@ -2657,6 +2785,32 @@
     PianoRoll.prototype.selectNotes = function(noteIds) {
         this.selectedNotes = {};
         for (var i = 0; i < noteIds.length; i++) this.selectedNotes[noteIds[i]] = true;
+        this._fullRedrawNeeded = true;
+        this.render();
+        if (this.onSelectionChanged) this.onSelectionChanged(this.getSelectedNotes());
+    };
+
+    // 条件选择: 按音色筛选当前选区
+    // ignoreInstruments: 要忽略(取消选择)的音色索引数组
+    // 若当前无选择, 则先全选再筛选 (等价于"全部音符中筛选")
+    PianoRoll.prototype.filterSelectionByInstrument = function(ignoreInstruments) {
+        var ignoreSet = {};
+        for (var i = 0; i < ignoreInstruments.length; i++) ignoreSet[ignoreInstruments[i]] = true;
+
+        // 无选择时先全选
+        if (Object.keys(this.selectedNotes).length === 0) {
+            this.selectedNotes = {};
+            for (var j = 0; j < this.notes.length; j++) this.selectedNotes[this.notes[j].id] = true;
+        }
+
+        // 移除忽略音色的音符
+        for (var k = 0; k < this.notes.length; k++) {
+            var note = this.notes[k];
+            if (ignoreSet[note.instrument]) {
+                delete this.selectedNotes[note.id];
+            }
+        }
+
         this._fullRedrawNeeded = true;
         this.render();
         if (this.onSelectionChanged) this.onSelectionChanged(this.getSelectedNotes());
@@ -2868,6 +3022,13 @@
         this.render();
     };
 
+    // 设置左侧音轨信息栏透明度 (独立于面板透明度)
+    PianoRoll.prototype.setTrackPanelAlpha = function(alpha) {
+        this.trackPanelAlpha = Math.max(0, Math.min(1, alpha));
+        this._fullRedrawNeeded = true;
+        this.render();
+    };
+
     // 设置网格透明度 (0=不透明, 1=完全透明)
     PianoRoll.prototype.setGridOpacity = function(opacity) {
         this.gridOpacity = Math.max(0, Math.min(1, opacity));
@@ -2922,10 +3083,21 @@
     };
 
     PianoRoll.prototype.setNotesData = function(notes) {
-        this.notes = notes;
-        for (var i = 0; i < this.notes.length; i++) {
-            if (!this.notes[i].id) this.notes[i].id = this._nextId();
+        var src = notes || [];
+        // 底层防重叠: 同一 (tick, layer) 只保留第一个音符
+        var seen = {};
+        var cleaned = [];
+        for (var i = 0; i < src.length; i++) {
+            var key = src[i].tick + '_' + src[i].layer;
+            if (seen[key]) continue;
+            seen[key] = true;
+            cleaned.push(src[i]);
         }
+        this.notes = cleaned;
+        for (var j = 0; j < this.notes.length; j++) {
+            if (!this.notes[j].id) this.notes[j].id = this._nextId();
+        }
+        this._recalcNoteIdCounter();
         this.selectedNotes = {};
         this._fullRedrawNeeded = true;
         this.render();
@@ -3136,15 +3308,6 @@
             ctx.fillRect(pw, cfg.timelineHeight, w - pw, h - cfg.timelineHeight);
         }
 
-        // 进度条
-        this._drawProgressBar();
-
-        // 时间轴
-        this._drawTimeline();
-
-        // 左侧音轨信息区
-        this._drawTrackPanel();
-
         // 网格 (交替行底色 + 网格线, 受网格透明度控制)
         this._drawGrid();
 
@@ -3170,6 +3333,15 @@
 
         // 动画中的音符 (删除/放置效果)
         this._drawAnimatedNotes();
+
+        // 进度条 + 时间轴: 在音符之后绘制, 覆盖溢出到顶部区域的音符
+        // (背景模式时时间轴半透明, 音符透过可见; 非背景模式时时间轴不透明, 完全覆盖音符)
+        this._drawProgressBar();
+        this._drawTimeline();
+
+        // 左侧音轨信息区: 始终在音符之上绘制, 覆盖音符
+        // (信息栏透明时, 音符透过半透明背景可见并逐渐滑出屏幕; 不透明时音符被完全遮挡)
+        this._drawTrackPanel();
 
         // 播放头指示器 (canvas内绘制, 跟随滚动)
         this._drawPlayhead();
@@ -3281,8 +3453,9 @@
         // 使用插值后的 tick 计算播放头位置 (仅作标记显示)
         var displayTick = this._getDisplayTick();
 
-        // 轨道背景
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        // 轨道背景: 背景模式下使用 panelAlpha (半透明, 音符可透过)
+        var pbAlpha = document.body.classList.contains('bg-active') ? this.panelAlpha : 0.35;
+        ctx.fillStyle = 'rgba(0, 0, 0, ' + pbAlpha + ')';
         ctx.fillRect(0, barY, w, barHeight);
 
         // 滚动窗口 (thumb): 表示当前可视区域在全部内容中的位置
@@ -3510,6 +3683,15 @@
         };
     };
 
+    // 音轨信息栏按钮交互状态: 0=正常, 1=悬浮, 2=按下
+    PianoRoll.prototype._trackBtnState = function(layer, type) {
+        var p = this._trackPanelPressed;
+        if (p && p.layer === layer && p.type === type) return 2;
+        var h = this._trackPanelHover;
+        if (h && h.layer === layer && h.type === type) return 1;
+        return 0;
+    };
+
     PianoRoll.prototype._drawTrackPanel = function() {
         if (this._currentPanelWidth <= 0) return;  // 面板折叠时不绘制
 
@@ -3518,8 +3700,8 @@
         var cfg = this._cfg;
         var pw = this._currentPanelWidth;
 
-        // 背景
-        ctx.fillStyle = 'rgba(18, 18, 42, ' + this.panelAlpha + ')';
+        // 背景 (使用独立的音轨信息栏透明度, 不受面板透明度影响)
+        ctx.fillStyle = 'rgba(18, 18, 42, ' + this.trackPanelAlpha + ')';
         ctx.fillRect(0, cfg.timelineHeight, pw, h - cfg.timelineHeight);
 
         // 右侧分隔线
@@ -3536,6 +3718,16 @@
         var layerEnd = Math.ceil((this.scrollY + h - cfg.timelineHeight) / cellH);
         var layout = this._getTrackButtonLayout(cellH);
         var btnSize = layout.btnSize;
+
+        // 按钮悬浮/按下高亮辅助 (覆盖在按钮底色上, 不遮挡文字/图标)
+        var self = this;
+        var btnOverlay = function(btnLayer, btnType, bx, by, bw, bh) {
+            var st = self._trackBtnState(btnLayer, btnType);
+            if (st > 0) {
+                ctx.fillStyle = st === 2 ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.13)';
+                ctx.fillRect(bx, by, bw, bh);
+            }
+        };
 
         for (var layer = Math.max(0, layerStart); layer <= Math.min(this.trackCount - 1, layerEnd); layer++) {
             var y = this._layerToScreen(layer);
@@ -3599,6 +3791,7 @@
                 var volVal = (trackInfo.volume !== undefined ? trackInfo.volume : 100);
                 ctx.fillStyle = 'rgba(255,255,255,0.06)';
                 ctx.fillRect(layout.volStart, volY, volW, volH);
+                btnOverlay(layer, 'volume', layout.volStart, volY, volW, volH);
                 ctx.strokeStyle = trackInfo.muted ? 'rgba(255,255,255,0.12)' : 'rgba(78,205,196,0.35)';
                 ctx.lineWidth = 0.5;
                 ctx.strokeRect(layout.volStart, volY, volW, volH);
@@ -3627,6 +3820,7 @@
                 var soloFg = trackInfo.solo ? '#e9c445' : '#aaa';
                 ctx.fillStyle = soloBg;
                 ctx.fillRect(layout.soloX, textY - btnSize / 2, layout.soloW, btnSize);
+                btnOverlay(layer, 'solo', layout.soloX, textY - btnSize / 2, layout.soloW, btnSize);
                 ctx.strokeStyle = soloFg;
                 ctx.lineWidth = 0.5;
                 ctx.strokeRect(layout.soloX, textY - btnSize / 2, layout.soloW, btnSize);
@@ -3646,6 +3840,7 @@
                 // 删除按钮 (✕)
                 ctx.fillStyle = 'rgba(255,255,255,0.06)';
                 ctx.fillRect(layout.deleteX, textY - btnSize / 2, layout.deleteW, btnSize);
+                btnOverlay(layer, 'delete', layout.deleteX, textY - btnSize / 2, layout.deleteW, btnSize);
                 ctx.strokeStyle = 'rgba(233,69,96,0.5)';
                 ctx.lineWidth = 0.5;
                 ctx.strokeRect(layout.deleteX, textY - btnSize / 2, layout.deleteW, btnSize);
@@ -3676,6 +3871,7 @@
                 if (layout.selX >= 0) {
                     ctx.fillStyle = 'rgba(78,205,196,0.15)';
                     ctx.fillRect(layout.selX, textY - btnSize/2, layout.selW, btnSize);
+                    btnOverlay(layer, 'selectall', layout.selX, textY - btnSize/2, layout.selW, btnSize);
                     ctx.strokeStyle = '#4ecdc4';
                     ctx.lineWidth = 1.5;
                     ctx.lineCap = 'round';
@@ -3738,6 +3934,7 @@
             var addBtnX = (pw - addBtnW) / 2;
             ctx.fillStyle = 'rgba(78,205,196,0.15)';
             ctx.fillRect(addBtnX, addTrackY + 4, addBtnW, addBtnH);
+            btnOverlay(-1, 'addtrack', addBtnX, addTrackY + 4, addBtnW, addBtnH);
             ctx.strokeStyle = 'rgba(78,205,196,0.4)';
             ctx.lineWidth = 1;
             ctx.strokeRect(addBtnX, addTrackY + 4, addBtnW, addBtnH);
@@ -3906,8 +4103,10 @@
         }
 
         // 性能优化: 使用空间索引只遍历可见 tick 范围内的音符
+        // 信息栏透明时, 音符渲染范围延伸到屏幕左边缘 (在信息栏区域也继续渲染)
+        var leftClip = this.trackPanelAlpha < 0.999 ? 0 : pw;
         if (this._noteIndexDirty) this._rebuildNoteIndex();
-        var tickStart = Math.floor(this.scrollX / cellW);
+        var tickStart = Math.max(0, Math.floor((this.scrollX - pw + leftClip) / cellW));
         var tickEnd = Math.ceil((this.scrollX + w - pw) / cellW);
         var drawnSet = {};
 
@@ -3940,7 +4139,10 @@
                 var nx = this._tickToScreen(drawTick);
                 var ny = this._layerToScreen(drawLayer);
 
-                if (nx + cellW < pw || nx > w || ny + cellH < cfg.timelineHeight || ny > h) continue;
+                // 垂直裁剪: 背景模式时音符渲染到画布顶部边缘 (透过半透明时间栏可见),
+                // 非背景模式时裁剪到时间栏底部 (时间栏会覆盖)
+                var topClip = document.body.classList.contains('bg-active') ? 0 : cfg.timelineHeight;
+                if (nx + cellW < leftClip || nx > w || ny + cellH < topClip || ny > h) continue;
 
                 var color = INSTRUMENT_COLORS[note.instrument % INSTRUMENT_COLORS.length];
                 var pitchKey = (typeof note.key === 'number' && note.key >= 0) ? note.key : note.layer;
@@ -3998,7 +4200,7 @@
                 var dl = Math.max(0, Math.min(this.trackCount - 1, ds.layer + tDeltaLayer));
                 var tx = this._tickToScreen(dt);
                 var ty = this._layerToScreen(dl);
-                if (tx + cellW < pw || tx > w || ty + cellH < cfg.timelineHeight || ty > h) continue;
+                if (tx + cellW < leftClip || tx > w || ty + cellH < topClip || ty > h) continue;
                 ctx.strokeRect(tx + 1, ty + 1, cellW - 2, cellH - 2);
             }
             ctx.restore();
@@ -4030,7 +4232,11 @@
             var nx = this._tickToScreen(anim.tick);
             var ny = this._layerToScreen(anim.layer);
 
-            if (nx + cellW < pw || ny + cellH < cfg.timelineHeight) continue;
+            // 信息栏透明时, 动画音符同样延伸到屏幕左边缘
+            var animLeftClip = this.trackPanelAlpha < 0.999 ? 0 : pw;
+            // 垂直裁剪: 背景模式时延伸到画布顶部, 非背景模式时裁剪到时间栏
+            var animTopClip = document.body.classList.contains('bg-active') ? 0 : cfg.timelineHeight;
+            if (nx + cellW < animLeftClip || ny + cellH < animTopClip) continue;
 
             if (anim.type === 'delete-flash') {
                 var dfEased = easeOutCubic(rawProgress);

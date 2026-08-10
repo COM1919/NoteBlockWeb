@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260808f">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260809c">
 </head>
 <body>
 
@@ -368,8 +368,8 @@
                     </div>
                     <div class="settings-row" style="display:flex;align-items:center;gap:8px;">
                         <label class="settings-label" style="margin:0;">背景透明度:</label>
-                        <input type="range" id="settings-bg-opacity" min="0" max="100" step="5" value="50" style="flex:1;">
-                        <span id="settings-bg-opacity-value" style="font-size:11px;min-width:32px;text-align:right;">50%</span>
+                        <input type="range" id="settings-bg-opacity" min="0" max="100" step="5" value="0" style="flex:1;">
+                        <span id="settings-bg-opacity-value" style="font-size:11px;min-width:32px;text-align:right;">0%</span>
                     </div>
                     <div class="settings-row" style="display:flex;align-items:center;gap:8px;">
                         <label class="settings-label" style="margin:0;">背景模式:</label>
@@ -389,8 +389,13 @@
                     </div>
                     <div class="settings-row" style="display:flex;align-items:center;gap:8px;">
                         <label class="settings-label" style="margin:0;">面板透明度:</label>
-                        <input type="range" id="settings-panel-opacity" min="0" max="100" step="5" value="30" style="flex:1;">
-                        <span id="settings-panel-opacity-value" style="font-size:11px;min-width:32px;text-align:right;">30%</span>
+                        <input type="range" id="settings-panel-opacity" min="0" max="100" step="5" value="50" style="flex:1;">
+                        <span id="settings-panel-opacity-value" style="font-size:11px;min-width:32px;text-align:right;">50%</span>
+                    </div>
+                    <div class="settings-row" style="display:flex;align-items:center;gap:8px;">
+                        <label class="settings-label" style="margin:0;">音轨栏透明度:</label>
+                        <input type="range" id="settings-track-panel-opacity" min="0" max="100" step="5" value="60" style="flex:1;">
+                        <span id="settings-track-panel-opacity-value" style="font-size:11px;min-width:32px;text-align:right;">60%</span>
                     </div>
                     <div class="settings-row" style="display:flex;align-items:center;gap:8px;">
                         <label class="settings-label" style="margin:0;">网格材质:</label>
@@ -402,8 +407,8 @@
                     </div>
                     <div class="settings-row" style="display:flex;align-items:center;gap:8px;">
                         <label class="settings-label" style="margin:0;">网格透明度:</label>
-                        <input type="range" id="settings-grid-opacity" min="0" max="1" step="0.05" value="0" style="flex:1;">
-                        <span id="settings-grid-opacity-value" style="font-size:11px;min-width:32px;text-align:right;">0%</span>
+                        <input type="range" id="settings-grid-opacity" min="0" max="1" step="0.05" value="0.25" style="flex:1;">
+                        <span id="settings-grid-opacity-value" style="font-size:11px;min-width:32px;text-align:right;">25%</span>
                     </div>
                     <div class="settings-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                         <label class="settings-label" style="margin:0;">MIDI 音色库:</label>
@@ -418,7 +423,7 @@
                     <div class="settings-row" style="font-size:11px;color:var(--text-tertiary);">
                         音色库状态: <span id="settings-midi-sf-status">未下载</span>
                     </div>
-                    <div class="settings-hint" style="font-size:11px;color:var(--text-tertiary);padding:4px 0;">提示: 背景图片覆盖整个网页; 透明度 100% 完全透明, 0% 不透明; 表面材质控制工具栏, 网格材质单独控制音符网格区域; 面板透明度控制工具栏与音轨栏的透明程度</div>
+                    <div class="settings-hint" style="font-size:11px;color:var(--text-tertiary);padding:4px 0;">提示: 背景图片覆盖整个网页; 透明度 100% 完全透明, 0% 不透明; 表面材质控制工具栏, 网格材质单独控制音符网格区域; 面板透明度控制工具栏透明程度, 音轨栏透明度单独控制左侧音轨信息栏</div>
                 </div>
             </div>
         </div>
@@ -843,7 +848,7 @@
                         <table class="midi-table midi-substitute-table" style="width:100%;font-size:11px;">
                             <thead>
                                 <tr>
-                                    <th style="width:110px;">NBS 音色</th>
+                                    <th style="width:130px;">NBS 音色</th>
                                     <th style="width:70px;">音域</th>
                                     <th>高音替代</th>
                                     <th>低音替代</th>
@@ -949,13 +954,13 @@
 <script src="/static/js/sf3_player.js?v=20260808a"></script>
 <script src="/static/js/spessa_player.js?v=20260808a"></script>
 <script src="/static/js/soundfont_loader.js?v=20260808b"></script>
-<script src="/static/js/piano_roll.js?v=20260808f"></script>
+<script src="/static/js/piano_roll.js?v=20260809g"></script>
 <script src="/static/js/fls_core.js?v=20260728a"></script>
 <script src="/static/js/fls_track_panel.js?v=20260718m"></script>
 <script src="/static/js/fls_playlist.js?v=20260728e"></script>
 <script src="/static/js/fls_group_roll.js?v=20260728d"></script>
 <script src="/static/js/fls_pianoroll.js?v=20260728d"></script>
-<script src="/static/js/main.js?v=20260809a"></script>
+<script src="/static/js/main.js?v=20260809e"></script>
 
 </body>
 </html>

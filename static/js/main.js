@@ -1146,6 +1146,18 @@
             if (pv) pv.textContent = v + '%';
         }
 
+        // 同步左侧音轨信息栏透明度 (独立于面板透明度, 仅当背景图激活时生效)
+        var trackPanelOpacitySlider = $('settings-track-panel-opacity');
+        function syncTrackPanelAlpha() {
+            var bgActive = document.body.classList.contains('bg-active');
+            var v = trackPanelOpacitySlider ? (parseInt(trackPanelOpacitySlider.value) || 0) : 0;
+            // 音轨栏 alpha: 无背景=1.0 完全不透明; 有背景时 0%=1.0, 100%=0.3
+            var alpha = bgActive ? (1.0 - (v / 100) * 0.7) : 1.0;
+            if (state.pianoRoll) state.pianoRoll.setTrackPanelAlpha(alpha);
+            var pv = $('settings-track-panel-opacity-value');
+            if (pv) pv.textContent = v + '%';
+        }
+
         // 应用背景图片到全网页层 (覆盖整个网页)
         function applyPageBgImage(dataUrl) {
             if (!bgLayer) return;
@@ -1157,6 +1169,7 @@
                 document.body.classList.add('bg-active');
             }
             syncPanelAlpha();
+            syncTrackPanelAlpha();
         }
 
         // 背景模式 (平铺/拉伸/缩放), 通过 body class 控制, 避免内联样式互相覆盖
@@ -1309,6 +1322,24 @@
             });
             panelOpacitySlider.addEventListener('change', function() {
                 try { localStorage.setItem('panel_opacity', this.value); } catch(e) {}
+            });
+        }
+
+        // 音轨信息栏透明度滑块 (独立于面板透明度, 0-100, 100=几乎透明, 0=不透明)
+        if (trackPanelOpacitySlider) {
+            try {
+                var savedTrackPanelOp = localStorage.getItem('track_panel_opacity');
+                if (savedTrackPanelOp !== null) {
+                    var tpop = parseInt(savedTrackPanelOp);
+                    if (!isNaN(tpop)) trackPanelOpacitySlider.value = tpop;
+                }
+            } catch(e) {}
+            syncTrackPanelAlpha();
+            trackPanelOpacitySlider.addEventListener('input', function() {
+                syncTrackPanelAlpha();
+            });
+            trackPanelOpacitySlider.addEventListener('change', function() {
+                try { localStorage.setItem('track_panel_opacity', this.value); } catch(e) {}
             });
         }
 
@@ -1545,6 +1576,7 @@
         var substituteResetBtn = $('midi-substitute-reset-btn');
         if (substituteResetBtn) substituteResetBtn.addEventListener('click', function() {
             _substituteConfig = JSON.parse(JSON.stringify(DEFAULT_SUBSTITUTE));
+            saveSubstituteConfig(_substituteConfig);
             renderSubstituteRows(_substituteConfig);
             showMidiNotice('已恢复默认替代配置', 'info');
         });
@@ -3112,7 +3144,7 @@
                 return;
             }
 
-            if (e.code === 'Space') {
+            if (e.code === 'Space' && !e.repeat) {
                 e.preventDefault();
                 handlePlayToggle();
             } else if (e.key === 'Escape') {
@@ -4338,6 +4370,7 @@
         var html = '';
         // 始终显示：全选
         html += '<div class="ctx-item" data-action="select-all"><span class="ctx-icon"><i class="fa-solid fa-object-group"></i></span> ' + t('全选') + '</div>';
+        html += '<div class="ctx-item" data-action="condition-select"><span class="ctx-icon"><i class="fa-solid fa-filter"></i></span> ' + t('条件选择') + '</div>';
         if (hasSelection) {
             html += '<div class="ctx-item" data-action="deselect"><span class="ctx-icon"><i class="fa-solid fa-xmark"></i></span> ' + t('取消选择') + '</div>';
             html += '<div class="ctx-separator"></div>';
@@ -4390,6 +4423,9 @@
                 return;
             case 'deselect':
                 if (state.pianoRoll) state.pianoRoll.clearSelection();
+                return;
+            case 'condition-select':
+                showConditionSelectDialog(x, y);
                 return;
             case 'paste':
                 var pasteTick, pasteLayer;
@@ -4503,6 +4539,73 @@
         }, 10);
     }
 
+    // 条件选择弹窗: 勾选要忽略(取消选择)的音色
+    // - 若当前已有选择, 则从选区中移除被勾选音色的音符
+    // - 若当前无选择, 则先全选再移除 (等价于"全部音符中筛选")
+    function showConditionSelectDialog(x, y) {
+        // 移除已存在的弹窗
+        var existing = $('condition-select-dialog');
+        if (existing) existing.remove();
+
+        var names = getInstrumentNames();
+        var colors = (window.NOTE_COLORS && window.NOTE_COLORS.length >= 20) ? window.NOTE_COLORS : ['#d4a96a','#8b5a2b','#c84b3c','#f0e68c','#dcdcdc','#6b8e23','#87ceeb','#fffacd','#fff0f5','#ffb6c1','#b0c4de','#daa520','#cd853f','#ffd700','#cd5c5c','#e6e6fa','#c46b3d','#8b6f47','#5c8b5c','#3d7a6b'];
+
+        var hasSelection = state.pianoRoll && state.pianoRoll.getSelectedNoteIds().length > 0;
+        var hint = hasSelection ? i18nText('勾选要从当前选择中移除的音色') : i18nText('当前无选择, 将先全选再筛选。勾选要排除的音色');
+
+        var dlg = document.createElement('div');
+        dlg.id = 'condition-select-dialog';
+        dlg.style.cssText = 'position:fixed;z-index:10001;'
+            + 'background:rgba(22,33,62,0.96);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);'
+            + 'border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:12px;'
+            + 'box-shadow:0 8px 32px rgba(0,0,0,0.5);color:#eaeaea;font-size:12px;min-width:240px;max-width:320px;';
+
+        var html = '<div style="font-size:13px;font-weight:600;margin-bottom:4px;">' + i18nText('条件选择') + '</div>';
+        html += '<div style="font-size:11px;color:#9aa;margin-bottom:10px;line-height:1.4;">' + hint + '</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px;max-height:220px;overflow-y:auto;margin-bottom:10px;">';
+        for (var i = 0; i < names.length; i++) {
+            var color = colors[i] || '#d4a96a';
+            html += '<label style="display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:6px;cursor:pointer;background:rgba(255,255,255,0.04);transition:background 0.12s;" '
+                + 'onmouseover="this.style.background=\'rgba(255,255,255,0.1)\'" onmouseout="this.style.background=\'rgba(255,255,255,0.04)\'">'
+                + '<input type="checkbox" data-instrument="' + i + '" style="accent-color:#5b8def;cursor:pointer;">'
+                + '<span style="display:inline-block;width:16px;height:16px;border-radius:3px;background:' + color + ';flex-shrink:0;"></span>'
+                + '<span>' + names[i] + '</span></label>';
+        }
+        html += '</div>';
+        html += '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+            + '<button id="cond-cancel" class="popup-btn" style="padding:6px 14px;border-radius:6px;cursor:pointer;">' + i18nText('取消') + '</button>'
+            + '<button id="cond-ok" class="popup-btn popup-btn-primary" style="padding:6px 14px;border-radius:6px;cursor:pointer;background:var(--accent-blue);color:#fff;border:none;">' + i18nText('确认') + '</button>'
+            + '</div>';
+        dlg.innerHTML = html;
+        document.body.appendChild(dlg);
+
+        window.WebNBSPositionFlyout(dlg, { left: x, right: x, top: y, bottom: y });
+
+        // 取消
+        var cancelBtn = dlg.querySelector('#cond-cancel');
+        if (cancelBtn) cancelBtn.addEventListener('click', function() { dlg.remove(); });
+        // 确认
+        var okBtn = dlg.querySelector('#cond-ok');
+        if (okBtn) okBtn.addEventListener('click', function() {
+            var checks = dlg.querySelectorAll('input[type=checkbox]:checked');
+            var ignoreList = [];
+            for (var c = 0; c < checks.length; c++) ignoreList.push(parseInt(checks[c].dataset.instrument));
+            if (state.pianoRoll && ignoreList.length > 0) {
+                state.pianoRoll.filterSelectionByInstrument(ignoreList);
+            }
+            dlg.remove();
+        });
+
+        // 点击外部关闭
+        var closeDlg = function(e) {
+            if (!dlg.contains(e.target)) {
+                dlg.remove();
+                document.removeEventListener('click', closeDlg);
+            }
+        };
+        setTimeout(function() { document.addEventListener('click', closeDlg); }, 10);
+    }
+
     // 获取钢琴键盘当前选中的音调
     function getSelectedPianoKey() {
         var keyboard = $('piano-keyboard');
@@ -4607,7 +4710,7 @@
 
         var win = document.createElement('div');
         win.id = 'inst-float-win';
-        win.style.cssText = 'position:fixed;bottom:40px;right:16px;z-index:9998;background:rgba(32,32,32,0.95);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--ctrl-stroke-default);border-radius:10px;padding:8px;display:grid;grid-template-columns:repeat(8,40px);gap:4px;box-shadow:0 8px 32px rgba(0,0,0,0.5);cursor:default;';
+        win.style.cssText = 'position:fixed;bottom:40px;right:16px;z-index:9998;background:rgba(20,20,34,var(--surface-bg-alpha));backdrop-filter:var(--surface-blur);-webkit-backdrop-filter:var(--surface-blur);border:1px solid var(--ctrl-stroke-default);border-radius:10px;padding:8px;display:grid;grid-template-columns:repeat(8,40px);gap:4px;box-shadow:0 8px 32px rgba(0,0,0,0.5);cursor:default;';
 
         var instNames = getInstrumentNames();
 
@@ -6379,7 +6482,11 @@
         body.innerHTML = '<p style="margin:0 0 8px;color:var(--text-secondary);font-size:12px;">' + t('目标为 Minecraft 原版音符盒标准音域 F#3-F#5。先应用偏移，再尝试音色替代，最后可选择强制归位。') + '</p>'
             + '<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' + t('偏移转换') + ' <select id="range-mode" class="settings-control"><option value="0">' + t('不启用') + '</option><option value="1">' + t('单独音符归一法') + '</option><option value="2">' + t('整体八度偏移法') + '</option><option value="3">' + t('整体音调偏移法') + '</option></select></label>'
             + '<label id="range-key-bias-row" style="display:none;align-items:center;gap:8px;margin-bottom:8px;">' + t('同分偏移') + ' <select id="range-key-bias" class="settings-control"><option value="major">' + t('优先大调') + '</option><option value="minor">' + t('优先小调') + '</option></select></label>'
-            + '<label style="display:block;margin-bottom:6px;"><input type="checkbox" id="range-substitute" checked> ' + t('启用音色替代') + '</label>'
+            + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">'
+            + '<label style="display:flex;align-items:center;gap:8px;margin:0;"><input type="checkbox" id="range-substitute" checked> ' + t('启用音色替代') + '</label>'
+            + '<button id="range-substitute-settings" style="padding:2px 10px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:6px;background:var(--ctrl-fill-default);color:var(--text-primary);cursor:pointer;">' + t('音色替代设置') + '</button>'
+            + '<button id="range-substitute-reset" style="padding:2px 10px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:6px;background:var(--ctrl-fill-default);color:var(--text-secondary);cursor:pointer;">' + t('恢复默认替代') + '</button>'
+            + '</div>'
             + '<label style="display:block;margin-bottom:10px;"><input type="checkbox" id="range-force-fold"> ' + t('强制转音域内') + '</label>'
             + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;"><strong style="font-size:12px;">' + t('应用音轨') + '</strong><label style="font-size:11px;"><input type="checkbox" id="range-all-tracks" checked> ' + t('全部') + '</label></div>'
             + '<div id="range-track-list" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:4px;max-height:170px;overflow:auto;padding:6px;border-radius:6px;background:var(--ctrl-fill-tertiary);"></div>';
@@ -6394,6 +6501,22 @@
         var mode = body.querySelector('#range-mode');
         var biasRow = body.querySelector('#range-key-bias-row');
         mode.addEventListener('change', function() { biasRow.style.display = mode.value === '3' ? 'flex' : 'none'; });
+
+        // 音色替代设置: 打开替代配置弹窗 (与 MIDI 导入共用, 功能区场景直接进入配置页签)
+        var subSettingsBtn = body.querySelector('#range-substitute-settings');
+        if (subSettingsBtn) subSettingsBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openSubstituteSettings('instrument');
+        });
+        // 恢复默认替代配置
+        var subResetBtn = body.querySelector('#range-substitute-reset');
+        if (subResetBtn) subResetBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            _substituteConfig = JSON.parse(JSON.stringify(DEFAULT_SUBSTITUTE));
+            saveSubstituteConfig(_substituteConfig);
+            showAppAlert(t('音色替代配置已恢复为默认。'), {title: t('音域处理')});
+        });
+
         body.querySelector('#range-all-tracks').addEventListener('change', function(e) {
             var inputs = trackList.querySelectorAll('.range-track');
             for (var j = 0; j < inputs.length; j++) inputs[j].checked = e.target.checked;
@@ -6473,20 +6596,13 @@
 
     function applyInstrumentRangeSubstitute(note) {
         if (note.key >= 33 && note.key <= 57 || note.instrument === 2 || note.instrument === 3 || note.instrument === 4) return;
-        // Instrument base pitch offsets relative to harp, matching Minecraft note-block families.
-        var base = {0:0,1:-24,5:-12,6:12,7:24,8:24,9:24,10:0,11:12,12:-24,13:0,14:0,15:0};
-        var sourceBase = base[note.instrument] === undefined ? 0 : base[note.instrument];
-        var best = null;
-        Object.keys(base).forEach(function(id) {
-            var instrument = parseInt(id, 10);
-            var key = note.key + sourceBase - base[id];
-            if (key < 33 || key > 57) return;
-            var score = Math.abs(base[id] - sourceBase);
-            if (!best || score < best.score) best = {instrument: instrument, key: key, score: score};
-        });
-        if (best) {
-            note.instrument = best.instrument;
-            note.key = best.key;
+        // 使用与 MIDI 导入一致的链条式替代配置 (用户可在"音色替代设置"中修改)
+        var config = loadSubstituteConfig();
+        if (!config || !config[note.instrument]) return;
+        var result = applySubstituteToNote(note.key + 21, note.instrument, config);
+        if (result && result.substituted) {
+            note.instrument = result.instrument;
+            note.key = Math.max(0, Math.min(87, result.midi - 21));
         }
     }
 
@@ -6580,9 +6696,9 @@
         keyboard.id = 'piano-keyboard';
         keyboard.className = 'piano-keyboard-new';
         keyboard.style.cssText = 'position:absolute;bottom:0;left:0;right:0;height:148px;'
-            + 'background:#0e0e22;border-top:1px solid #2a2a4a;display:none;z-index:35;'
+            + 'border-top:1px solid #2a2a4a;display:none;z-index:35;'
             + 'overflow-x:auto;overflow-y:hidden;white-space:nowrap;padding:4px 2px;'
-            + 'scrollbar-width:thin;scrollbar-color:#444 #0e0e22;';
+            + 'scrollbar-width:thin;scrollbar-color:#555 transparent;';
         container.appendChild(keyboard);
         setupPianoKeyboardDrag(keyboard);
 
@@ -7312,7 +7428,7 @@
     }
 
     // ============ 音色替代设置弹窗 ============
-    function openSubstituteSettings() {
+    function openSubstituteSettings(initialTab) {
         var popup = $('midi-substitute-popup');
         if (!popup) return;
         popup.style.display = 'flex';
@@ -7321,14 +7437,15 @@
         var config = loadSubstituteConfig();
         var info = state._midiInfo;
 
-        // 默认显示第一个 tab
+        // 起始页签: 功能区音域处理默认进入"音色替代配置" (应用音轨仅对 MIDI 导入有意义)
+        var startTab = (initialTab === 'instrument') ? 'sub-instrument' : 'sub-track';
         var tabTrack = $('midi-substitute-tab-track');
         var tabInstrument = $('midi-substitute-tab-instrument');
         var tabBtns = popup.querySelectorAll('.midi-sub-tab');
-        if (tabTrack) tabTrack.style.display = '';
-        if (tabInstrument) tabInstrument.style.display = 'none';
+        if (tabTrack) tabTrack.style.display = (startTab === 'sub-track') ? '' : 'none';
+        if (tabInstrument) tabInstrument.style.display = (startTab === 'sub-instrument') ? '' : 'none';
         for (var ti = 0; ti < tabBtns.length; ti++) {
-            tabBtns[ti].classList.toggle('active', tabBtns[ti].getAttribute('data-subtab') === 'sub-track');
+            tabBtns[ti].classList.toggle('active', tabBtns[ti].getAttribute('data-subtab') === startTab);
         }
 
         // 渲染音轨列表
@@ -7478,10 +7595,12 @@
                 var tr = document.createElement('tr');
                 tr.setAttribute('data-inst', instId);
 
-                // 音色名称
+                // 音色名称 (左侧显示对应音色的图标)
                 var nameTd = document.createElement('td');
-                nameTd.textContent = INSTRUMENT_NAMES[instId] || ('Inst ' + instId);
                 nameTd.style.cssText = 'padding:5px 8px;white-space:nowrap;';
+                nameTd.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;">'
+                    + getInstrumentIconHtml(instId)
+                    + '<span>' + (INSTRUMENT_NAMES[instId] || ('Inst ' + instId)) + '</span></span>';
                 tr.appendChild(nameTd);
 
                 // 音域
@@ -9463,6 +9582,9 @@
     function previewSustainTrack(trackIndex, btn, seekTime) {
         if (!state._midiFile || !state._midiInfo) return;
 
+        // 真正需要播放 MIDI 音符时: 按设置触发音色库下载/询问 (与 playMidiPreviewFallback 一致)
+        ensureSoundfontOnDemand();
+
         var reader = new FileReader();
         reader.onload = function(e) {
             var arrayBuffer = e.target.result;
@@ -9550,9 +9672,9 @@
         var programsSent = {};
         skipTime = skipTime || 0;
 
-        // 优先尝试 NBS 转换路径 (能听到拟合+替代+偏移后的真实效果)
-        // 仅当 AudioEngine 可用且能拿到当前 MIDI 设置时启用
-        var useNbsPath = !!(window.AudioEngine && AudioEngine.playNote && state._midiInfo);
+        // 延音轨道试听: 始终走 GM MIDI 路径 (播放 MIDI 原始音色, 不走 NBS 转换)
+        // 用户诉求: 延音音轨选择中应播放 MIDI, 而非 NBS 音色
+        var useNbsPath = false;
 
         if (!useNbsPath) {
             // 回退到原 GM MIDI 路径
