@@ -3625,7 +3625,9 @@ body.bg-active #fls-app {
     width: 460px;
     max-width: calc(100vw - 32px);
     max-height: 86vh;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow-y: hidden;
     padding: 0;
     background: var(--mica-base);
     border: 1px solid var(--ctrl-stroke-default);
@@ -3686,6 +3688,9 @@ body.bg-active #fls-app {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
 }
 .settings-row {
     display: flex;
@@ -5120,6 +5125,24 @@ textarea:disabled {
         .status-right {
             display: none;
         }
+
+        /* 横屏：FAB 按钮位置上移，适配更矮的视口 */
+        .mobile-fab-deselect {
+            bottom: 46px !important;
+            right: 68px !important;
+            width: 38px !important;
+            height: 38px !important;
+        }
+        .mobile-fab-single {
+            bottom: 44px !important;
+            right: 16px !important;
+            width: 44px !important;
+            height: 44px !important;
+        }
+        .fab-context-menu {
+            bottom: 96px !important;
+            right: 16px !important;
+        }
     }
 }
 
@@ -6025,6 +6048,20 @@ textarea:disabled {
     box-sizing: border-box;
     max-width: min(760px, calc(100vw - 24px));
     max-height: 84svh;
+}
+.app-dialog-box {
+    display: flex;
+    flex-direction: column;
+}
+.app-dialog-box .settings-header,
+.app-dialog-box .popup-actions {
+    flex: 0 0 auto;
+}
+.app-dialog-box .settings-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 .popup-content { overflow: auto; }
 .midi-import-dialog { width: min(760px, calc(100vw - 24px)); }

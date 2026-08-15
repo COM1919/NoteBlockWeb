@@ -358,12 +358,9 @@
         var box = document.createElement('div');
         box.className = 'app-dialog-box popup-content';
         box.style.cssText = 'max-width:' + (options.maxWidth || 400) + 'px;width:100%;background:var(--bg-secondary, #2a2a2a);border:1px solid var(--ctrl-stroke-default, #444);border-radius:var(--radius-md, 10px);box-shadow:0 8px 32px rgba(0,0,0,0.6);animation:scaleIn 0.18s ease;overflow:hidden;';
-        var iconHtml = icon ? '<i class="' + icon + '"></i>' : '';
-        var titleHtml = title ? '<h4 style="margin:0;font-size:14px;color:var(--text-primary,#fff);font-weight:600;flex:1;">' + title + '</h4>' : '';
         box.innerHTML =
-            '<div class="settings-header" style="display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--ctrl-stroke-default,#444);">'
-            + iconHtml + titleHtml
-            + '<button class="settings-close-btn" id="app-dialog-x" style="background:none;border:none;color:var(--text-secondary,#aaa);font-size:18px;cursor:pointer;padding:0 4px;line-height:1;">&times;</button>'
+            '<div class="settings-header" style="display:flex;align-items:center;justify-content:flex-end;padding:4px 8px;border-bottom:1px solid var(--ctrl-stroke-default,#444);">'
+            + '<button class="settings-close-btn" id="app-dialog-x" style="background:none;border:none;color:var(--text-secondary,#aaa);font-size:20px;cursor:pointer;padding:0 6px;line-height:1;">&times;</button>'
             + '</div>'
             + '<div class="settings-body" style="padding:16px;font-size:13px;color:var(--text-primary,#fff);line-height:1.6;white-space:pre-line;">' + message + '</div>'
             + '<div class="popup-actions" style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--ctrl-stroke-default,#444);justify-content:flex-end;"></div>';

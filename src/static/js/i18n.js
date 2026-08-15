@@ -438,7 +438,98 @@
                 [/^预计\s*(.+)$/, 'Estimated $1'], [/^已处理\s*(\d+)\s*个音符。$/, 'Processed $1 note(s).'],
                 [/^当前只选中了\s*(\d+)\s*个音符。$/, 'Only $1 note(s) are selected.'],
                 [/^已完成音域处理，调整了\s*(\d+)\s*个音符。$/, 'Range processing complete. Adjusted $1 note(s).'],
-                [/^已处理\s*(\d+)\s*个音符，超出 Minecraft 标准音域的音符已按八度折叠。$/, 'Processed $1 note(s). Notes outside the Minecraft range were folded by octave.']
+                [/^已处理\s*(\d+)\s*个音符，超出 Minecraft 标准音域的音符已按八度折叠。$/, 'Processed $1 note(s). Notes outside the Minecraft range were folded by octave.'],
+                [/^范围: (.+?) \((\d+) 个八度\)$/, 'Range: $1 ($2 octaves)'],
+                [/^通道 <b>(\d+)<\/b>$/, 'Channel <b>$1</b>'],
+                [/^已选择:\s*(\d+)\s*$/, 'Selected: $1'], [/^已选择:\s*(\d+)\s*个音符$/, 'Selected: $1 note(s)'],
+                // 音域处理模式提示 (textContent 拼接的完整字符串)
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 不进行音域转换$/, 'Minecraft range F#3-F#5 (MIDI 54-78) · No range conversion'],
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 超出音域的音符会按八度归一$/, 'Minecraft range F#3-F#5 (MIDI 54-78) · Out-of-range notes folded by octave'],
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 自动偏移、音色替代并强制归位$/, 'Minecraft range F#3-F#5 (MIDI 54-78) · Auto-shift, timbre substitution, and forced fold'],
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 自动偏移并按需使用音色替代$/, 'Minecraft range F#3-F#5 (MIDI 54-78) · Auto-shift with on-demand timbre substitution'],
+                // 音色库状态 (名称与引擎名也需翻译)
+                [/^(.+) 已就绪 \((\d+) 个预设(?:, (.+))?\)$/, function(m, name, n, extra) {
+                    return translate(name) + ' ready (' + n + ' presets' + (extra ? ', ' + translate(extra) : '') + ')';
+                }],
+                [/^(.+) 音色库已就绪 \((\d+) 个预设\)$/, function(m, name, n) {
+                    return translate(name) + ' soundfont ready (' + n + ' presets)';
+                }],
+                [/^(.+) 音色库已就绪 \((.+)\) \((\d+) 个预设\)$/, function(m, name, eng, n) {
+                    return translate(name) + ' soundfont ready (' + translate(eng) + ') (' + n + ' presets)';
+                }],
+                [/^正在下载 (.+)\.\.\.$/, function(m, name) { return 'Downloading ' + translate(name) + '...'; }],
+                // 默认音轨名
+                [/^音轨 (\d+)$/, 'Track $1'],
+                // 错误消息 (前缀 + 内部消息递归翻译)
+                [/^加载失败: (.+)$/, function(m, msg) { return 'Load failed: ' + translate(msg); }],
+                [/^保存失败: (.+)$/, function(m, msg) { return 'Save failed: ' + translate(msg); }],
+                [/^导出失败: (.+)$/, function(m, msg) { return 'Export failed: ' + translate(msg); }],
+                [/^MIDI 导入失败: (.+)$/, function(m, msg) { return 'MIDI import failed: ' + translate(msg); }],
+                [/^MIDI 粘贴失败: (.+)$/, function(m, msg) { return 'MIDI paste failed: ' + translate(msg); }],
+                [/^读取 MIDI 信息失败: (.+)$/, function(m, msg) { return 'Failed to read MIDI info: ' + translate(msg); }],
+                [/^错误: (.+)$/, function(m, msg) { return 'Error: ' + translate(msg); }],
+                [/^加载NBS文件失败: (.+)$/, function(m, msg) { return 'Failed to load NBS file: ' + translate(msg); }],
+                [/^导出NBS失败: (.+)$/, function(m, msg) { return 'NBS export failed: ' + translate(msg); }],
+                [/^导入MIDI失败: (.+)$/, function(m, msg) { return 'MIDI import failed: ' + translate(msg); }],
+                [/^读取MIDI信息失败: (.+)$/, function(m, msg) { return 'Failed to read MIDI info: ' + translate(msg); }],
+                [/^请求失败 \((\d+)\)$/, 'Request failed ($1)'],
+                [/^请求失败: (.+)$/, function(m, msg) { return 'Request failed: ' + translate(msg); }],
+                // 确认对话框与命名
+                [/^将删除\s*(\d+)\s*个空轨 \(从\s*(\d+)\s*减到\s*(\d+)\)，是否继续？$/, 'Delete $1 empty track(s) (from $2 down to $3)? Continue?'],
+                [/^删除音轨 "(.+)" 及其所有 Clip\?$/, 'Delete track "$1" and all its clips?'],
+                [/^(.+) \(副本\)$/, '$1 (copy)'],
+                [/^(.+) · (\d+) 音轨 · (\d+) 音符$/, '$1 · $2 track(s) · $3 note(s)']
+            ],
+            'ja-JP': [
+                [/^音符:\s*(\d+)$/, '音符: $1'], [/^位置:\s*(\d+)$/, '位置: $1'],
+                [/^录制到:\s*(.+)$/, '録音先: $1'], [/^已选择\s*(\d+)\s*个音符$/, '$1 ノートを選択中'],
+                [/^已选择\s*(\d+)\s*个轨道$/, '$1 トラックを選択中'], [/^长度\s*(\d+)\s*步\s*·\s*(\d+)\s*个音符$/, '長さ $1 ステップ · $2 ノート'],
+                [/^吸附到:\s*(.+)\s*\(每\s*(\d+)\s*tick\)$/, 'スナップ先: $1 (毎 $2 tick)'], [/^吸附网格:\s*(\d+)\s*tick$/, 'スナップグリッド: $1 tick'],
+                [/^已连接:\s*(.+)$/, '接続済み: $1'], [/^已连接\s+(.+)$/, '接続済み $1'], [/^MIDI 输入\s*(.+)$/, 'MIDI 入力 $1'],
+                [/^预计\s*(.+)$/, '推定: $1'], [/^已处理\s*(\d+)\s*个音符。$/, '$1 ノートを処理しました。'],
+                [/^当前只选中了\s*(\d+)\s*个音符。$/, '現在 $1 ノートのみ選択されています。'],
+                [/^已完成音域处理，调整了\s*(\d+)\s*个音符。$/, '音域処理が完了しました。$1 ノートを調整しました。'],
+                [/^已处理\s*(\d+)\s*个音符，超出 Minecraft 标准音域的音符已按八度折叠。$/, '$1 ノートを処理しました。Minecraft 標準音域外のノートはオクターブ単位で折り返しました。'],
+                [/^范围: (.+?) \((\d+) 个八度\)$/, '範囲: $1 ($2 オクターブ)'],
+                [/^通道 <b>(\d+)<\/b>$/, 'チャンネル <b>$1</b>'],
+                [/^已选择:\s*(\d+)\s*$/, '選択済み: $1'], [/^已选择:\s*(\d+)\s*个音符$/, '選択済み: $1 ノート'],
+                // 音域处理模式提示 (整句)
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 不进行音域转换$/, 'Minecraft 音域 F#3-F#5 (MIDI 54-78) · 音域変換なし'],
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 超出音域的音符会按八度归一$/, 'Minecraft 音域 F#3-F#5 (MIDI 54-78) · 範囲外のノートはオクターブで折り返し'],
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 自动偏移、音色替代并强制归位$/, 'Minecraft 音域 F#3-F#5 (MIDI 54-78) · 自動シフト・音色置換・強制折り返し'],
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 自动偏移并按需使用音色替代$/, 'Minecraft 音域 F#3-F#5 (MIDI 54-78) · 自動シフト・必要に応じて音色置換'],
+                // 音色库状态 (名称与引擎名也需翻译)
+                [/^(.+) 已就绪 \((\d+) 个预设(?:, (.+))?\)$/, function(m, name, n, extra) {
+                    return translate(name) + ' 準備完了 (' + n + ' プリセット' + (extra ? ', ' + translate(extra) : '') + ')';
+                }],
+                [/^(.+) 音色库已就绪 \((\d+) 个预设\)$/, function(m, name, n) {
+                    return translate(name) + ' 音色ライブラリ準備完了 (' + n + ' プリセット)';
+                }],
+                [/^(.+) 音色库已就绪 \((.+)\) \((\d+) 个预设\)$/, function(m, name, eng, n) {
+                    return translate(name) + ' 音色ライブラリ準備完了 (' + translate(eng) + ') (' + n + ' プリセット)';
+                }],
+                [/^正在下载 (.+)\.\.\.$/, function(m, name) { return translate(name) + ' をダウンロード中...'; }],
+                // 默认音轨名
+                [/^音轨 (\d+)$/, 'トラック $1'],
+                // 错误消息 (前缀 + 内部消息递归翻译)
+                [/^加载失败: (.+)$/, function(m, msg) { return '読み込みに失敗: ' + translate(msg); }],
+                [/^保存失败: (.+)$/, function(m, msg) { return '保存に失敗: ' + translate(msg); }],
+                [/^导出失败: (.+)$/, function(m, msg) { return 'エクスポートに失敗: ' + translate(msg); }],
+                [/^MIDI 导入失败: (.+)$/, function(m, msg) { return 'MIDI インポートに失敗: ' + translate(msg); }],
+                [/^MIDI 粘贴失败: (.+)$/, function(m, msg) { return 'MIDI 貼り付けに失敗: ' + translate(msg); }],
+                [/^读取 MIDI 信息失败: (.+)$/, function(m, msg) { return 'MIDI 情報の読み取りに失敗: ' + translate(msg); }],
+                [/^错误: (.+)$/, function(m, msg) { return 'エラー: ' + translate(msg); }],
+                [/^加载NBS文件失败: (.+)$/, function(m, msg) { return 'NBS ファイルの読み込みに失敗: ' + translate(msg); }],
+                [/^导出NBS失败: (.+)$/, function(m, msg) { return 'NBS エクスポートに失敗: ' + translate(msg); }],
+                [/^导入MIDI失败: (.+)$/, function(m, msg) { return 'MIDI インポートに失敗: ' + translate(msg); }],
+                [/^读取MIDI信息失败: (.+)$/, function(m, msg) { return 'MIDI 情報の読み取りに失敗: ' + translate(msg); }],
+                [/^请求失败 \((\d+)\)$/, 'リクエストに失敗 ($1)'],
+                [/^请求失败: (.+)$/, function(m, msg) { return 'リクエストに失敗: ' + translate(msg); }],
+                // 確認ダイアログ・命名
+                [/^将删除\s*(\d+)\s*个空轨 \(从\s*(\d+)\s*减到\s*(\d+)\)，是否继续？$/, '$1 個の空トラックを削除します (全 $2 → $3)。続行しますか?'],
+                [/^删除音轨 "(.+)" 及其所有 Clip\?$/, 'トラック「$1」とそのすべての Clip を削除しますか?'],
+                [/^(.+) \(副本\)$/, '$1 (コピー)'],
+                [/^(.+) · (\d+) 音轨 · (\d+) 音符$/, '$1 · $2 トラック · $3 ノート']
             ],
             'pt-BR': [
                 [/^音符:\s*(\d+)$/, 'Notas: $1'], [/^位置:\s*(\d+)$/, 'Posição: $1'],
@@ -449,7 +540,47 @@
                 [/^预计\s*(.+)$/, 'Estimado: $1'], [/^已处理\s*(\d+)\s*个音符。$/, '$1 nota(s) processada(s).'],
                 [/^当前只选中了\s*(\d+)\s*个音符。$/, 'Apenas $1 nota(s) está(ão) selecionada(s).'],
                 [/^已完成音域处理，调整了\s*(\d+)\s*个音符。$/, 'Processamento de extensão concluído. $1 nota(s) ajustada(s).'],
-                [/^已处理\s*(\d+)\s*个音符，超出 Minecraft 标准音域的音符已按八度折叠。$/, '$1 nota(s) processada(s). Notas fora da extensão do Minecraft foram dobradas por oitava.']
+                [/^已处理\s*(\d+)\s*个音符，超出 Minecraft 标准音域的音符已按八度折叠。$/, '$1 nota(s) processada(s). Notas fora da extensão do Minecraft foram dobradas por oitava.'],
+                [/^范围: (.+?) \((\d+) 个八度\)$/, 'Extensão: $1 ($2 oitavas)'],
+                [/^通道 <b>(\d+)<\/b>$/, 'Canal <b>$1</b>'],
+                [/^已选择:\s*(\d+)\s*$/, 'Selecionado: $1'], [/^已选择:\s*(\d+)\s*个音符$/, 'Selecionado: $1 nota(s)'],
+                // 音域处理模式提示 (整句)
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 不进行音域转换$/, 'Extensão do Minecraft F#3-F#5 (MIDI 54-78) · Sem conversão de extensão'],
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 超出音域的音符会按八度归一$/, 'Extensão do Minecraft F#3-F#5 (MIDI 54-78) · Notas fora da extensão dobradas por oitava'],
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 自动偏移、音色替代并强制归位$/, 'Extensão do Minecraft F#3-F#5 (MIDI 54-78) · Auto-shift, substituição de timbre e dobra forçada'],
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 自动偏移并按需使用音色替代$/, 'Extensão do Minecraft F#3-F#5 (MIDI 54-78) · Auto-shift com substituição de timbre sob demanda'],
+                // 音色库状态 (名称与引擎名也需翻译)
+                [/^(.+) 已就绪 \((\d+) 个预设(?:, (.+))?\)$/, function(m, name, n, extra) {
+                    return translate(name) + ' pronto (' + n + ' presets' + (extra ? ', ' + translate(extra) : '') + ')';
+                }],
+                [/^(.+) 音色库已就绪 \((\d+) 个预设\)$/, function(m, name, n) {
+                    return translate(name) + ' soundfont pronto (' + n + ' presets)';
+                }],
+                [/^(.+) 音色库已就绪 \((.+)\) \((\d+) 个预设\)$/, function(m, name, eng, n) {
+                    return translate(name) + ' soundfont pronto (' + translate(eng) + ') (' + n + ' presets)';
+                }],
+                [/^正在下载 (.+)\.\.\.$/, function(m, name) { return 'Baixando ' + translate(name) + '...'; }],
+                // 默认音轨名
+                [/^音轨 (\d+)$/, 'Faixa $1'],
+                // 错误消息 (前缀 + 内部消息递归翻译)
+                [/^加载失败: (.+)$/, function(m, msg) { return 'Falha ao carregar: ' + translate(msg); }],
+                [/^保存失败: (.+)$/, function(m, msg) { return 'Falha ao salvar: ' + translate(msg); }],
+                [/^导出失败: (.+)$/, function(m, msg) { return 'Falha na exportação: ' + translate(msg); }],
+                [/^MIDI 导入失败: (.+)$/, function(m, msg) { return 'Falha na importação MIDI: ' + translate(msg); }],
+                [/^MIDI 粘贴失败: (.+)$/, function(m, msg) { return 'Falha ao colar MIDI: ' + translate(msg); }],
+                [/^读取 MIDI 信息失败: (.+)$/, function(m, msg) { return 'Falha ao ler informações MIDI: ' + translate(msg); }],
+                [/^错误: (.+)$/, function(m, msg) { return 'Erro: ' + translate(msg); }],
+                [/^加载NBS文件失败: (.+)$/, function(m, msg) { return 'Falha ao carregar arquivo NBS: ' + translate(msg); }],
+                [/^导出NBS失败: (.+)$/, function(m, msg) { return 'Falha na exportação NBS: ' + translate(msg); }],
+                [/^导入MIDI失败: (.+)$/, function(m, msg) { return 'Falha na importação MIDI: ' + translate(msg); }],
+                [/^读取MIDI信息失败: (.+)$/, function(m, msg) { return 'Falha ao ler informações MIDI: ' + translate(msg); }],
+                [/^请求失败 \((\d+)\)$/, 'Falha na solicitação ($1)'],
+                [/^请求失败: (.+)$/, function(m, msg) { return 'Falha na solicitação: ' + translate(msg); }],
+                // 确认对话框与命名
+                [/^将删除\s*(\d+)\s*个空轨 \(从\s*(\d+)\s*减到\s*(\d+)\)，是否继续？$/, 'Excluir $1 faixa(s) vazia(s) (de $2 para $3)? Continuar?'],
+                [/^删除音轨 "(.+)" 及其所有 Clip\?$/, 'Excluir a faixa "$1" e todos os seus clipes?'],
+                [/^(.+) \(副本\)$/, '$1 (cópia)'],
+                [/^(.+) · (\d+) 音轨 · (\d+) 音符$/, '$1 · $2 faixa(s) · $3 nota(s)']
             ],
             'id-ID': [
                 [/^音符:\s*(\d+)$/, 'Not: $1'], [/^位置:\s*(\d+)$/, 'Posisi: $1'],
@@ -460,10 +591,50 @@
                 [/^预计\s*(.+)$/, 'Perkiraan $1'], [/^已处理\s*(\d+)\s*个音符。$/, '$1 not diproses.'],
                 [/^当前只选中了\s*(\d+)\s*个音符。$/, 'Hanya $1 not yang dipilih.'],
                 [/^已完成音域处理，调整了\s*(\d+)\s*个音符。$/, 'Pemrosesan rentang selesai. $1 not disesuaikan.'],
-                [/^已处理\s*(\d+)\s*个音符，超出 Minecraft 标准音域的音符已按八度折叠。$/, '$1 not diproses. Not di luar rentang Minecraft dilipat per oktaf.']
+                [/^已处理\s*(\d+)\s*个音符，超出 Minecraft 标准音域的音符已按八度折叠。$/, '$1 not diproses. Not di luar rentang Minecraft dilipat per oktaf.'],
+                [/^范围: (.+?) \((\d+) 个八度\)$/, 'Rentang: $1 ($2 oktaf)'],
+                [/^通道 <b>(\d+)<\/b>$/, 'Kanal <b>$1</b>'],
+                [/^已选择:\s*(\d+)\s*$/, 'Terpilih: $1'], [/^已选择:\s*(\d+)\s*个音符$/, 'Terpilih: $1 not'],
+                // 音域处理模式提示 (整句)
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 不进行音域转换$/, 'Rentang Minecraft F#3-F#5 (MIDI 54-78) · Tanpa konversi rentang'],
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 超出音域的音符会按八度归一$/, 'Rentang Minecraft F#3-F#5 (MIDI 54-78) · Not di luar rentang dilipat per oktaf'],
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 自动偏移、音色替代并强制归位$/, 'Rentang Minecraft F#3-F#5 (MIDI 54-78) · Geser otomatis, penggantian timbre, dan lipat paksa'],
+                [/^MC 音域 F#3~F#5 \(MIDI 54~78\) · 自动偏移并按需使用音色替代$/, 'Rentang Minecraft F#3-F#5 (MIDI 54-78) · Geser otomatis dengan penggantian timbre sesuai kebutuhan'],
+                // 音色库状态 (名称与引擎名也需翻译)
+                [/^(.+) 已就绪 \((\d+) 个预设(?:, (.+))?\)$/, function(m, name, n, extra) {
+                    return translate(name) + ' siap (' + n + ' preset' + (extra ? ', ' + translate(extra) : '') + ')';
+                }],
+                [/^(.+) 音色库已就绪 \((\d+) 个预设\)$/, function(m, name, n) {
+                    return translate(name) + ' soundfont siap (' + n + ' preset)';
+                }],
+                [/^(.+) 音色库已就绪 \((.+)\) \((\d+) 个预设\)$/, function(m, name, eng, n) {
+                    return translate(name) + ' soundfont siap (' + translate(eng) + ') (' + n + ' preset)';
+                }],
+                [/^正在下载 (.+)\.\.\.$/, function(m, name) { return 'Mengunduh ' + translate(name) + '...'; }],
+                // 默认音轨名
+                [/^音轨 (\d+)$/, 'Trek $1'],
+                // 错误消息 (前缀 + 内部消息递归翻译)
+                [/^加载失败: (.+)$/, function(m, msg) { return 'Gagal memuat: ' + translate(msg); }],
+                [/^保存失败: (.+)$/, function(m, msg) { return 'Gagal menyimpan: ' + translate(msg); }],
+                [/^导出失败: (.+)$/, function(m, msg) { return 'Gagal mengekspor: ' + translate(msg); }],
+                [/^MIDI 导入失败: (.+)$/, function(m, msg) { return 'Gagal mengimpor MIDI: ' + translate(msg); }],
+                [/^MIDI 粘贴失败: (.+)$/, function(m, msg) { return 'Gagal menempel MIDI: ' + translate(msg); }],
+                [/^读取 MIDI 信息失败: (.+)$/, function(m, msg) { return 'Gagal membaca info MIDI: ' + translate(msg); }],
+                [/^错误: (.+)$/, function(m, msg) { return 'Error: ' + translate(msg); }],
+                [/^加载NBS文件失败: (.+)$/, function(m, msg) { return 'Gagal memuat berkas NBS: ' + translate(msg); }],
+                [/^导出NBS失败: (.+)$/, function(m, msg) { return 'Gagal mengekspor NBS: ' + translate(msg); }],
+                [/^导入MIDI失败: (.+)$/, function(m, msg) { return 'Gagal mengimpor MIDI: ' + translate(msg); }],
+                [/^读取MIDI信息失败: (.+)$/, function(m, msg) { return 'Gagal membaca info MIDI: ' + translate(msg); }],
+                [/^请求失败 \((\d+)\)$/, 'Permintaan gagal ($1)'],
+                [/^请求失败: (.+)$/, function(m, msg) { return 'Permintaan gagal: ' + translate(msg); }],
+                // 确认对话框与命名
+                [/^将删除\s*(\d+)\s*个空轨 \(从\s*(\d+)\s*减到\s*(\d+)\)，是否继续？$/, 'Hapus $1 trek kosong (dari $2 menjadi $3)? Lanjutkan?'],
+                [/^删除音轨 "(.+)" 及其所有 Clip\?$/, 'Hapus trek "$1" beserta semua Clip-nya?'],
+                [/^(.+) \(副本\)$/, '$1 (salinan)'],
+                [/^(.+) · (\d+) 音轨 · (\d+) 音符$/, '$1 · $2 trek · $3 not']
             ]
         };
-        var list = patterns[current] || [];
+        var list = patterns[current] || patterns['en-US'] || [];
         for (var i = 0; i < list.length; i++) {
             if (list[i][0].test(text)) return text.replace(list[i][0], list[i][1]);
         }
@@ -471,12 +642,16 @@
     }
 
     function translate(text) {
+        // zh-CN 是源语言，键本身就是中文，不翻译
+        if (current === 'zh-CN') return text;
         var dictionary = UI_TEXT[current] || {};
-        return dictionary[text] || translatePattern(text);
+        // 本地词典缺失时回退到英文 (en-US), 避免中文泄漏到非中文界面
+        return dictionary[text] || UI_TEXT['en-US'][text] || translatePattern(text);
     }
 
     function translateStaticText() {
         var dictionary = UI_TEXT[current] || {};
+        var enDictionary = UI_TEXT['en-US'] || {};
         var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
         var nodes = [];
         while (walker.nextNode()) nodes.push(walker.currentNode);
@@ -490,7 +665,9 @@
                 sourceText.set(node, entry);
             }
             var leading = (entry.source.match(/^\s*/) || [''])[0], trailing = (entry.source.match(/\s*$/) || [''])[0], value = entry.source.trim();
-            var rendered = leading + (dictionary[value] || translatePattern(value)) + trailing;
+            // zh-CN 是源语言，不翻译；其他语言先查本地词典，再回退英文
+            var translatedValue = (current === 'zh-CN') ? value : (dictionary[value] || enDictionary[value] || translatePattern(value));
+            var rendered = leading + translatedValue + trailing;
             entry.rendered = rendered;
             if (node.nodeValue !== rendered) node.nodeValue = rendered;
         }
@@ -498,6 +675,7 @@
 
     function translateAttributes() {
         var dictionary = UI_TEXT[current] || {};
+        var enDictionary = UI_TEXT['en-US'] || {};
         var attributes = ['title', 'data-tip', 'placeholder', 'aria-label'];
         for (var a = 0; a < attributes.length; a++) {
             var attribute = attributes[a];
@@ -513,7 +691,7 @@
                     original = currentValue;
                     element.dataset[dataKey] = original;
                 }
-                var translated = dictionary[original] || translatePattern(original);
+                var translated = (current === 'zh-CN') ? original : (dictionary[original] || enDictionary[original] || translatePattern(original));
                 if (element.getAttribute(attribute) !== translated) element.setAttribute(attribute, translated);
                 element.dataset[renderedKey] = translated;
             }
@@ -582,5 +760,359 @@
     }
 
     function init() { bindSelect('settings-language'); bindSelect('privacy-language'); apply(detect(), false); observeTranslations(); }
+
+    // ============ 运行时补充词条 (en-US) ============
+    // 编辑器动态生成的 UI 文本。新增词条在 addLocale 之后追加,
+    // 其他语言通过 translate() 的英文回退获得兜底, ja-JP 提供本地翻译。
+    Object.assign(UI_TEXT['en-US'], {
+        '一个格子多个音符': 'Multiple notes in one cell', '上一个音符的音调和音色': 'The pitch and timbre of the previous note',
+        '下载': 'Download', '下载 MIDI 音色库': 'Download MIDI soundfont', '下载/解析失败, 将使用内置合成器': 'Download/parse failed; using built-in synthesizer',
+        '例子 (1XXX2X3XXXXX1XX6):<br>': 'Example (1XXX2X3XXXXX1XX6):<br>', '例子 (留空长度 = 2)：<br>': 'Example (empty sustain = 2):<br>',
+        '保存 NBS': 'Save NBS', '保存失败': 'Save failed', '保存失败:': 'Save failed:', '保存本地数据失败:': 'Failed to save local data:',
+        '全部音符中筛选': 'Filter from all notes', '共享状态': 'Shared state', '关闭残留': 'Dismiss leftover', '击掌声': 'Click',
+        '分': 'min', '刚关闭菜单': 'Menu just closed',
+        '勾选要从当前选择中移除的音色': 'Check timbres to remove from the current selection',
+        '填充的音符使用<b>上一个</b>原音符的音调和音色；最后一个音符会延长 4 个 tick 位置。': 'Filled notes use the <b>previous</b> note\'s pitch and timbre; the last note is extended by 4 ticks.',
+        '处理失败': 'Processing failed', '处理完成': 'Processing complete', '存储空间不足, 部分数据可能未保存': 'Storage full; some data may not be saved',
+        '导入失败': 'Import failed', '导出失败:': 'Export failed:', '将删除': 'Will be deleted', '已处理': 'Processed',
+        '已完成音域处理，调整了': 'Range processing complete. Adjusted', '已恢复默认替代配置': 'Restored default substitution settings',
+        '已清理': 'Cleaned up', '已连接': 'Connected', '已连接:': 'Connected:', '已选择': 'Selected', '已选择:': 'Selected:',
+        '平移': 'Pan', '当前无选择, 将先全选再筛选。勾选要排除的音色': 'No selection; will select all first, then filter. Check timbres to exclude.',
+        '当前没有可处理的音符。': 'There are no notes to process.',
+        '当前编辑内容会被清空，是否新建空文件？': 'The current edits will be cleared. Create a new empty file?',
+        '必须': 'Required', '恢复默认替代': 'Restore default substitution',
+        '您有未保存的编辑内容，确定要离开吗？数据已自动保存到本地。': 'You have unsaved edits. Leave anyway? Data is auto-saved locally.',
+        '打开菜单': 'Open menu', '操作失败': 'Operation failed', '放置音符': 'Place note',
+        '文件数据不存在，可能已被清理': 'File data does not exist; it may have been cleaned up', '文件数据不完整': 'File data is incomplete',
+        '无效': 'Invalid', '无法保存文件': 'Could not save file', '无法加载文件': 'Could not load file', '无法加载本地文件': 'Could not load local file',
+        '无法导入 MIDI': 'Could not import MIDI', '无法导出文件': 'Could not export file', '无法解析': 'Could not parse',
+        '无法试听：NBS 音频引擎未就绪。': 'Cannot preview: NBS audio engine is not ready.',
+        '无法读取 MIDI 信息': 'Could not read MIDI info', '无法读取 MIDI 信息: 返回数据异常': 'Could not read MIDI info: invalid response',
+        '无音符': 'No notes', '暂不': 'Not now', '未下载 (播放 MIDI 音符时按设置提示)': 'Not downloaded (prompt per settings when playing MIDI notes)',
+        '未加载歌曲': 'No song loaded', '未命名': 'Untitled', '未知错误': 'Unknown error', '未选中有效音符': 'No valid note selected',
+        '未配置 MIDI 音色库下载地址 (服务端 config.yaml)': 'MIDI soundfont URL is not configured (server config.yaml)',
+        '本次导入中已提示过的通道': 'Channels already prompted in this import',
+        '正在上传...': 'Uploading...', '正在下载': 'Downloading', '正在处理...': 'Processing...', '正在解析...': 'Parsing...', '正在解析音色库...': 'Parsing soundfont...',
+        '永远差一格/有偏差': 'Always off by one / off-pitch', '没有添加任何音符 (可能选中区间已满)': 'No notes were added (the selection may be full)',
+        '浏览器不支持 Web MIDI，且 TinySynth 未加载，无法试听。': 'Web MIDI is unsupported and TinySynth is not loaded; cannot preview.',
+        '浏览器不支持 Web MIDI，且 TinySynth 未加载，无法试听原音色。': 'Web MIDI is unsupported and TinySynth is not loaded; cannot preview the original timbre.',
+        '清理孤儿文件失败:': 'Failed to clean up orphan files:', '清理自动保存数据后重试成功': 'Retry succeeded after cleaning auto-saved data',
+        '清理配额失败:': 'Failed to clean up quota:', '清除音色库缓存': 'Clear soundfont cache',
+        '确定清除已下载的 MIDI 音色库缓存吗？清除后需重新下载。': 'Clear the downloaded MIDI soundfont cache? You will need to download it again.',
+        '确实选择了图片': 'Image is selected', '秒': 's', '自动': 'Automatic',
+        '规律使用“|”分隔，数字代表相对于选择区域的第几条音轨。<br>': 'Use "|" to separate values; each number is the track position relative to the selection.<br>',
+        '规律格式错误，请使用“|”分隔正整数，例如 1|2|1|3。': 'Invalid pattern. Use "|" to separate positive integers, e.g. 1|2|1|3.',
+        '解析返回空数据': 'Parse returned empty data', '试听失败': 'Preview failed', '试听此轨道': 'Preview this track', '该轨道没有音符事件': 'This track has no note events',
+        '请先在钢琴卷帘上选择至少 1 个音符再使用上下起伏。': 'Select at least 1 note in the piano roll before using Arpeggio motion.',
+        '请先在钢琴卷帘上选择至少 1 个音符再使用清除延音。': 'Select at least 1 note in the piano roll before clearing sustain.',
+        '请先选择要偏移的音符': 'Select the notes to shift first', '请先选择音符': 'Select notes first',
+        '请选择多个音符 (至少 2 个)。\n\n当前只选中了 1 个音符。': 'Select multiple notes (at least 2).\n\nOnly 1 note is currently selected.',
+        '读取 MIDI 信息失败:': 'Failed to read MIDI info:', '配额超限, 已清理': 'Quota exceeded; cleaned up',
+        '错误:': 'Error:', '间隔': 'Interval', '音色替代配置已保存': 'Substitution settings saved',
+        '音色替代配置已恢复为默认。': 'Substitution settings restored to defaults.', '音频上下文未就绪，无法试听。': 'Audio context is not ready; cannot preview.',
+        '预计': 'Estimated', '鼓': 'Drums', '鼓音符': 'Drum note', '鼠标放在哪格, 松手就落在哪格': 'The note lands on the cell where you release'
+    });
+
+    // ============ 运行时补充词条 2 (en-US) ============
+    // 新增功能 (MIDI 音色库/音色替代/音域处理/FLS) 的错误消息与弹窗文本。
+    // 多数为拼接文本, 由 translatePattern 处理; 这里的完整片段供
+    // translateStaticText 的文本节点直接命中。
+    Object.assign(UI_TEXT['en-US'], {
+        '请求失败': 'Request failed', '网络错误': 'Network error', '请求超时': 'Request timeout',
+        '播放失败': 'Playback failed', '暂停失败': 'Pause failed', '停止失败': 'Stop failed',
+        '读取文件失败': 'Failed to read file', '添加音符失败': 'Failed to add note', '更新音符失败': 'Failed to update note',
+        '删除音符失败': 'Failed to delete note', '批量操作失败': 'Batch operation failed', '设置速度失败': 'Failed to set tempo',
+        '加载NBS文件失败:': 'Failed to load NBS file:', '导出NBS失败:': 'NBS export failed:', '导入MIDI失败:': 'MIDI import failed:',
+        '读取MIDI信息失败:': 'Failed to read MIDI info:',
+        'NBS: 意外的文件结束': 'NBS: unexpected end of file', 'MIDI: 意外的文件结束': 'MIDI: unexpected end of file',
+        'NBS: 字符串超出文件范围': 'NBS: string out of file range',
+        '无效的 MIDI 文件：缺少 MThd 头': 'Invalid MIDI file: missing MThd header',
+        'MIDI 文件格式损坏或数据不完整 (轨道': 'MIDI file corrupted or incomplete (track',
+        '缺少 sdta 块': 'Missing sdta chunk', '缺少 pdta 块': 'Missing pdta chunk',
+        '不是 RIFF 文件': 'Not a RIFF file', '不是 SoundFont 文件 (form=': 'Not a SoundFont file (form=',
+        'AudioContext 不可用': 'AudioContext unavailable',
+        'MIDI 音色库': 'MIDI soundfont', '内置解析器': 'Built-in parser',
+        '音色覆盖提示': 'Timbre override notice',
+        '当前使用拟合音色。你手动选择了具体乐器后，': 'currently uses the fitted timbre. Once you manually pick a specific instrument, ',
+        '该通道将不再跟随拟合结果改变': 'this channel will no longer follow the fitting result',
+        '，即后续在"音色拟合"标签页中调整的组合音色不会应用到这个通道。': ', and timbre combinations adjusted in the "Timbre fitting" tab will not be applied to this channel.',
+        '归一化': 'Normalized', '无偏移': 'No shift',
+        '• 间隔 0：': '• Gap 0: ', '• 间隔 1：': '• Gap 1: ', '• 间隔 2：': '• Gap 2: ',
+        '(无空位)': '(no gap)',
+        '(超出范围)': '(out of range)', '+ 添加音轨': '+ Add track',
+        '用“|”分隔正整数，如 1|2|1|3': 'Use "|" to separate positive integers, e.g. 1|2|1|3',
+        '及其所有 Clip?': 'and all its clips?'
+    });
+
+    // ============ ja-JP 完整本地化 ============
+    // ja-JP 通过 addLocale 只覆盖了少量词条, 其余继承英文。这里为全部
+    // 中文键提供日语翻译, 使日语界面不显示英文/中文。
+    Object.assign(UI_TEXT['ja-JP'], {
+        '文件': 'ファイル', '速度': 'テンポ', '撤销': '元に戻す', '重做': 'やり直す', '设置': '設定', '关于': '情報', '功能': 'ツール',
+        '撤销 (Ctrl+Z)': '元に戻す (Ctrl+Z)', '重做 (Ctrl+Y)': 'やり直す (Ctrl+Y)', '速度 (Tick/秒)': 'テンポ (tick/秒)',
+        '更多': 'その他', '钢琴键盘': 'ピアノ鍵盤', '使用键盘触发钢琴': 'キーボードでピアノを鳴らす', '折叠音轨列表': 'トラック一覧を折りたたむ',
+        '默认工具 (D)': '標準ツール (D)', '选择工具 (S)': '選択ツール (S)', '橡皮擦 (E)': '消しゴム (E)', '画笔 (B)': 'ブラシ (B)', '演奏模式 (P)': '演奏モード (P)',
+        '播放/暂停 (Space)': '再生/一時停止 (Space)', '开始录制 (Space)': '録音を開始 (Space)', '停止 (Esc)': '停止 (Esc)', '选择乐器': '楽器を選択',
+        '缩放精度': 'グリッド精度', '音调偏移': '音程シフト', '延音填充': 'サステインを補完', '清除延音': 'サステインを削除', '上下起伏': 'アルペジオの動き',
+        '转8度内': '2 オクターブ内に収める', '音域处理': '音域を処理', '清除空轨道': '空のトラックを削除', '新建文件': '新規ファイル', '打开文件': 'ファイルを開く',
+        '保存': '保存', '导出 NBS': 'NBS をエクスポート', '取消': 'キャンセル', '导入': 'インポート', '基本设置': '基本設定', '音轨': 'トラック', '音色拟合': '音色フィッティング',
+        '读取音符力度': 'ノートベロシティを読み取る', '音符吸附': 'ノートスナップ', '歌曲精度:': '曲の精度:', '拍子:': '拍:', '延音处理:': 'サステイン:', '移除无音符轨道': '空のトラックを削除',
+        '全选': 'すべて選択', '取消选择': '選択解除', '复制': 'コピー', '剪切': '切り取り', '粘贴': '貼り付け', '删除': '削除', '更改乐器': '楽器を変更', '更改音量': '音量を変更',
+        '静音': 'ミュート', '取消静音': 'ミュート解除', '独奏': 'ソロ', '取消独奏': 'ソロ解除', '删除音轨': 'トラックを削除', '上移轨道': 'トラックを上へ', '下移轨道': 'トラックを下へ', '音量:': '音量:',
+        '历史文件': '履歴', '暂无历史文件': '保存済みファイルはありません', '更多...': 'その他...', '加载': '読み込み', '重命名': '名前を変更', '关闭': '閉じる',
+        '展开/折叠钢琴键盘': 'ピアノ鍵盤の表示/非表示', '设置小键盘弹奏音域': 'テンキー演奏音域の設定', '超出范围': '範囲外', '音符:': '音符:', '位置:': '位置:',
+        '平滑翻页 (播放头居中)': 'スムーズ追従 (再生ヘッド中央)', '音符播放高亮动画': 'ノート再生ハイライト', '录制时显示音符动画 (关闭可提升录制性能)': '録音中にノートアニメを表示 (オフで録音性能向上)',
+        '音效优化 (混响/立体声)': 'オーディオ強化 (リバーブ/ステレオ)', 'NBS 导出版本:': 'NBS エクスポート版:', '含铜号角乐器时自动 V6': '銅の角笛があるとき自動で V6 に',
+        '关于 NoteBlockWeb': 'NoteBlockWeb について', '调节速度': 'テンポを調整', '基于 Web 的 Minecraft 音符盒编辑器': 'Web ベースの Minecraft 音符ブロックエディター',
+        '支持 NBS 格式导入/导出, MIDI 导入, 钢琴卷帘编辑': 'NBS のインポート/エクスポート、MIDI インポート、ピアノロール編集に対応', '版本:': 'バージョン:', '开发者:': '開発者:', '反馈邮箱:': 'フィードバック:',
+        '演奏模式设置': '演奏モード設定', '节拍器:': 'メトロノーム:', '启用': '有効', '延音录制': 'サステイン録音', '外部 MIDI 设备输入': '外部 MIDI デバイス入力', '未连接': '未接続',
+        '开始演奏': '演奏を開始', '文件:': 'ファイル:', '类型:': 'タイプ:', '时长:': '長さ:', '轨道:': 'トラック:', '通道映射': 'チャンネルマッピング',
+        '打击乐': '打楽器', '通道': 'チャンネル', '音色': '音色', 'NBS 乐器': 'NBS 楽器', '偏移前音域': 'シフト前の音域', '偏移后音域': 'シフト後の音域',
+        '八度': 'オクターブ', '音调': '音程', '试听': '試聴', '名称': '名前', '事件': 'イベント', '预览': 'プレビュー', '旋律': 'メロディ', '乐器': '楽器',
+        'MIDI 音符': 'MIDI ノート', 'NBS 音高': 'NBS 音高', '音色槽 1': '音色スロット 1', '音色槽 2': '音色スロット 2', '音色槽 3': '音色スロット 3',
+        '移除无音符轨道': 'ノートのないトラックを削除', '自动命名轨道': 'トラック名を自動付与', '命名依据:': '命名基準:', '通道号': 'チャンネル番号', '音色名': '音色名',
+        '导入速度变化事件': 'テンポ変化をインポート', '音域处理:': '音域処理:', '不启用': '無効', '单独音符归一法': '音符ごとの正規化',
+        '整体八度偏移法': 'トラック全体のオクターブ移動', '整体音调偏移法': 'トラック全体の半音移動', '优先大调': '長調を優先', '优先小调': '短調を優先',
+        '启用智能音色替代': 'スマート音色置換を有効にする', '启用溢出强制归位 (Fallback)': 'はみ出しの強制折り返し (フォールバック)', '音色替代': '音色置換',
+        '选择轨道': 'トラックを選択', '记住以上设置': '設定を記憶', '音色替代设置': '音色置換設定', '应用音轨': 'トラックに適用',
+        '音色替代配置': '置換設定', '高音替代': '高音の代替', '低音替代': '低音の代替', '恢复默认': '初期設定に戻す', '应用': '適用',
+        '竖琴': 'ハープ', '低音提琴': 'コントラバス', '大鼓': 'バスドラム', '小鼓': 'スネアドラム', '击打声': 'クリック', '吉他': 'ギター', '长笛': 'フルート', '钟琴': 'ベル',
+        '风铃': 'チャイム', '木琴': 'シロフォン', '铁木琴': '鉄のシロフォン', '牛铃': 'カウベル', '迪吉里杜管': 'ディジュリドゥ', '芯片音': 'ビット', '班卓琴': 'バンジョー',
+        '电钢琴': 'プリング', '铜号角': '銅の角笛', '斑驳的铜号角': '風化していない銅の角笛', '锈蚀的铜号角': '風化した銅の角笛', '氧化的铜号角': '酸化した銅の角笛', '无': 'なし',
+        '提示': '通知', '确认': '確認', '输入': '入力', '确定': 'OK', '导出': 'エクスポート', '文件名:': 'ファイル名:', '请输入文件名': 'ファイル名を入力してください',
+        '作者和介绍 (可选)': '作者と紹介 (任意)', '作者:': '作者:', '作者名 (可选)': '作者名 (任意)', '介绍:': '紹介:', '歌曲介绍 (可选)': '曲の紹介 (任意)',
+        '点击重命名音轨': 'トラック名を変更', '选择这一轨的全部音符': 'このトラックの全ノートを選択', '拖动调整音轨顺序': 'ドラッグでトラック順を変更', '删除这一条音轨': 'このトラックを削除',
+        '设置音量': '音量を設定', '静音这一条音轨': 'このトラックをミュート', '只试听这一条音轨': 'このトラックのみソロ試聴', '添加新音轨': 'トラックを追加', '更多音轨操作': 'その他のトラック操作',
+        '展开音轨信息栏': 'トラックパネルを展開', '折叠音轨信息栏': 'トラックパネルを折りたたむ',
+        '弹奏音域设置': '演奏音域の設定', '字母键盘': '文字キーボード', '小键盘': 'テンキー', '八度偏移': 'オクターブシフト', '半音偏移': '半音シフト', '重置': 'リセット',
+        '修改音量': '音量を変更', '输入音量 (0-100):': '音量を入力 (0-100):', '删除轨道': 'トラックを削除', '上移轨道': 'トラックを上へ', '下移轨道': 'トラックを下へ',
+        '请在画布中点击选择要录制的音轨': 'キャンバスで録音するトラック行をクリックして選択してください', '请先在画布中点击选择要录制的音轨！': '録音前にキャンバスでトラック行を選択してください。',
+        '浏览器不支持 MIDI 设备': 'このブラウザは MIDI デバイスをサポートしていません', 'MIDI 设备访问被拒绝': 'MIDI デバイスへのアクセスが拒否されました', '未检测到 MIDI 设备': 'MIDI デバイスが見つかりません',
+        '停止录制': '録音を停止', '开始演奏录制': '演奏録音を開始', '播放/暂停试听': '試聴を再生/一時停止', '平滑翻页: 开启': 'スムーズ追従: オン', '平滑翻页: 关闭': 'スムーズ追従: オフ',
+        '缩放精度': 'グリッド精度', '将所有音符的时间位置 (tick) 按比例缩放：': '全ノートの時間位置 (tick) を比率で拡大縮小:', '选择缩放倍数：': '倍率を選択:',
+        '音符吸附': 'ノートスナップ', '将音符吸附到最近的网格线上。': 'ノートを最寄りのグリッド線にスナップします。', '选择范围：': '範囲を選択:', '全部音符': '全ノート', '当前轨道': '現在のトラック', '选中音符': '選択中のノート', '选择拍子：': '拍を選択:',
+        '音调偏移': '音程シフト', '偏移方式:': 'シフト方式:', '按音调': '半音', '按八度': 'オクターブ', '偏移量:': 'シフト量:', '正=向上, 负=向下': '正 = 上へ, 負 = 下へ',
+        '延音填充': 'サステインを補完', '清除延音': 'サステインを削除', '上下起伏': 'アルペジオの動き', '转8度内': '2 オクターブ内に収める',
+        '当前没有音符，无法缩放': '拡大縮小するノートがありません', '当前没有音符': 'ノートがありません', '没有选中任何音符': 'ノートが選択されていません', '没有需要吸附的音符': 'スナップするノートがありません',
+        '没有空轨可清除': '削除する空トラックがありません', '清除空轨': '空トラックを削除', '至少保留一条音轨。': '少なくとも 1 本のトラックを残してください。',
+        '未检测到旋律通道': 'メロディチャンネルが見つかりません', '未检测到打击乐音符': '打楽器ノートが見つかりません', '暂无 MIDI 音轨数据': 'MIDI トラックデータがありません',
+        '加载': '読み込み', '保存成功': '保存しました', '警告': '警告', '保存': '保存', '加载失败': '読み込みに失敗', '导出失败': 'エクスポートに失敗', '没有可导出的歌曲': 'エクスポートできる曲がありません',
+        '演奏模式': '演奏モード', '关闭': '閉じる', '知道了': '了解', '应用': '適用',
+        '音轨': 'トラック', '名称': '名前', '乐器': '楽器', '音量': '音量', '声像': 'パン', '混响': 'リバーブ', '淡入': 'フェードイン', '淡出': 'フェードアウト',
+        '打开钢琴卷帘': 'ピアノロールを開く', '复制片段': 'クリップを複製', '删除片段': 'クリップを削除', '回到开头': '先頭に戻る', '菜单': 'メニュー',
+        '音符超出范围': '範囲外のノート', '部分音符超出了 Minecraft 标准音域 (F#3 ~ F#5):': '一部のノートが Minecraft 標準音域 (F#3~F#5) を超えています:',
+        '超出范围的音符在 Minecraft 中播放可能音色异常。你可以在"功能"菜单中使用"转8度内"修正。': '範囲外のノートは Minecraft で音色が異常になる可能性があります。「ツール」メニューの「2 オクターブ内に収める」で修正できます。',
+        '按住琴键会按持续时长补齐音符': '鍵盤を押している間、その長さのノートを埋めます', '提示: 在画布中点击音轨行可选择/取消选择，可多选': 'ヒント: キャンバスのトラック行をクリックして選択/解除できます。複数選択可能です。',
+        '勾选后可连接外部 MIDI 键盘/架子鼓进行输入': '外部 MIDI キーボードやドラムパッドを接続して入力できます。', '不保留': '保持しない', '全部保留': 'すべて保持', '按轨道选择': 'トラックを選択',
+        '选择需要应用音色替代的 MIDI 音轨。未选中的音轨中超出音域的音符将保留原状。右侧迷你图为该轨道音符预览（Y=音高，X=时间），点击可从该位置开始试听。': '音色置換を適用する MIDI トラックを選択してください。選択していないトラックの範囲外ノートはそのまま残ります。右のミニロールは音高 (Y) と時間 (X) のプレビューです。クリックでその位置から試聴します。',
+        '为每个 NBS 音色配置高音/低音替代乐器。超出 MC 音域 (F#3~F#5) 的音符将切换到替代音色并使用等音高换算，保证实际播放音高不变。点击音色槽打开菜单试听当前音色，选择新音色后也会立即试听。': '各 NBS 音色に高音/低音の代替楽器を設定します。MC 音域 (F#3~F#5) を超えるノートは等音高の代替音色に切り替わり、実際の音高は変わりません。音色スロットをクリックしてメニューを開き、試聴して選択できます。',
+        '目标为 Minecraft 原版音符盒标准音域 F#3-F#5。先应用偏移，再尝试音色替代，最后可选择强制归位。': 'Minecraft 音符ブロック標準音域 F#3-F#5 を目標にします。まずシフトを適用し、次に音色置換を試し、最後に強制折り返しを選択できます。',
+        '偏移转换': '音程変換', '同分偏移': '同点シフト', '启用音色替代': '音色置換を有効', '强制转音域内': '音域内に強制折り返し', '全部': 'すべて', '不启用': '無効', '单独音符归一法': '音符ごとの正規化', '整体八度偏移法': 'トラック全体のオクターブ移動', '整体音调偏移法': 'トラック全体の半音移動',
+        '速度:': 'テンポ:', '速度 (Tick/秒):': 'テンポ (tick/秒):', '音符': 'ノート', '音轨设置': 'トラック設定',
+        '音域': '音域', '处理中': '処理中', '计算中…': '計算中...', 'MC 音域 F#3~F#5 (MIDI 54~78)': 'MC 音域 F#3-F#5 (MIDI 54-78)',
+        'MIDI 试听': 'MIDI 試聴', 'NBS 试听': 'NBS 試聴', 'NBS 音色': 'NBS 音色', 'QQ交流群:': 'QQ コミュニティ:',
+        '试听 MIDI 原音': 'MIDI 原音を試聴', '试听 NBS 拟合音色': 'NBS フィッティング音色を試聴', '试听 NBS 组合音': 'NBS 組合せ音を試聴',
+        '点击选择高音替代音色': '高音の代替音色を選択', '点击选择低音替代音色': '低音の代替音色を選択',
+        '恢复自动': '自動に戻す', '忽略': '無視', '自动(用拟合音色)': '自動 (フィッティング音色を使用)',
+        '范围:': '範囲:', '范围: -': '範囲: -', 'MIDI 信息': 'MIDI 情報', '语言:': '言語:',
+        '音域 F#3~F#5 (MIDI 54~78)': '音域 F#3-F#5 (MIDI 54-78)', '个音符': 'ノート', '加载中…': '読み込み中...', '音符: 0': '音符: 0',
+        '处理中…': '処理中...', '操作': '操作', '时间': '時間', '大小': 'サイズ',
+        '新音轨名称:': '新しいトラック名:', 'Clip 名称:': 'クリップ名:', '重命名 Clip': 'クリップ名を変更',
+        '删除 Clip': 'クリップを削除', '播放/暂停': '再生/一時停止', '停止': '停止',
+        'Minecraft 标准音域 MIDI 54~78 (NBS key 33~57, F#3~F#5)': 'Minecraft 標準音域: MIDI 54-78 (NBS key 33-57, F#3-F#5)',
+        '优先使用音色替代解决超限音符，替代无法完全覆盖时才动用整体偏移。仅在模式2/3可用，模式0/1下灰显无效': '範囲外ノートはまず音色置換で解決し、置換でカバーしきれない場合のみ全体シフトを使います。モード 2/3 でのみ使用可能です。',
+        '勾选后音色替代链用尽仍有超限时，强制对 MIDI 数值进行 ±12 取模归位。仅在模式2/3可用': '音色置換チェーンを使い切っても範囲外のノートが残る場合、MIDI 値を ±12 で折り返します。モード 2/3 でのみ使用可能です。',
+        '配置超出音域音符的音色替代方案': '範囲外ノートの音色置換を設定',
+        '一个格子多个音符': '1 マスに複数ノート', '上一个音符的音调和音色': '直前のノートの音程と音色',
+        '下载': 'ダウンロード', '下载 MIDI 音色库': 'MIDI 音色ライブラリをダウンロード', '下载/解析失败, 将使用内置合成器': 'ダウンロード/解析に失敗。内蔵シンセを使用します',
+        '例子 (1XXX2X3XXXXX1XX6):<br>': '例 (1XXX2X3XXXXX1XX6):<br>', '例子 (留空长度 = 2)：<br>': '例 (空き長さ = 2)：<br>',
+        '保存 NBS': 'NBS を保存', '保存失败': '保存に失敗', '保存失败:': '保存に失敗:', '保存本地数据失败:': 'ローカルデータの保存に失敗:',
+        '全部音符中筛选': '全ノートから絞り込み', '共享状态': '共有状態', '关闭残留': '残りを閉じる', '击掌声': 'クリック',
+        '分': '分', '刚关闭菜单': 'メニューを閉じた直後',
+        '勾选要从当前选择中移除的音色': '現在の選択から除外する音色をチェック',
+        '填充的音符使用<b>上一个</b>原音符的音调和音色；最后一个音符会延长 4 个 tick 位置。': '埋めたノートは<b>直前の</b>ノートの音程と音色を使います。最後のノートは 4 tick 延長されます。',
+        '处理失败': '処理に失敗', '处理完成': '処理が完了', '存储空间不足, 部分数据可能未保存': 'ストレージ不足。一部のデータが保存されない可能性があります',
+        '导入失败': 'インポートに失敗', '导出失败:': 'エクスポートに失敗:', '将删除': '削除されます', '已处理': '処理済み',
+        '已完成音域处理，调整了': '音域処理が完了しました。調整したノート数:', '已恢复默认替代配置': '音色置換設定を初期状態に戻しました',
+        '已清理': 'クリーンアップ済み', '已连接': '接続済み', '已连接:': '接続済み:', '已选择': '選択済み', '已选择:': '選択済み:',
+        '平移': 'パン', '当前无选择, 将先全选再筛选。勾选要排除的音色': '選択がないため、まず全選択してから絞り込みます。除外する音色をチェックしてください。',
+        '当前没有可处理的音符。': '処理できるノートがありません。',
+        '当前编辑内容会被清空，是否新建空文件？': '現在の編集内容は消去されます。新しい空ファイルを作成しますか?',
+        '必须': '必須', '恢复默认替代': '音色置換を初期化',
+        '您有未保存的编辑内容，确定要离开吗？数据已自动保存到本地。': '未保存の編集があります。このまま離れますか? データはローカルに自動保存されています。',
+        '打开菜单': 'メニューを開く', '操作失败': '操作に失敗', '放置音符': 'ノートを置く',
+        '文件数据不存在，可能已被清理': 'ファイルデータが存在しません。クリーンアップされた可能性があります', '文件数据不完整': 'ファイルデータが不完全です',
+        '无效': '無効', '无法保存文件': 'ファイルを保存できません', '无法加载文件': 'ファイルを読み込めません', '无法加载本地文件': 'ローカルファイルを読み込めません',
+        '无法导入 MIDI': 'MIDI をインポートできません', '无法导出文件': 'ファイルをエクスポートできません', '无法解析': '解析できません',
+        '无法试听：NBS 音频引擎未就绪。': '試聴できません: NBS オーディオエンジンが準備できていません。',
+        '无法读取 MIDI 信息': 'MIDI 情報を読み取れません', '无法读取 MIDI 信息: 返回数据异常': 'MIDI 情報を読み取れません: 応答データが異常です',
+        '无音符': 'ノートなし', '暂不': '後で', '未下载 (播放 MIDI 音符时按设置提示)': '未ダウンロード (MIDI ノート再生時に設定に応じて通知)',
+        '未加载歌曲': '曲が読み込まれていません', '未命名': '無題', '未知错误': '不明なエラー', '未选中有效音符': '有効なノートが選択されていません',
+        '未配置 MIDI 音色库下载地址 (服务端 config.yaml)': 'MIDI 音色ライブラリのダウンロード URL が設定されていません (サーバー config.yaml)',
+        '本次导入中已提示过的通道': '今回のインポートで通知済みのチャンネル',
+        '正在上传...': 'アップロード中...', '正在下载': 'ダウンロード中', '正在处理...': '処理中...', '正在解析...': '解析中...', '正在解析音色库...': '音色ライブラリを解析中...',
+        '永远差一格/有偏差': '常に 1 マスずれる/ずれがある', '没有添加任何音符 (可能选中区间已满)': 'ノートが追加されませんでした (選択区間が埋まっている可能性があります)',
+        '浏览器不支持 Web MIDI，且 TinySynth 未加载，无法试听。': 'Web MIDI 未対応かつ TinySynth が読み込まれていないため試聴できません。',
+        '浏览器不支持 Web MIDI，且 TinySynth 未加载，无法试听原音色。': 'Web MIDI 未対応かつ TinySynth が読み込まれていないため、元の音色を試聴できません。',
+        '清理孤儿文件失败:': '孤立ファイルのクリーンアップに失敗:', '清理自动保存数据后重试成功': '自動保存データのクリーンアップ後に再試行して成功',
+        '清理配额失败:': 'クォータのクリーンアップに失敗:', '清除音色库缓存': '音色ライブラリのキャッシュを消去',
+        '确定清除已下载的 MIDI 音色库缓存吗？清除后需重新下载。': 'ダウンロード済みの MIDI 音色ライブラリのキャッシュを消去しますか? 消去後は再ダウンロードが必要です。',
+        '确实选择了图片': '画像が選択されています', '秒': '秒', '自动': '自動',
+        '规律使用“|”分隔，数字代表相对于选择区域的第几条音轨。<br>': '「|」で区切ります。数字は選択領域からのトラック位置を表します。<br>',
+        '规律格式错误，请使用“|”分隔正整数，例如 1|2|1|3。': 'パターンの形式が正しくありません。「|」で正の整数を区切ってください。例: 1|2|1|3。',
+        '解析返回空数据': '解析結果が空でした', '试听失败': '試聴に失敗', '试听此轨道': 'このトラックを試聴', '该轨道没有音符事件': 'このトラックにはノートイベントがありません',
+        '请先在钢琴卷帘上选择至少 1 个音符再使用上下起伏。': 'アルペジオの動きを使うには、先にピアノロールで 1 つ以上のノートを選択してください。',
+        '请先在钢琴卷帘上选择至少 1 个音符再使用清除延音。': 'サステイン削除を使うには、先にピアノロールで 1 つ以上のノートを選択してください。',
+        '请先选择要偏移的音符': '先にシフトするノートを選択してください', '请先选择音符': '先にノートを選択してください',
+        '请选择多个音符 (至少 2 个)。\n\n当前只选中了 1 个音符。': '複数のノート (2 つ以上) を選択してください。\n\n現在は 1 つのノートのみ選択されています。',
+        '读取 MIDI 信息失败:': 'MIDI 情報の読み取りに失敗:', '配额超限, 已清理': 'クォータ超過。クリーンアップしました',
+        '错误:': 'エラー:', '间隔': '間隔', '音色替代配置已保存': '音色置換設定を保存しました',
+        '音色替代配置已恢复为默认。': '音色置換設定を初期状態に戻しました。', '音频上下文未就绪，无法试听。': 'オーディオコンテキストが準備できていないため試聴できません。',
+        '预计': '推定', '鼓': 'ドラム', '鼓音符': 'ドラムノート', '鼠标放在哪格, 松手就落在哪格': 'マウスを置いたマスにノートが置かれます'
+    });
+
+    // ============ 补充缺失词条 (en-US) ============
+    Object.assign(UI_TEXT['en-US'], {
+        '通用': 'General', '个性化': 'Personalization', '清除': 'Clear', '平铺': 'Tile', '拉伸': 'Stretch',
+        '缩放适配': 'Scale to fit', '普通半透明': 'Plain semi-transparent', '毛玻璃': 'Frosted glass', '亚克力': 'Acrylic',
+        '未下载': 'Not downloaded', '条件选择': 'Conditional select', '粘贴失败': 'Paste failed',
+        '立即下载': 'Download now', '清除缓存': 'Clear cache', '重命名轨道': 'Rename track',
+        '背景图片:': 'Background image:', '背景模式:': 'Background mode:', '表面材质:': 'Surface material:',
+        '网格材质:': 'Grid material:', '播放时询问': 'Ask when playing', '自动后台下载': 'Auto background download',
+        '开源地址:': 'Open source:', '背景透明度:': 'Background transparency:', '面板透明度:': 'Panel transparency:',
+        '网格透明度:': 'Grid transparency:', '音色库状态:': 'Soundfont status:', '音轨栏透明度:': 'Track panel transparency:',
+        '不使用 (内置合成器)': 'Off (built-in synthesizer)', 'MIDI 音色库:': 'MIDI soundfont:',
+        'MIDI 粘贴失败:': 'MIDI paste failed:', 'MIDI 导入失败:': 'MIDI import failed:',
+        'MIDI 中没有可导入的音符': 'No notes to import from the MIDI file',
+        '音色库下载失败, 将使用内置合成器': 'Soundfont download failed; using built-in synthesizer',
+        '音符音量透明度 (音量越低越透明)': 'Note volume transparency (lower volume = more transparent)',
+        '加载失败:': 'Load failed:', '长度': 'Length', '录制到:': 'Recording to:',
+        '吸附到:': 'Snap to:', '吸附网格:': 'Snap grid:',
+        '未开启吸附，默认到各子': 'Snap disabled, defaulting to subdivisions',
+        '隐私声明': 'Privacy Notice', '同意': 'Agree', '语言': 'Language', 'MIDI 导入': 'Import MIDI',
+        '请先在钢琴卷帘上选择至少 2 个音符再使用延音填充。\n\n使用方法:\n1. 框选一段范围的音符\n2. 点击"延音填充"\n3. 选择间隔参数': 'Select at least 2 notes in the piano roll before using Sustain fill.\n\nHow to use:\n1. Select a range of notes\n2. Click "Sustain fill"\n3. Choose an interval',
+        '播放 MIDI 音符需要音色库 (SF3/SF2) 才能获得真实音色。是否现在下载？下载后可离线使用，解析期间仍可用内置合成器播放。': 'Playing MIDI notes requires a soundfont (SF3/SF2) for authentic timbres. Download now? It can be used offline after download; the built-in synthesizer remains available during parsing.',
+        '提示: 背景图片覆盖整个网页; 透明度 100% 完全透明, 0% 不透明; 表面材质控制工具栏, 网格材质单独控制音符网格区域; 面板透明度控制工具栏透明程度, 音轨栏透明度单独控制左侧音轨信息栏': 'Tip: the background image covers the entire page. Transparency 100% = fully transparent, 0% = opaque. Surface material controls the toolbar; grid material controls the note grid area separately. Panel transparency controls toolbar opacity; track panel transparency controls the left track info panel.',
+        // innerHTML 拆分后的文本片段
+        '功能说明：': 'How it works: ',
+        '按行处理选中的多个音符，在每行中从选择区间的开始点往后填充。': 'Processes selected notes row by row, filling forward from the start of the selection range.',
+        '填充的音符使用': 'Filled notes use ',
+        '上一个': 'the previous',
+        '原音符的音调和音色；最后一个音符会延长 4 个 tick 位置。': ' note\'s pitch and timbre; the last note is extended by 4 ticks.',
+        '无空位': 'no gap',
+        '(1 个空位)': '(1 gap)',
+        '(2 个空位)': '(2 gaps)',
+        '间隔 (空位数量)：': 'Interval (gap count):',
+        '0 = 紧贴无空位；推荐 1-3': '0 = no gaps; recommended 1-3',
+        '按音轨处理选中的音符，把同一音轨里连续重复的音符截短，并在每组音符之间保留固定的空 tick 数。': 'Processes selected notes per track, shortening consecutive duplicate notes and keeping a fixed number of empty ticks between groups.',
+        '留空长度 (空 tick 数)：': 'Gap length (empty ticks):',
+        '0 = 只删除同 tick 的完全重复音符；推荐 1-3': '0 = only remove exact duplicates on the same tick; recommended 1-3',
+        '将选中的音符按时间顺序依次分配到不同音轨，形成跨音轨的起伏规律。': 'Distributes selected notes across tracks in time order, creating a cross-track arpeggio pattern.',
+        '例如': 'e.g.',
+        '：第1个音符放到第1轨，第2个放到第2轨，第3个回到第1轨，第4个放到第3轨，然后循环。': ': note 1 goes to track 1, note 2 to track 2, note 3 back to track 1, note 4 to track 3, then loops.',
+        '规律：': 'Pattern:',
+        '用"|"分隔正整数，如 1|2|1|3': 'Separate positive integers with "|", e.g. 1|2|1|3',
+        '选择延音轨道': 'Select sustain tracks',
+        '勾选需要应用延音的 MIDI 轨道（多选）。右侧迷你图为该轨道音符预览（Y=音高，X=时间），点击可从该位置开始试听。': 'Check MIDI tracks to apply sustain (multi-select). The mini roll on the right previews pitch (Y) over time (X); click to preview from that point.',
+        // 音域处理模式提示
+        '不进行音域转换': 'No range conversion',
+        '超出音域的音符会按八度归一': 'Out-of-range notes folded by octave',
+        '自动偏移、音色替代并强制归位': 'Auto-shift, timbre substitution, and forced fold',
+        '自动偏移并按需使用音色替代': 'Auto-shift with on-demand timbre substitution',
+        // 音符时值
+        '1/2音符': '1/2 note', '1/4音符': '1/4 note', '1/8音符': '1/8 note', '1/16音符': '1/16 note', '1/32音符': '1/32 note',
+        // 其他
+        '更新日志': "What's new",
+        '音色库已就绪': 'soundfont ready',
+        '个预设)': 'presets)',
+        '已就绪 (': 'ready ('
+    });
+
+    // ============ 补充缺失词条 (ja-JP) ============
+    Object.assign(UI_TEXT['ja-JP'], {
+        '通用': '一般', '个性化': 'パーソナライズ', '清除': 'クリア', '平铺': 'タイル', '拉伸': 'ストレッチ',
+        '缩放适配': 'スケールフィット', '普通半透明': '通常の半透明', '毛玻璃': 'すりガラス', '亚克力': 'アクリル',
+        '未下载': '未ダウンロード', '条件选择': '条件選択', '粘贴失败': '貼り付けに失敗',
+        '立即下载': '今すぐダウンロード', '清除缓存': 'キャッシュを消去', '重命名轨道': 'トラック名を変更',
+        '背景图片:': '背景画像:', '背景模式:': '背景モード:', '表面材质:': '表面素材:',
+        '网格材质:': 'グリッド素材:', '播放时询问': '再生時に確認', '自动后台下载': '自動バックグラウンドダウンロード',
+        '开源地址:': 'オープンソース:', '背景透明度:': '背景の透明度:', '面板透明度:': 'パネルの透明度:',
+        '网格透明度:': 'グリッドの透明度:', '音色库状态:': '音色ライブラリの状態:', '音轨栏透明度:': 'トラックパネルの透明度:',
+        '不使用 (内置合成器)': '使用しない (内蔵シンセ)', 'MIDI 音色库:': 'MIDI 音色ライブラリ:',
+        'MIDI 粘贴失败:': 'MIDI の貼り付けに失敗:', 'MIDI 导入失败:': 'MIDI のインポートに失敗:',
+        'MIDI 中没有可导入的音符': 'MIDI にインポート可能なノートがありません',
+        '音色库下载失败, 将使用内置合成器': '音色ライブラリのダウンロードに失敗。内蔵シンセを使用します',
+        '音符音量透明度 (音量越低越透明)': 'ノート音量の透明度 (音量が低いほど透明)',
+        '加载失败:': '読み込みに失敗:', '长度': '長さ', '录制到:': '録音先:',
+        '吸附到:': 'スナップ先:', '吸附网格:': 'スナップグリッド:',
+        '未开启吸附，默认到各子': 'スナップ無効、サブディビジョンにデフォルト',
+        '隐私声明': 'プライバシーに関するお知らせ', '同意': '同意する', '语言': '言語', 'MIDI 导入': 'MIDI をインポート',
+        '请先在钢琴卷帘上选择至少 2 个音符再使用延音填充。\n\n使用方法:\n1. 框选一段范围的音符\n2. 点击"延音填充"\n3. 选择间隔参数': 'サステイン補完を使うには、先にピアノロールで 2 つ以上のノートを選択してください。\n\n使い方:\n1. ノートの範囲を選択\n2.「サステインを補完」をクリック\n3. 間隔パラメータを選択',
+        '播放 MIDI 音符需要音色库 (SF3/SF2) 才能获得真实音色。是否现在下载？下载后可离线使用，解析期间仍可用内置合成器播放。': 'MIDI ノートの再生には音色ライブラリ (SF3/SF2) が必要です。今すぐダウンロードしますか? ダウンロード後はオフラインで使用可能です。解析中も内蔵シンセで再生できます。',
+        '提示: 背景图片覆盖整个网页; 透明度 100% 完全透明, 0% 不透明; 表面材质控制工具栏, 网格材质单独控制音符网格区域; 面板透明度控制工具栏透明程度, 音轨栏透明度单独控制左侧音轨信息栏': 'ヒント: 背景画像はページ全体をカバーします。透明度 100% = 完全に透明、0% = 不透明。表面素材はツールバーを、グリッド素材はノートグリッド領域を個別に制御します。パネルの透明度はツールバーの不透明度を、トラックパネルの透明度は左側のトラック情報パネルを個別に制御します。',
+        // innerHTML 拆分后的文本片段
+        '功能说明：': '使い方：',
+        '按行处理选中的多个音符，在每行中从选择区间的开始点往后填充。': '選択したノートを行ごとに処理し、選択範囲の先頭から前方に向かって埋めます。',
+        '填充的音符使用': '埋めるノートは',
+        '上一个': '直前の',
+        '原音符的音调和音色；最后一个音符会延长 4 个 tick 位置。': 'ノートの音程と音色を使います。最後のノートは 4 tick 延長されます。',
+        '无空位': '空きなし',
+        '(1 个空位)': '(1 空き)',
+        '(2 个空位)': '(2 空き)',
+        '间隔 (空位数量)：': '間隔 (空き数):',
+        '0 = 紧贴无空位；推荐 1-3': '0 = 空きなし; 推奨 1-3',
+        '按音轨处理选中的音符，把同一音轨里连续重复的音符截短，并在每组音符之间保留固定的空 tick 数。': '選択したノートをトラックごとに処理し、同じトラック内の連続重複ノートを短くし、各グループ間に固定の空 tick を確保します。',
+        '留空长度 (空 tick 数)：': '空き長さ (空 tick 数):',
+        '0 = 只删除同 tick 的完全重复音符；推荐 1-3': '0 = 同 tick の完全重複のみ削除; 推奨 1-3',
+        '将选中的音符按时间顺序依次分配到不同音轨，形成跨音轨的起伏规律。': '選択したノートを時間順に異なるトラックに振り分け、トラックをまたぐアルペジオパターンを作ります。',
+        '例如': '例',
+        '：第1个音符放到第1轨，第2个放到第2轨，第3个回到第1轨，第4个放到第3轨，然后循环。': ': ノート 1 はトラック 1、ノート 2 はトラック 2、ノート 3 はトラック 1 に戻り、ノート 4 はトラック 3、以降ループします。',
+        '规律：': 'パターン:',
+        '用"|"分隔正整数，如 1|2|1|3': '「|」で正の整数を区切ります。例: 1|2|1|3',
+        '选择延音轨道': 'サステイントラックを選択',
+        '勾选需要应用延音的 MIDI 轨道（多选）。右侧迷你图为该轨道音符预览（Y=音高，X=时间），点击可从该位置开始试听。': 'サステインを適用する MIDI トラックにチェックを入れてください (複数選択可)。右のミニロールは音高 (Y) と時間 (X) のプレビューです。クリックでその位置から試聴します。',
+        // 音域处理模式提示
+        '不进行音域转换': '音域変換なし',
+        '超出音域的音符会按八度归一': '範囲外のノートはオクターブで折り返し',
+        '自动偏移、音色替代并强制归位': '自動シフト・音色置換・強制折り返し',
+        '自动偏移并按需使用音色替代': '自動シフト・必要に応じて音色置換',
+        // 音符时值
+        '1/2音符': '1/2音符', '1/4音符': '1/4音符', '1/8音符': '1/8音符', '1/16音符': '1/16音符', '1/32音符': '1/32音符',
+        // 其他
+        '更新日志': '更新情報',
+        '音色库已就绪': '音色ライブラリ準備完了',
+        '个预设)': 'プリセット)',
+        '已就绪 (': '準備完了 ('
+    });
+
+    // ============ 运行时补充词条 2 (ja-JP) ============
+    // 与 en-US 补充词条 2 对应: 新增功能的错误消息与弹窗文本。
+    Object.assign(UI_TEXT['ja-JP'], {
+        '请求失败': 'リクエストに失敗', '网络错误': 'ネットワークエラー', '请求超时': 'リクエストがタイムアウト',
+        '播放失败': '再生に失敗', '暂停失败': '一時停止に失敗', '停止失败': '停止に失敗',
+        '读取文件失败': 'ファイルの読み込みに失敗', '添加音符失败': 'ノートの追加に失敗', '更新音符失败': 'ノートの更新に失敗',
+        '删除音符失败': 'ノートの削除に失敗', '批量操作失败': '一括操作に失敗', '设置速度失败': 'テンポの設定に失敗',
+        '加载NBS文件失败:': 'NBS ファイルの読み込みに失敗:', '导出NBS失败:': 'NBS エクスポートに失敗:', '导入MIDI失败:': 'MIDI インポートに失敗:',
+        '读取MIDI信息失败:': 'MIDI 情報の読み取りに失敗:',
+        'NBS: 意外的文件结束': 'NBS: 予期しないファイルの終端', 'MIDI: 意外的文件结束': 'MIDI: 予期しないファイルの終端',
+        'NBS: 字符串超出文件范围': 'NBS: 文字列がファイルの範囲外です',
+        '无效的 MIDI 文件：缺少 MThd 头': '無効な MIDI ファイル: MThd ヘッダーがありません',
+        'MIDI 文件格式损坏或数据不完整 (轨道': 'MIDI ファイルが破損しているか不完全です (トラック',
+        '缺少 sdta 块': 'sdta チャンクがありません', '缺少 pdta 块': 'pdta チャンクがありません',
+        '不是 RIFF 文件': 'RIFF ファイルではありません', '不是 SoundFont 文件 (form=': 'SoundFont ファイルではありません (form=',
+        'AudioContext 不可用': 'AudioContext を利用できません',
+        'MIDI 音色库': 'MIDI 音色ライブラリ', '内置解析器': '内蔵パーサー',
+        '音色覆盖提示': '音色上書きの注意',
+        '当前使用拟合音色。你手动选择了具体乐器后，': '現在フィッティング音色を使用中です。具体的な楽器を手動で選択すると、',
+        '该通道将不再跟随拟合结果改变': 'このチャンネルはフィッティング結果に追従しなくなります',
+        '，即后续在"音色拟合"标签页中调整的组合音色不会应用到这个通道。': '、以降は「音色フィッティング」タブで調整した組み合わせ音色はこのチャンネルに適用されません。',
+        '归一化': '正規化', '无偏移': 'シフトなし',
+        '• 间隔 0：': '• 間隔 0: ', '• 间隔 1：': '• 間隔 1: ', '• 间隔 2：': '• 間隔 2: ',
+        '(无空位)': '(空きなし)',
+        '(超出范围)': '(範囲外)', '+ 添加音轨': '+ トラックを追加',
+        '用“|”分隔正整数，如 1|2|1|3': '「|」で正の整数を区切ります。例: 1|2|1|3',
+        '及其所有 Clip?': 'とそのすべての Clip?'
+    });
+
     window.WebNBSI18n = { init: init, apply: apply, getLocale: function() { return current; }, t: t, translate: translate, supported: SUPPORTED.slice() };
 })();

@@ -34,7 +34,7 @@ We are planning native desktop clients to eliminate browser window limitations.
 - MIDI import & export support. All file processing happens locally on your device
 - Octave conversion algorithm: transpose music into Minecraft note block range with minimal audible quality loss
 - Advanced MIDI import options for easier conversion of MIDI compositions
-- Supports 4 languages. Translations are AI-generated and may contain inaccuracies. Issues for translation improvements are welcome.
+- Supports 10 languages. Translations are AI-generated and may contain inaccuracies. Issues for translation improvements are welcome.
 
 ## 🐛 Report Issues
 If you encounter bugs or have feature suggestions, please create a ticket on the [Issues](/issues/new/choose) page!

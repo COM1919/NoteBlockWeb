@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260809c">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260813a">
 </head>
 <body>
 
@@ -918,17 +918,17 @@
     </div>
 
     <!-- ========== 横屏抽屉 (移动端) ========== -->
-    <button id="landscape-menu-btn" style="display:none;position:fixed;top:4px;right:4px;z-index:1001;width:36px;height:36px;border-radius:8px;background:rgba(255,255,255,0.08);border:1px solid var(--ctrl-stroke-default);color:var(--text-primary);cursor:pointer;font-size:16px;">
+    <button id="landscape-menu-btn" style="position:fixed;top:4px;right:4px;z-index:1001;width:36px;height:36px;border-radius:8px;background:rgba(255,255,255,0.08);border:1px solid var(--ctrl-stroke-default);color:var(--text-primary);cursor:pointer;font-size:16px;">
         <i class="fa-solid fa-bars"></i>
     </button>
-    <div class="landscape-drawer" id="landscape-drawer" style="display:none;position:fixed;top:0;right:0;width:280px;height:100vh;z-index:10005;background:rgba(22,33,62,0.98);backdrop-filter:blur(16px);border-left:1px solid var(--ctrl-stroke-default);box-shadow:-4px 0 20px rgba(0,0,0,0.3);transform:translateX(100%);transition:transform 0.25s ease;">
+    <div class="landscape-drawer" id="landscape-drawer" style="position:fixed;top:0;right:0;width:280px;height:100vh;z-index:10005;background:rgba(22,33,62,0.98);backdrop-filter:blur(16px);border-left:1px solid var(--ctrl-stroke-default);box-shadow:-4px 0 20px rgba(0,0,0,0.3);transform:translateX(100%);transition:transform 0.25s ease;">
         <div style="display:flex;align-items:center;padding:8px;border-bottom:1px solid var(--ctrl-stroke-default);">
             <span style="font-size:14px;font-weight:600;flex:1;">菜单</span>
             <button id="landscape-drawer-close" style="background:none;border:none;color:var(--text-secondary);font-size:20px;cursor:pointer;padding:4px;">&times;</button>
         </div>
         <div id="landscape-drawer-body" style="padding:8px;overflow-y:auto;height:calc(100vh - 44px);"></div>
     </div>
-    <div class="landscape-drawer-mask" id="landscape-drawer-mask" style="display:none;position:fixed;inset:0;z-index:10004;background:rgba(0,0,0,0.4);"></div>
+    <div class="landscape-drawer-mask" id="landscape-drawer-mask" style="position:fixed;inset:0;z-index:10004;background:rgba(0,0,0,0.4);"></div>
 
     <!-- ========== 音色槽菜单 (由 JS 动态填充) ========== -->
     <div id="timbre-slot-menu" style="display:none;position:fixed;z-index:9999;background:rgba(22,33,62,0.96);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:4px 0;min-width:160px;box-shadow:0 8px 32px rgba(0,0,0,0.5);font-size:12px;color:#eaeaea;"></div>
@@ -949,7 +949,7 @@
 <script src="/static/js/nbs_client.js?v=20260805a"></script>
 <script src="/static/js/api_client.js?v=20260718m"></script>
 <script src="/static/js/custom_dropdown.js?v=20260728d"></script>
-<script src="/static/js/i18n.js?v=20260808a"></script>
+<script src="/static/js/i18n.js?v=20260809a"></script>
 <script src="/static/js/audio_engine.js?v=20260728a"></script>
 <script src="/static/js/sf3_player.js?v=20260808a"></script>
 <script src="/static/js/spessa_player.js?v=20260808a"></script>
@@ -960,7 +960,7 @@
 <script src="/static/js/fls_playlist.js?v=20260728e"></script>
 <script src="/static/js/fls_group_roll.js?v=20260728d"></script>
 <script src="/static/js/fls_pianoroll.js?v=20260728d"></script>
-<script src="/static/js/main.js?v=20260809e"></script>
+<script src="/static/js/main.js?v=20260810a"></script>
 
 </body>
 </html>
