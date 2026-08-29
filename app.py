@@ -204,7 +204,9 @@ IS_PUBLIC = CONFIG.get('public', True)
 @app.get("/")
 async def index():
     """主页"""
-    return FileResponse(os.path.join(SRC_DIR, "index.html"))
+    # 禁止缓存首页, 避免手机端一直加载旧版 HTML/JS (版本号防缓存的双保险)
+    return FileResponse(os.path.join(SRC_DIR, "index.html"),
+                        headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/config")

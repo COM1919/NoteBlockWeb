@@ -6296,3 +6296,112 @@ textarea:disabled {
 .toast.error .toast-progress-fill {
     background: #ff6b6b;
 }
+
+/* ==================================================================
+   触控屏工具切换器 (覆盖手机竖屏/横屏 + 大屏触控屏/平板)
+   - 折叠态: 单个圆形按钮 (60% 透明度), 显示当前工具图标
+     位置与 "+" 悬浮按钮的 X 中心对齐 (竖屏在其下方, 横屏在其上方)
+   - 展开态: 工具栏从按钮左侧铺开 (按钮本身不动);
+     选择工具后保持展开, 点击工具栏以外的位置才收起
+   - 显示条件: (hover:none) and (pointer:coarse)
+     即所有以触控为主输入的设备 (含大屏触控屏/平板), 不限手机尺寸
+   - 动画: 快, 三次缓入缓出 cubic-bezier
+   ================================================================== */
+
+/* 默认在所有平台隐藏 */
+.mobile-tool-switcher {
+    display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+    .mobile-tool-switcher {
+        display: flex;
+        flex-direction: row; /* HTML 顺序: 先 bar 后 trigger → 按钮固定最右, 工具栏向左展开 */
+        align-items: center;
+        gap: 8px;
+        position: fixed;
+        /* X 对齐 "+" (竖屏: right:16 宽48 → 中心距右 40px; 按钮宽42 → right = 40-21 = 19px) */
+        right: 19px;
+        /* 竖屏: 位于 "+" 正下方 (FAB bottom:80 高48), 留 4px 空隙 */
+        bottom: 34px;
+        z-index: 9996;
+        user-select: none;
+        -webkit-user-select: none;
+    }
+
+    /* 折叠触发按钮: 当前工具图标, 60% 透明度 */
+    .mobile-tool-trigger {
+        width: 42px;
+        height: 42px;
+        flex-shrink: 0;
+        border-radius: 50%;
+        background: rgba(28, 28, 40, var(--surface-bg-alpha, 0.9));
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        color: var(--text-primary, #eaeaea);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 17px;
+        cursor: pointer;
+        opacity: 0.6; /* 折叠态 60% 透明, 弱化视觉以便提示可点击 */
+        transition: transform 0.12s cubic-bezier(0.65, 0, 0.35, 1),
+                    opacity 0.14s cubic-bezier(0.65, 0, 0.35, 1),
+                    box-shadow 0.12s ease;
+    }
+    .mobile-tool-trigger:active {
+        transform: scale(0.9);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    /* 展开的完整工具栏: 从按钮左侧向左铺开, 默认收起 (宽度 0 + 透明 + 不可交互) */
+    .mobile-tool-bar {
+        display: flex;
+        gap: 3px;
+        padding: 4px;
+        border-radius: 8px;
+        border: 1px solid var(--ctrl-stroke-default);
+        background: rgba(28, 28, 40, var(--surface-bg-alpha, 0.9));
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        overflow: hidden;               /* 收起时隐藏溢出的工具按钮 */
+        white-space: nowrap;
+        max-width: 0;
+        opacity: 0;
+        transform: translateX(10px);    /* 从按钮位置向左滑出 */
+        pointer-events: none;
+        transition: max-width 0.14s cubic-bezier(0.65, 0, 0.35, 1),
+                    opacity 0.12s cubic-bezier(0.65, 0, 0.35, 1),
+                    transform 0.12s cubic-bezier(0.65, 0, 0.35, 1);
+    }
+    .mobile-tool-switcher.open .mobile-tool-bar {
+        max-width: 200px;               /* 5 个工具按钮 + 间隔的宽度 */
+        opacity: 1;
+        transform: translateX(0);
+        pointer-events: auto;
+    }
+    /* 展开时触发按钮回到正常透明度 */
+    .mobile-tool-switcher.open .mobile-tool-trigger {
+        opacity: 1;
+    }
+    /* 工具按钮: 复用桌面 .tool-btn 外观, 移动端略紧凑 */
+    .mobile-tool-bar .tool-btn {
+        width: 34px;
+        height: 34px;
+        font-size: 15px;
+    }
+}
+
+/* 横屏: 工具切换器移到 "+" 按钮上方
+   与 #mobile-fab-single 的横屏规则 (见下方同媒体查询) 完全对齐:
+   FAB: right = max(12px, safe-area-right), 宽 44 → 中心距右 = max(12px, safe) + 22;
+        切换器宽 42 → right = 中心距右 - 21 = max(12px, safe) + 1
+   FAB: bottom = max(var(--status-height) + 8, safe-bottom + 8), 高 44 → 顶部在
+        bottom + 44; 切换器再留 8px 空隙 → bottom = FAB_bottom_def + 44 + 8 = +52 */
+@media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+    .mobile-tool-switcher {
+        right: calc(max(12px, env(safe-area-inset-right)) + 1px);
+        bottom: calc(max(calc(var(--status-height, 28px) + 8px), calc(env(safe-area-inset-bottom) + 8px)) + 52px);
+    }
+}

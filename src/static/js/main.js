@@ -851,6 +851,8 @@
         initPianoRoll();
         // 初始化底部浮动操作按钮
         createMobileFabBar();
+        // 初始化移动端工具切换器 (+ 悬浮按钮下方)
+        initMobileToolSwitcher();
         // 初始化功能菜单
         createFunctionsMenu();
         // 初始化外部 MIDI 数据粘贴
@@ -5326,6 +5328,105 @@
                 }
             });
         }
+    }
+
+    // ============ 移动端工具切换器 ============
+    // 触控屏设备 (含手机/平板/大屏触控屏) 显示:
+    //   折叠态 = 单个圆形按钮 (60% 透明度) 显示当前工具图标;
+    //   点击后向左展开完整 5 工具栏; 点击工具栏里的工具即切换, 但保持展开;
+    //   点击工具栏以外的位置时关闭, 并拦截(吞掉)这一次交互, 避免误触到下方画布。
+    function initMobileToolSwitcher() {
+        var sw = $('mobile-tool-switcher');
+        if (!sw) return;
+        var trigger = $('mobile-tool-trigger');
+        var bar = $('mobile-tool-bar');
+        if (!trigger || !bar) return;
+
+        var TOOL_ICONS = {
+            'default': 'fa-arrow-pointer',
+            'select': 'fa-vector-square',
+            'eraser': 'fa-eraser',
+            'brush': 'fa-paintbrush',
+            'performance': 'fa-music'
+        };
+        var open = false;
+
+        function currentTool() {
+            return (state.pianoRoll && state.pianoRoll.currentTool) || 'default';
+        }
+
+        // 让触发按钮上的图标始终与当前工具保持一致
+        function syncTriggerIcon() {
+            var icon = TOOL_ICONS[currentTool()] || 'fa-arrow-pointer';
+            var ic = trigger.querySelector('i');
+            if (ic) ic.className = 'fa-solid ' + icon;
+        }
+
+        function setOpen(visible) {
+            if (open === visible) return;
+            open = visible;
+            sw.classList.toggle('open', visible);
+            if (visible) syncTriggerIcon();
+        }
+
+        // 点击折叠按钮: 展开 / 收起
+        trigger.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            syncTriggerIcon();
+            setOpen(!open);
+        });
+
+        // 点击工具栏中的某个工具: 只切换工具, 不收起 (点击栏外才收起)
+        bar.addEventListener('click', function(e) {
+            var btn = e.target.closest ? e.target.closest('.tool-btn') : null;
+            if (btn && btn.getAttribute('data-tool')) {
+                var tool = btn.getAttribute('data-tool');
+                if (tool && state.pianoRoll) switchTool(tool);
+                syncTriggerIcon(); // 折叠按钮图标立即跟随新选中的工具
+            }
+        });
+
+        // 展开状态下, 点击工具条以外的任意位置: 关闭并拦截这一次交互,
+        // 使该次点击不会落到下方的钢琴卷帘(不会误放/误选音符)。
+        // 一次物理点击会依次派发 pointerdown → touchstart/mousedown → click 等多个事件,
+        // 因此用一个短时间窗把"关闭栏的那一次点击"相关联的事件全部拦住。
+        // 例外: 画笔/橡皮工具下, 若手指落在编辑区, 收起工具栏但【不拦截】——
+        // 这次触摸的本意就是放置/删除音符, 拦截会让"滑动绘制"的第一笔失效。
+        var swallowTs = 0;
+        var outsideSwallow = function(e) {
+            var now = (e.timeStamp != null ? e.timeStamp : Date.now());
+            if (open && !sw.contains(e.target)) {
+                open = false;
+                sw.classList.remove('open');
+                var swallowThis = true;
+                try {
+                    // 仅当是画笔/橡皮工具且触摸起点在编辑区 (x >= 面板宽, y >= 时间轴高) 时不拦截
+                    // pointerdown 无 touches, 但 PointerEvent/MouseEvent 自带 clientX/Y, 直接使用
+                    var touch = (e.touches && e.touches[0]) ? e.touches[0]
+                        : (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0]
+                        : (typeof e.clientX === 'number') ? e : null;
+                    var pr = state.pianoRoll;
+                    if (touch && pr && (pr.currentTool === 'brush' || pr.currentTool === 'eraser')) {
+                        var r = pr.canvas.getBoundingClientRect();
+                        var lx = touch.clientX - r.left;
+                        var ly = touch.clientY - r.top;
+                        if (lx >= pr._currentPanelWidth && ly >= pr._cfg.timelineHeight) {
+                            swallowThis = false;
+                        }
+                    }
+                } catch (err) { swallowThis = true; }
+                if (swallowThis) swallowTs = now + 220; // 在 220 毫秒内把这一次点击的关联事件全部吞掉
+            }
+            if (now <= swallowTs) {
+                if (e.cancelable) e.preventDefault();
+                e.stopPropagation();
+            }
+        };
+        document.addEventListener('pointerdown', outsideSwallow, true);
+        document.addEventListener('touchstart', outsideSwallow, { capture: true, passive: false });
+        document.addEventListener('mousedown', outsideSwallow, true);
+        document.addEventListener('click', outsideSwallow, true);
     }
 
     // ============ 收音机式 (指针居中) 速度滑块 ============

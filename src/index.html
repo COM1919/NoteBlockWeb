@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260813a">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260829c">
 </head>
 <body>
 
@@ -292,6 +292,20 @@
         <div class="fab-context-menu-divider" style="height:1px;background:rgba(255,255,255,0.06);margin:4px 0;"></div>
         <div class="fab-context-menu-item" data-action="change-instrument" id="fab-change-instrument" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-music"></i> 更改乐器</div>
         <div class="fab-context-menu-item" data-action="change-volume" id="fab-change-volume" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-volume-high"></i> 更改音量</div>
+    </div>
+
+    <!-- ========== 移动端工具切换器 (竖屏, 位于 "+" 悬浮按钮下方) ========== -->
+    <div class="mobile-tool-switcher" id="mobile-tool-switcher">
+        <div class="mobile-tool-bar" id="mobile-tool-bar">
+            <button class="tool-btn mobile-tool-btn active" data-tool="default" title="默认工具"><i class="fa-solid fa-arrow-pointer"></i></button>
+            <button class="tool-btn mobile-tool-btn" data-tool="select" title="选择工具"><i class="fa-solid fa-vector-square"></i></button>
+            <button class="tool-btn mobile-tool-btn" data-tool="eraser" title="橡皮擦"><i class="fa-solid fa-eraser"></i></button>
+            <button class="tool-btn mobile-tool-btn" data-tool="brush" title="画笔"><i class="fa-solid fa-paintbrush"></i></button>
+            <button class="tool-btn mobile-tool-btn" data-tool="performance" title="演奏模式"><i class="fa-solid fa-music"></i></button>
+        </div>
+        <button class="mobile-tool-trigger" id="mobile-tool-trigger" title="工具">
+            <i class="fa-solid fa-arrow-pointer"></i>
+        </button>
     </div>
 
     <!-- ========== 设置弹窗 ========== -->
@@ -954,13 +968,13 @@
 <script src="/static/js/sf3_player.js?v=20260808a"></script>
 <script src="/static/js/spessa_player.js?v=20260808a"></script>
 <script src="/static/js/soundfont_loader.js?v=20260808b"></script>
-<script src="/static/js/piano_roll.js?v=20260809g"></script>
+<script src="/static/js/piano_roll.js?v=20260829d"></script>
 <script src="/static/js/fls_core.js?v=20260728a"></script>
 <script src="/static/js/fls_track_panel.js?v=20260718m"></script>
 <script src="/static/js/fls_playlist.js?v=20260728e"></script>
 <script src="/static/js/fls_group_roll.js?v=20260728d"></script>
 <script src="/static/js/fls_pianoroll.js?v=20260728d"></script>
-<script src="/static/js/main.js?v=20260810a"></script>
+<script src="/static/js/main.js?v=20260829c"></script>
 
 </body>
 </html>

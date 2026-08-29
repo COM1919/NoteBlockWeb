@@ -164,6 +164,11 @@
         this._animNoteIds = null;
         this._animDuration = 1000;    // 播放高亮动画 1 秒
         this._animHoldAtEnd = false;  // 动画完成后保持在最后一帧
+        // 长按手指位置灰白扩散环 (希沃白板风格)
+        this._lpActive = false;       // 是否正在显示脉冲环
+        this._lpAnimStart = 0;        // 脉冲环动画起始时间
+        this._lpAnimDuration = 360;   // 脉冲环/长按放大动画时长 (ms), 比播放高亮快
+        this._lpMaxScale = 1.22;      // 长按音符放大倍率
 
         // 当前乐器
         this.currentInstrument = 0;
@@ -751,13 +756,16 @@
         if (this.onSelectionChanged) this.onSelectionChanged(this.getSelectedNotes());
     };
 
-    // 从屏幕坐标创建网格坐标的选择矩形
+    // 从屏幕坐标创建选择矩形: 网格坐标用于"实际选中哪些音符",
+    // 同时保存屏幕坐标 (sx1,sy1 按下点 / sx2,sy2 当前点) 用于"跟手"的选框绘制 (不吸附网格)
     PianoRoll.prototype._makeSelectionRect = function(x1, y1, x2, y2) {
         return {
             tick1: this._screenToTick(x1),
             layer1: this._screenToLayer(y1),
             tick2: this._screenToTick(x2),
-            layer2: this._screenToLayer(y2)
+            layer2: this._screenToLayer(y2),
+            sx1: x1, sy1: y1,
+            sx2: x2, sy2: y2
         };
     };
 
@@ -912,15 +920,9 @@
             // 标准触控逻辑: 长按达到延时后, 统一播放长按动画 (按住期间持续 hold)
             // 松开时: 如果没有移动过 → 弹出菜单; 如果移动过 → 已切换到选择框/拖拽模式
             var selectedIds = Object.keys(self.selectedNotes);
-            if (selectedIds.length > 0) {
-                // 有已选音符 (或长按的是音符): 动画作用于已选音符
-                self._snapDragPositions();
-                self._startLongPressAnimation(selectedIds);
-            } else {
-                // 无已选音符 (长按空白): 不播放视觉动画 (空集无可见效果), 但仍进入 longpress-anim 态
-                // 松开时弹出普通右键菜单
-                self._startLongPressAnimation([]);
-            }
+            // 无论长按音符还是空白, 手指位置始终播放"大灰白扩散环" (希沃白板风格),
+            // 保证触控反馈在任何情况下都稳定可见 (不再受已选音符集合影响)
+            self._startLongPressAnimation(selectedIds);
             self._touchMode = 'longpress-anim';
         }, LONG_PRESS_DELAY);
     };
@@ -933,18 +935,23 @@
         this._longPressFired = false;
     };
 
-    // 开始放大动画, 完成后保持最后一帧
+    // 开始长按反馈动画: 音符放大 + 手指位置的灰白扩散环, 完成后保持最后一帧
     PianoRoll.prototype._startLongPressAnimation = function(noteIds) {
         this._isAnimating = true;
         this._animHoldAtEnd = false;
         this._animShrinking = false;
+        // 长按反馈使用更快的独立时长 (360ms), 避免沿用播放高亮的 1000ms 而显得迟钝
+        this._lpAnimDuration = 360;
         this._animStartTime = performance.now();
         this._animNoteIds = noteIds;
+        // 手指位置 (按下点) 的灰白扩散环
+        this._lpActive = true;
+        this._lpAnimStart = performance.now();
         var self = this;
         var animate = function(timestamp) {
             if (!self._isAnimating || self._animShrinking) return;
             var elapsed = timestamp - self._animStartTime;
-            if (elapsed >= self._animDuration) {
+            if (elapsed >= self._lpAnimDuration) {
                 self._animHoldAtEnd = true;
                 self.render();
                 return;
@@ -957,6 +964,8 @@
 
     // 淡出动画 (从当前 scale 平滑回到 1.0) - 用 _animShrinking 标记
     PianoRoll.prototype._fadeOutAnimation = function() {
+        // 手指位置的脉冲环随动画一起消失
+        this._lpActive = false;
         // 仅在放大 hold 状态下做缩小动画；否则直接停止
         if (this._isAnimating || this._animHoldAtEnd) {
             this._animShrinking = true;
@@ -1017,8 +1026,10 @@
         if (!this._isAnimating && !this._animHoldAtEnd) return 1;
         if (this._animHoldAtEnd) return 1.22;
         var elapsed = performance.now() - this._animStartTime;
-        if (elapsed >= this._animDuration) return 1.22;
-        var t = elapsed / this._animDuration;
+        // 长按反馈用独立的快速时长 (360ms), 其余场景回退到 _animDuration
+        var dur = this._lpAnimDuration || this._animDuration || 360;
+        if (elapsed >= dur) return 1.22;
+        var t = elapsed / dur;
         // 放大阶段也用 ease-out，避免刚开始突然蹦大
         var easedT = 1 - Math.pow(1 - t, 2.5);
         return 1 + 0.22 * easedT;
@@ -1512,21 +1523,20 @@
 
         if (this.currentTool === 'select' && e.button === 0) {
             if (clickedNote) {
-                if (e.shiftKey) {
-                    this._toggleSelection(clickedNote);
-                } else {
-                    this._selectNote(clickedNote, false);
+                // 选择工具: 点击音符 = 多选/取消 (等效一直按住 Ctrl), 不清除已有选区
+                this._toggleSelection(clickedNote);
+                // 仅当该音符仍处于选中状态时才允许拖动 (刚被取消选中的音符不拖动)
+                if (this.selectedNotes[clickedNote.id]) {
+                    this._snapDragPositions();
+                    this._beginDragPreview(x, y, clickedNote.id);
                 }
-                // 允许直接拖动选中音符 (与默认工具一致的拖动预览)
-                this._snapDragPositions();
-                this._beginDragPreview(x, y, clickedNote.id);
             } else {
                 this._isSelecting = true;
                 // 存储锚点网格坐标 (mousemove/边缘自动滚动时保持框选起点不变)
                 this._selectStartTick = this._screenToTick(x);
                 this._selectStartLayer = this._screenToLayer(y);
                 this._selectionRect = this._makeSelectionRect(x, y, x, y);
-                if (!e.shiftKey) this._clearSelection();
+                // 选择工具: 框选默认增量添加 (相当于一直按住 Ctrl), 不清除已有选区
             }
             return;
         }
@@ -1544,8 +1554,10 @@
             var brushTick = this._screenToTickNearest(x);
             var brushLayer = this._screenToLayer(y);
             var brushKey = this.getSelectedKey();
-            if (brushKey === null || brushKey === undefined) return;
-            if (brushTick >= 0 && brushLayer >= 0 && brushLayer < this.trackCount) {
+            // 未通过钢琴键盘选音调时回退为当前层 (与默认工具点击放置一致)
+            if (brushKey === null || brushKey === undefined || brushKey < 0) brushKey = brushLayer;
+            // 仅编辑区内生效: 排除左侧音轨面板/时间轴上方的空白区域
+            if (x >= this._currentPanelWidth && y >= this._cfg.timelineHeight && brushTick >= 0 && brushLayer >= 0 && brushLayer < this.trackCount) {
                 // 走标准放置流程: onNoteAdded 内部会 pushUndo / addNote / 持久化 / 动画
                 if (this.onNoteAdded) {
                     this.onNoteAdded({
@@ -1611,7 +1623,9 @@
                 this._selectStartLayer = this._screenToLayer(y);
                 this._selectionRect = {
                     tick1: this._selectStartTick, layer1: this._selectStartLayer,
-                    tick2: this._selectStartTick, layer2: this._selectStartLayer
+                    tick2: this._selectStartTick, layer2: this._selectStartLayer,
+                    sx1: x, sy1: y,
+                    sx2: x, sy2: y
                 };
                 // 已有选中音符时, 本次点击是"取消选择", 不应在松手时放置新音符
                 this._pendingPlace = !e.shiftKey && !e.ctrlKey && !e.metaKey && !hadSelection;
@@ -1776,8 +1790,10 @@
                 var brushTick = this._screenToTickNearest(x);
                 var brushLayer = this._screenToLayer(y);
                 var brushKey = this.getSelectedKey();
-                if (brushKey === null || brushKey === undefined) return;
-                if (brushTick >= 0 && brushLayer >= 0 && brushLayer < this.trackCount) {
+                // 未通过钢琴键盘选音调时回退为当前层 (与 mousedown / 触控画笔逻辑一致,
+                // 否则未选音调时按住拖动一笔也画不出来)
+                if (brushKey === null || brushKey === undefined || brushKey < 0) brushKey = brushLayer;
+                if (x >= this._currentPanelWidth && y >= this._cfg.timelineHeight && brushTick >= 0 && brushLayer >= 0 && brushLayer < this.trackCount) {
                     // 拖动绘制: undo 已在 mousedown 时通过 onNoteAdded 记录一次, 这里只放置+持久化
                     this._removeNoteAtPos(brushTick, brushLayer);
                     this.addNote({ tick: brushTick, layer: brushLayer, instrument: this.currentInstrument, key: brushKey, velocity: 100, pan: 50, pitch: 0 });
@@ -1787,15 +1803,20 @@
                 // 选择框: 锚点固定为网格坐标, 当前角跟随鼠标 (网格坐标)
                 this._selectionRect = {
                     tick1: this._selectStartTick, layer1: this._selectStartLayer,
-                    tick2: this._screenToTick(x), layer2: this._screenToLayer(y)
+                    tick2: this._screenToTick(x), layer2: this._screenToLayer(y),
+                    sx1: this._selectionRect.sx1, sy1: this._selectionRect.sy1,
+                    sx2: x, sy2: y
                 };
-                this._updateEdgeAutoScroll(x, y, e.shiftKey || e.ctrlKey || e.metaKey);
+                // 选择工具: 框选默认增量添加 (相当于一直按住 Ctrl)
+                this._updateEdgeAutoScroll(x, y, true);
                 this._fullRedrawNeeded = true;
                 this.requestRender();
             } else if (this._isSelecting) {
                 this._selectionRect = {
                     tick1: this._selectStartTick, layer1: this._selectStartLayer,
-                    tick2: this._screenToTick(x), layer2: this._screenToLayer(y)
+                    tick2: this._screenToTick(x), layer2: this._screenToLayer(y),
+                    sx1: this._selectionRect ? this._selectionRect.sx1 : this._dragStartX, sy1: this._selectionRect ? this._selectionRect.sy1 : this._dragStartY,
+                    sx2: x, sy2: y
                 };
                 if (this._hasMoved) {
                     this._selectByRect(this._selectionRect.tick1, this._selectionRect.layer1, this._selectionRect.tick2, this._selectionRect.layer2, e.shiftKey || e.ctrlKey || e.metaKey);
@@ -1844,7 +1865,8 @@
         // 选择工具框选结束
         if (this.currentTool === 'select' && this._isSelecting && this._selectionRect) {
             this._stopEdgeAutoScroll();
-            this._selectByRect(this._selectionRect.tick1, this._selectionRect.layer1, this._selectionRect.tick2, this._selectionRect.layer2, e.shiftKey || e.ctrlKey || e.metaKey);
+            // 选择工具: 框选默认增量添加 (相当于一直按住 Ctrl)
+            this._selectByRect(this._selectionRect.tick1, this._selectionRect.layer1, this._selectionRect.tick2, this._selectionRect.layer2, true);
             this._isSelecting = false;
             this._selectionRect = null;
             this._selectStartTick = 0;
@@ -1937,6 +1959,53 @@
     //   - 按下空白, 600ms内移动 > 10px → 取消长按, 单指平移
     //   - 按下空白, 600ms未移动 → 进入选区模式 (保持, 手指移动即扩展选区)
     //   - 按下空白, 未移动且未长按, 快速松开 → 放置音符
+
+    // 触控画笔/橡皮: 在指定屏幕坐标放置/删除音符 (手指滑过即连续绘制, 与桌面端按住绘画一致)
+    // isStart=true 时首次按下, 走 onNoteAdded 标准流程记录一次 undo (与桌面 mousedown 行为一致)
+    PianoRoll.prototype._paintStroke = function(x, y, isStart) {
+        // 触控画笔/橡皮只应在编辑区内生效 (排除左侧音轨面板/时间轴区域)
+        if (x < this._currentPanelWidth || y < this._cfg.timelineHeight) return;
+        if (this.currentTool === 'eraser') {
+            var hit = this._getNoteAt(x, y);
+            if (hit) {
+                this.removeNote(hit.id);
+                this._addDeleteAnim(hit.tick, hit.layer);
+                if (this.onNotesChanged) this.onNotesChanged([]);
+            }
+            return;
+        }
+        var brushTick = this._screenToTickNearest(x);
+        var brushLayer = this._screenToLayer(y);
+        var brushKey = this.getSelectedKey();
+        // 未通过钢琴键盘选音调时回退为当前层 (与默认工具触控放置一致, 避免画笔按下无任何反应)
+        if (brushKey === null || brushKey === undefined || brushKey < 0) brushKey = brushLayer;
+        if (brushTick < 0 || brushLayer < 0 || brushLayer >= this.trackCount) return;
+        // 停留在同一格时不重复放置 (touchmove 同一格会停留多帧)
+        if (!isStart && this._lastPaintTick === brushTick && this._lastPaintLayer === brushLayer) return;
+        this._lastPaintTick = brushTick;
+        this._lastPaintLayer = brushLayer;
+        if (isStart) {
+            // 首次按下: 走标准放置流程 (内部会 pushUndo / addNote / 持久化 / 动画)
+            if (this.onNoteAdded) {
+                this.onNoteAdded({
+                    tick: brushTick, layer: brushLayer,
+                    instrument: this.currentInstrument,
+                    key: brushKey,
+                    velocity: 100, pan: 50, pitch: 0
+                });
+            } else {
+                this._removeNoteAtPos(brushTick, brushLayer);
+                this.addNote({ tick: brushTick, layer: brushLayer, instrument: this.currentInstrument, key: brushKey, velocity: 100, pan: 50, pitch: 0 });
+                if (this.onNotesChanged) this.onNotesChanged([]);
+            }
+        } else {
+            // 滑动绘制: undo 已在按下时记录一次, 这里只放置+持久化
+            this._removeNoteAtPos(brushTick, brushLayer);
+            this.addNote({ tick: brushTick, layer: brushLayer, instrument: this.currentInstrument, key: brushKey, velocity: 100, pan: 50, pitch: 0 });
+            if (this.onNotesChanged) this.onNotesChanged([]);
+        }
+    };
+
     PianoRoll.prototype._onTouchStart = function(e) {
         // 全局标记: 刚关闭弹窗, 这次 touchstart 不应触发任何交互
         // 但进度条/时间轴拖动不受此限制 (不是"放置音符"操作)
@@ -2077,6 +2146,24 @@
                 return;
             }
 
+            // 触控画笔/橡皮: 手指按下滑过即放置/删除 (与桌面端按住绘画一致),
+            // 不进入长按/平移/画布 pan —— "滑动即绘制"。仅编辑区内生效。
+            if ((this.currentTool === 'brush' || this.currentTool === 'eraser') && x >= pw && y >= this._cfg.timelineHeight) {
+                this._touchStartX = x;
+                this._touchStartY = y;
+                this._lastTouchX = x;
+                this._lastTouchY = y;
+                this._touchMoved = false;
+                this._dragStartX = x;
+                this._dragStartY = y;
+                this._lastPaintTick = -1;
+                this._lastPaintLayer = -1;
+                this._touchMode = 'paint';
+                // 按下即画/擦 (首次按下走标准流程, 记录一次 undo)
+                this._paintStroke(x, y, true);
+                return;
+            }
+
             this._touchStartTime = Date.now();
             this._touchStartX = x;
             this._touchStartY = y;
@@ -2093,21 +2180,40 @@
             this._touchedNote = clickedNote || null;
 
             if (clickedNote) {
-                // 如果点击的已是选中音符且有多选，保持选择不变
-                if (this.selectedNotes[clickedNote.id] && Object.keys(this.selectedNotes).length > 1) {
-                    // 保持多选，不清除
+                if (this.currentTool === 'select') {
+                    // 触控选择工具: 点击音符 = 多选/取消 (等效一直按住 Ctrl), 不清除已有选区
+                    this._toggleSelection(clickedNote);
+                    // 仅当该音符仍处于选中状态时才允许拖动 (刚被取消选中的音符不拖动)
+                    if (this.selectedNotes[clickedNote.id]) this._beginDragPreview(x, y, clickedNote.id);
                 } else {
-                    this._selectNote(clickedNote, false);
+                    // 如果点击的已是选中音符且有多选，保持选择不变
+                    if (this.selectedNotes[clickedNote.id] && Object.keys(this.selectedNotes).length > 1) {
+                        // 保持多选，不清除
+                    } else {
+                        this._selectNote(clickedNote, false);
+                    }
+                    // 触摸按下音符时记录拖动预览锚点 (移动时音符跟随手指, 不跳格)
+                    this._beginDragPreview(x, y, clickedNote.id);
                 }
+            } else if (this.currentTool === 'select') {
+                // 触控选择工具: 空白处按下立即开始框选 (等同桌面端选择工具,
+                // additive 不清除已有选区), 选框直接跟手, 无需先长按
+                this._isSelecting = true;
+                this._selectStartTick = this._screenToTick(x);
+                this._selectStartLayer = this._screenToLayer(y);
+                this._selectionRect = {
+                    tick1: this._selectStartTick, layer1: this._selectStartLayer,
+                    tick2: this._selectStartTick, layer2: this._selectStartLayer,
+                    sx1: x, sy1: y, sx2: x, sy2: y
+                };
             } else {
                 // 移动端: 点击空白处不清除选区, 只能通过取消选择按钮清除
             }
 
-            // 触摸按下音符时记录拖动预览锚点 (移动时音符跟随手指, 不跳格)
-            if (clickedNote) this._beginDragPreview(x, y, clickedNote.id);
-
-            this._touchMode = 'tap';
-            this._startLongPressTimer(clickedNote);
+            // 选择工具下按在空白处 → 直接进入框选模式 (drag-select); 其余仍是 tap
+            this._touchMode = (this.currentTool === 'select' && !clickedNote) ? 'drag-select' : 'tap';
+            // 框选模式不需要长按菜单, 不启动长按定时器, 避免 600ms 后误触发长按动画打断框选
+            if (this._touchMode !== 'drag-select') this._startLongPressTimer(clickedNote);
         }
     };
 
@@ -2204,6 +2310,16 @@
                 }
             }
 
+            // 触控画笔/橡皮: 滑过即连续放置/删除 (不做移动阈值判定, 保持"滑动即绘制")
+            if (this._touchMode === 'paint') {
+                this._paintStroke(x, y, false);
+                this._lastTouchX = x;
+                this._lastTouchY = y;
+                this._fullRedrawNeeded = true;
+                this.requestRender();
+                return;
+            }
+
             if (!this._touchMoved && (dx > 10 || dy > 10)) {
                 this._touchMoved = true;
             }
@@ -2225,7 +2341,9 @@
                     this._selectStartLayer = this._screenToLayer(this._dragStartY);
                     this._selectionRect = {
                         tick1: this._selectStartTick, layer1: this._selectStartLayer,
-                        tick2: this._screenToTick(x), layer2: this._screenToLayer(y)
+                        tick2: this._screenToTick(x), layer2: this._screenToLayer(y),
+                        sx1: this._dragStartX, sy1: this._dragStartY,
+                        sx2: x, sy2: y
                     };
                 }
             }
@@ -2263,7 +2381,9 @@
             } else if (this._touchMode === 'drag-select') {
                 this._selectionRect = {
                     tick1: this._selectStartTick, layer1: this._selectStartLayer,
-                    tick2: this._screenToTick(x), layer2: this._screenToLayer(y)
+                    tick2: this._screenToTick(x), layer2: this._screenToLayer(y),
+                    sx1: this._selectionRect.sx1, sy1: this._selectionRect.sy1,
+                    sx2: x, sy2: y
                 };
                 this._selectByRect(this._selectionRect.tick1, this._selectionRect.layer1, this._selectionRect.tick2, this._selectionRect.layer2, true);
                 this._updateEdgeAutoScroll(x, y, true);
@@ -2351,6 +2471,16 @@
             return;
         }
 
+        // 触控画笔/橡皮: 手指抬起结束绘制
+        if (this._touchMode === 'paint') {
+            this._touchMode = 'none';
+            this._lastPaintTick = -1;
+            this._lastPaintLayer = -1;
+            this._fullRedrawNeeded = true;
+            this.render();
+            return;
+        }
+
         if (this._touchMode === 'select' && this._isDraggingNote) {
             if (Object.keys(this.selectedNotes).length > 0) {
                 this._finalizeDragMove();
@@ -2411,7 +2541,12 @@
             if (this.currentTool === 'performance') {
                 // 演奏模式不在 touchend 放置音符, 已在 touchstart 处理选择
             } else if (this._touchedNote) {
-                this._selectNote(this._touchedNote, false);
+                if (this.currentTool === 'select') {
+                    // 选择工具: 选择状态已在 touchstart 通过 _toggleSelection 处理 (多选/取消),
+                    // 这里不再调用 _selectNote(false), 否则会把已选的多音符清空成只剩这一个
+                } else {
+                    this._selectNote(this._touchedNote, false);
+                }
                 this._touchedNote = null;
                 this._fullRedrawNeeded = true;
                 this.render();
@@ -2962,7 +3097,9 @@
                     if (self._isSelecting && self._selectionRect && self._edgeCurrentX != null) {
                         self._selectionRect = {
                             tick1: self._selectStartTick, layer1: self._selectStartLayer,
-                            tick2: self._screenToTick(self._edgeCurrentX), layer2: self._screenToLayer(self._edgeCurrentY)
+                            tick2: self._screenToTick(self._edgeCurrentX), layer2: self._screenToLayer(self._edgeCurrentY),
+                            sx1: self._selectionRect.sx1, sy1: self._selectionRect.sy1,
+                            sx2: self._edgeCurrentX, sy2: self._edgeCurrentY
                         };
                         self._selectByRect(self._selectionRect.tick1, self._selectionRect.layer1, self._selectionRect.tick2, self._selectionRect.layer2, self._edgeAdditive || false);
                     }
@@ -3186,21 +3323,36 @@
     };
 
     PianoRoll.prototype._drawPulseIndicator = function() {
-        if ((!this._isAnimating && !this._animHoldAtEnd) || (this._animNoteIds && this._animNoteIds.length > 0) || !this._dragStartX) return;
+        if (!this._lpActive) return;
         var ctx = this.ctx;
-        var scale = this._getAnimationScale();
-        var sqSize = 44 * scale;
-        var sqX = this._dragStartX - sqSize / 2;
-        var sqY = this._dragStartY - sqSize / 2;
+        var sx = this._dragStartX, sy = this._dragStartY;
+        if (!sx) return;
+        // 360ms 内扩散到最大并保持; 缓入缓出 (三次), 快速且柔和
+        var elapsed = performance.now() - (this._lpAnimStart || 0);
+        var dur = this._lpAnimDuration || 360;
+        var t = Math.min(1, elapsed / dur);
+        var eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; // ease-in-out cubic
+        var baseR = 34, maxR = 78; // 最终半径 78px, 远大于手指触点 (约 20-40px), 保证不被手指挡住
+        var r = baseR + (maxR - baseR) * eased;
         ctx.save();
-        ctx.globalAlpha = 0.6 * (scale - 1) / 0.15 + 0.4;
-        ctx.strokeStyle = '#e94560';
-        ctx.lineWidth = 2.5;
-        this._roundRect(ctx, sqX, sqY, sqSize, sqSize, 0);
+        // 外圈: 灰白色粗环
+        ctx.globalAlpha = 0.8;
+        ctx.strokeStyle = '#ececf1';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.globalAlpha = 0.18;
-        ctx.fillStyle = '#e94560';
-        this._roundRect(ctx, sqX, sqY, sqSize, sqSize, 0);
+        // 内圈: 增加层次感, 更亮
+        ctx.globalAlpha = 0.9;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r * 0.72, 0, Math.PI * 2);
+        ctx.stroke();
+        // 半透明灰白填充, 随扩散逐渐显现
+        ctx.globalAlpha = 0.15 * (0.5 + 0.5 * eased);
+        ctx.fillStyle = '#ececf1';
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
     };
@@ -3208,11 +3360,13 @@
     PianoRoll.prototype._drawSelectionRect = function() {
         if (!this._isSelecting || !this._selectionRect) return;
         var ctx = this.ctx;
-        // 网格坐标 → 屏幕坐标 (滚动时选择框固定在网格上)
-        var x1 = this._tickToScreen(this._selectionRect.tick1);
-        var y1 = this._layerToScreen(this._selectionRect.layer1);
-        var x2 = this._tickToScreen(this._selectionRect.tick2 + 1);
-        var y2 = this._layerToScreen(this._selectionRect.layer2 + 1);
+        var rect = this._selectionRect;
+        // 直接使用屏幕坐标的"按下点 → 当前点"绘制, 完全跟手, 不吸附网格;
+        // 若旧状态没有屏幕坐标 (理论不会发生), 回退到网格坐标渲染
+        var x1 = (typeof rect.sx1 === 'number') ? rect.sx1 : this._tickToScreen(rect.tick1);
+        var y1 = (typeof rect.sy1 === 'number') ? rect.sy1 : this._layerToScreen(rect.layer1);
+        var x2 = (typeof rect.sx2 === 'number') ? rect.sx2 : this._tickToScreen(rect.tick2 + 1);
+        var y2 = (typeof rect.sy2 === 'number') ? rect.sy2 : this._layerToScreen(rect.layer2 + 1);
         var sx = Math.min(x1, x2);
         var sy = Math.min(y1, y2);
         var sw = Math.abs(x2 - x1);
@@ -3346,46 +3500,11 @@
         // 播放头指示器 (canvas内绘制, 跟随滚动)
         this._drawPlayhead();
 
-        // 空白处长按时的正方形脉冲指示
-        if ((this._isAnimating || this._animHoldAtEnd)
-            && this._animNoteIds && this._animNoteIds.length === 0
-            && this._dragStartX > 0) {
-            var scale = this._getAnimationScale();
-            var sqSize = 44 * scale;
-            var sqX = this._dragStartX - sqSize / 2;
-            var sqY = this._dragStartY - sqSize / 2;
-            var sqRadius = 0;
-            ctx.save();
-            ctx.globalAlpha = 0.6 * (scale - 1) / 0.15 + 0.4;
-            ctx.strokeStyle = '#e94560';
-            ctx.lineWidth = 2.5;
-            this._roundRect(ctx, sqX, sqY, sqSize, sqSize, sqRadius);
-            ctx.stroke();
-            ctx.globalAlpha = 0.18;
-            ctx.fillStyle = '#e94560';
-            this._roundRect(ctx, sqX, sqY, sqSize, sqSize, sqRadius);
-            ctx.fill();
-            ctx.restore();
-        }
+        // 长按时的扩散脉冲指示 (大灰白环, 见 _drawPulseIndicator)
+        this._drawPulseIndicator();
 
-        // 框选矩形 (网格坐标 → 屏幕坐标, 滚动时固定在网格上)
-        if (this._isSelecting && this._selectionRect) {
-            var rx1 = this._tickToScreen(this._selectionRect.tick1);
-            var ry1 = this._layerToScreen(this._selectionRect.layer1);
-            var rx2 = this._tickToScreen(this._selectionRect.tick2 + 1);
-            var ry2 = this._layerToScreen(this._selectionRect.layer2 + 1);
-            var rsx = Math.min(rx1, rx2);
-            var rsy = Math.min(ry1, ry2);
-            var rsw = Math.abs(rx2 - rx1);
-            var rsh = Math.abs(ry2 - ry1);
-            if (rsw > 2 || rsh > 2) {
-                ctx.fillStyle = cfg.selectionColor;
-                ctx.fillRect(rsx, rsy, rsw, rsh);
-                ctx.strokeStyle = cfg.selectionBorder;
-                ctx.lineWidth = 1.5;
-                ctx.strokeRect(rsx, rsy, rsw, rsh);
-            }
-        }
+        // 框选矩形 (屏幕坐标起终点, 跟手不吸附网格)
+        this._drawSelectionRect();
 
         // 钢琴键盘 (键标签 + 高亮)
         this._drawPianoKeyboard();
