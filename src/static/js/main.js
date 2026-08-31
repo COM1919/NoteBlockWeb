@@ -1833,6 +1833,10 @@
         // 键盘快捷键
         initKeyboardShortcuts();
 
+        // 创作辅助悬浮窗 + 音符查找/替换浮层
+        initCreativeAssist();
+        initFindPanel();
+
         // 全局点击/触摸关闭上下文菜单 + 其他弹窗
         // 使用 capture 阶段拦截, 关闭菜单时阻止事件继续传播到 canvas (避免误放置音符)
         var suppressNextCanvasClick = false;
@@ -1935,6 +1939,11 @@
                 && (!historySub || !historySub.contains(e.target))
                 && e.target.id !== 'btn-file') {
                 hideFileMenu();
+            }
+            // 创作辅助悬浮窗: 常驻面板, 不因点击外部关闭 (仅通过按钮/Esc/×关闭)
+            // 音符查找/替换浮层: 点击面板外部区域关闭
+            if (findPanelVisible() && !$('find-panel').contains(e.target)) {
+                closeFindPanel();
             }
             // 历史对话框
             var historyDialog = document.getElementById('history-dialog');
@@ -2090,6 +2099,32 @@
                 }
             };
 
+            // 整组放置回调 (延音放置): 一次动作 = 一次撤销, 批量写入并单次渲染
+            state.pianoRoll.onNoteGroupAdded = function(group) {
+                pushUndo();
+                if (!group || group.length === 0) return;
+                // 钢琴键盘选中的音调覆盖组内所有音符 key
+                var pianoKey = state.pianoRoll ? state.pianoRoll.getSelectedKey() : null;
+                if (pianoKey !== null && pianoKey !== undefined && pianoKey >= 0) {
+                    for (var gi = 0; gi < group.length; gi++) group[gi].key = pianoKey;
+                }
+                var added = [];
+                for (var gj = 0; gj < group.length; gj++) {
+                    state.pianoRoll._removeNoteAtPos(group[gj].tick, group[gj].layer);
+                    var note = state.pianoRoll.addNote(group[gj]);
+                    added.push(note);
+                }
+                state.notes = state.pianoRoll.getNotes();
+                buildNoteIndex(state.notes);
+                updateNoteCount();
+                updateProgressUI();
+                markDirty();
+                // 只给首音符播放放置动画, 避免整组同时弹动画
+                if (state.pianoRoll && state.pianoRoll._addPlaceAnimation && added.length > 0) {
+                    state.pianoRoll._addPlaceAnimation(added[0]);
+                }
+            };
+
             // 音符预览回调 (用于动画播放音色)
             state.pianoRoll.onNotePreview = function(instrument, key) {
                 if (window.AudioEngine && AudioEngine.playNote) {
@@ -2238,6 +2273,842 @@
         }
     }
 
+    // ============ 创作辅助悬浮窗 ============
+    var ASSIST_STORAGE_KEY = 'noteblock.assistConfig.v1';
+    var assistConfig = null;
+
+    function defaultAssistConfig() {
+        return {
+            brush: {
+                mode: 'normal',
+                normal: { velocity: 100 },
+                sustain: { preview: true, length: 5, overlap: 'overwrite', gap: 0, fade: false, minVel: 10, ease: 'linear' }
+            },
+            eraser: {
+                mode: 'area',
+                area: { radius: 3, shape: 'circle' },
+                chain: { sim: { instrument: false, key: false, velocity: false }, limit: 64 }
+            }
+        };
+    }
+
+    function loadAssistConfig() {
+        var cfg = defaultAssistConfig();
+        try {
+            var raw = localStorage.getItem(ASSIST_STORAGE_KEY);
+            if (!raw) return cfg;
+            var saved = JSON.parse(raw);
+            if (saved && saved.brush) {
+                var b = cfg.brush;
+                if (saved.brush.mode === 'normal' || saved.brush.mode === 'sustain') b.mode = saved.brush.mode;
+                if (saved.brush.normal && typeof saved.brush.normal.velocity === 'number') b.normal.velocity = clampNum(saved.brush.normal.velocity, 1, 100, 100);
+                if (saved.brush.sustain) {
+                    for (var k in b.sustain) {
+                        if (saved.brush.sustain[k] !== undefined) b.sustain[k] = saved.brush.sustain[k];
+                    }
+                }
+            }
+            if (saved && saved.eraser) {
+                var e = cfg.eraser;
+                if (saved.eraser.mode === 'area' || saved.eraser.mode === 'chain') e.mode = saved.eraser.mode;
+                if (saved.eraser.area) {
+                    if (typeof saved.eraser.area.radius === 'number') e.area.radius = clampNum(saved.eraser.area.radius, 0, 32, 3);
+                    if (saved.eraser.area.shape === 'circle' || saved.eraser.area.shape === 'square') e.area.shape = saved.eraser.area.shape;
+                }
+                if (saved.eraser.chain) {
+                    if (saved.eraser.chain.sim) {
+                        for (var sk in e.chain.sim) {
+                            if (saved.eraser.chain.sim[sk] !== undefined) e.chain.sim[sk] = !!saved.eraser.chain.sim[sk];
+                        }
+                    }
+                    if (typeof saved.eraser.chain.limit === 'number') e.chain.limit = clampNum(saved.eraser.chain.limit, 1, 1024, 64);
+                }
+            }
+        } catch(e) { /* 忽略损坏配置 */ }
+        return cfg;
+    }
+
+    function clampNum(v, min, max, fb) {
+        if (typeof v !== 'number' || isNaN(v)) v = fb;
+        return Math.max(min, Math.min(max, Math.round(v)));
+    }
+
+    function saveAssistConfig() {
+        try { localStorage.setItem(ASSIST_STORAGE_KEY, JSON.stringify(assistConfig)); } catch(e) {}
+        pushAssistConfig();
+    }
+
+    function pushAssistConfig() {
+        if (state.pianoRoll && state.pianoRoll.setAssistConfig) {
+            state.pianoRoll.setAssistConfig(assistConfig);
+        }
+    }
+
+    function assistPanelVisible() {
+        var panel = $('assist-panel');
+        return panel && panel.style.display !== 'none';
+    }
+
+    function updateAssistPanelForTool() {
+        var tool = state.pianoRoll ? state.pianoRoll.currentTool : 'default';
+        var brushSec = $('assist-section-brush');
+        var eraserSec = $('assist-section-eraser');
+        var emptySec = $('assist-section-empty');
+        if (brushSec) brushSec.style.display = (tool === 'brush' || tool === 'default') ? '' : 'none';
+        if (eraserSec) eraserSec.style.display = tool === 'eraser' ? '' : 'none';
+        if (emptySec) emptySec.style.display = (tool === 'select' || tool === 'performance') ? '' : 'none';
+    }
+
+    function positionAssistPanel() {
+        var panel = $('assist-panel');
+        var btn = $('btn-assist');
+        if (!panel || !btn) return;
+        // 每次打开都定位在按钮下方 (不持久化位置, 避免拖出屏幕外无法恢复)
+        var pw = panel.offsetWidth || 300;
+        var rect = btn.getBoundingClientRect();
+        var x = Math.max(8, rect.right - pw);
+        var y = rect.bottom + 8;
+        x = Math.max(8, Math.min(x, window.innerWidth - pw - 8));
+        y = Math.max(8, Math.min(y, window.innerHeight - 60));
+        panel.style.left = x + 'px';
+        panel.style.top = y + 'px';
+    }
+
+    function openAssistPanel() {
+        var panel = $('assist-panel');
+        if (!panel) return;
+        updateAssistPanelForTool();
+        syncAssistPanelUI();
+        positionAssistPanel();
+        panel.style.display = 'flex';
+        panel.setAttribute('aria-hidden', 'false');
+        var btn = $('btn-assist');
+        if (btn) btn.classList.add('active');
+    }
+
+    function closeAssistPanel() {
+        var panel = $('assist-panel');
+        if (!panel) return;
+        panel.style.display = 'none';
+        panel.setAttribute('aria-hidden', 'true');
+        var btn = $('btn-assist');
+        if (btn) btn.classList.remove('active');
+        // 关闭时兜底保存 (数字输入可能在未失焦时被点击旁处关闭)
+        saveAssistConfig();
+    }
+
+    function toggleAssistPanel() {
+        if (assistPanelVisible()) closeAssistPanel();
+        else openAssistPanel();
+    }
+
+    function setAssistToggle(id, on) {
+        var el = $(id);
+        if (!el) return;
+        el.classList.toggle('active', !!on);
+        el.textContent = on ? '开' : '关';
+    }
+
+    function setAssistSegActive(containerId, target) {
+        var container = $(containerId);
+        if (!container) return;
+        var btns = container.querySelectorAll('.assist-seg-btn');
+        for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+        if (target) target.classList.add('active');
+    }
+
+    function syncAssistTabBodies(sectionId, activeTab) {
+        var section = $(sectionId);
+        if (!section) return;
+        var tabs = section.querySelectorAll('.assist-tab');
+        var bodies = section.querySelectorAll('.assist-tab-body');
+        for (var i = 0; i < tabs.length; i++) {
+            tabs[i].classList.toggle('active', tabs[i].getAttribute('data-assist-tab') === activeTab);
+        }
+        for (var j = 0; j < bodies.length; j++) {
+            bodies[j].style.display = (bodies[j].id === 'assist-tab-' + activeTab) ? '' : 'none';
+        }
+    }
+
+    // 读取 DOM 数值输入并回写配置 (min/max 夹取)
+    function bindAssistNumber(id, getSetter, min, max, fb) {
+        var el = $(id);
+        if (!el) return;
+        function read() {
+            var v = parseInt(el.value, 10);
+            if (isNaN(v)) v = fb;
+            v = Math.max(min, Math.min(max, v));
+            el.value = v;
+            return v;
+        }
+        el.addEventListener('input', function() {
+            getSetter(read());
+            pushAssistConfig();
+        });
+        el.addEventListener('change', function() {
+            getSetter(read());
+            saveAssistConfig();
+        });
+    }
+
+    function syncAssistPanelUI() {
+        if (!assistConfig) return;
+        var b = assistConfig.brush, e = assistConfig.eraser;
+        var nv = $('assist-normal-velocity');
+        if (nv) nv.value = b.normal.velocity;
+        var sl = $('assist-sustain-length');
+        if (sl) sl.value = b.sustain.length;
+        var sg = $('assist-sustain-gap');
+        if (sg) sg.value = b.sustain.gap;
+        var sm = $('assist-sustain-minvel');
+        if (sm) sm.value = b.sustain.minVel;
+        var ar = $('assist-area-radius');
+        if (ar) ar.value = e.area.radius;
+        var cl = $('assist-chain-limit');
+        if (cl) cl.value = e.chain.limit;
+        setAssistToggle('assist-sustain-preview', b.sustain.preview);
+        setAssistToggle('assist-sustain-fade', b.sustain.fade);
+        syncAssistTabBodies('assist-section-brush', b.mode === 'sustain' ? 'sustain' : 'normal');
+        syncAssistTabBodies('assist-section-eraser', e.mode === 'chain' ? 'chain' : 'area');
+        var owBtn = document.querySelector('#assist-overwrite-seg .assist-seg-btn[data-assist-overwrite="' + b.sustain.overlap + '"]');
+        setAssistSegActive('assist-overwrite-seg', owBtn);
+        var easeBtn = document.querySelector('#assist-ease-seg .assist-seg-btn[data-assist-ease="' + b.sustain.ease + '"]');
+        setAssistSegActive('assist-ease-seg', easeBtn);
+        var shapeBtn = document.querySelector('#assist-area-shape-seg .assist-seg-btn[data-assist-shape="' + e.area.shape + '"]');
+        setAssistSegActive('assist-area-shape-seg', shapeBtn);
+        var simBtns = document.querySelectorAll('#assist-chain-similar-seg .assist-seg-btn');
+        for (var i = 0; i < simBtns.length; i++) {
+            var attr = simBtns[i].getAttribute('data-assist-similar');
+            simBtns[i].classList.toggle('active', !!e.chain.sim[attr]);
+        }
+        var shrinkRow = $('assist-shrink-gap-row');
+        if (shrinkRow) shrinkRow.style.display = b.sustain.overlap === 'shrink' ? '' : 'none';
+        var fadeOpts = $('assist-fade-options');
+        if (fadeOpts) fadeOpts.style.display = b.sustain.fade ? '' : 'none';
+    }
+
+    function initAssistDrag() {
+        var header = $('assist-panel-header');
+        var panel = $('assist-panel');
+        if (!header || !panel) return;
+        function isCloseTarget(t) {
+            return t && (t.id === 'assist-panel-close' || (t.closest && t.closest('.assist-panel-close')));
+        }
+        header.addEventListener('mousedown', function(e) {
+            if (isCloseTarget(e.target)) return;
+            e.preventDefault();
+            var startX = e.clientX, startY = e.clientY;
+            var origX = panel.offsetLeft, origY = panel.offsetTop;
+            function onMove(ev) {
+                panel.style.left = Math.max(0, origX + ev.clientX - startX) + 'px';
+                panel.style.top = Math.max(0, origY + ev.clientY - startY) + 'px';
+            }
+            function onUp() {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            }
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+        header.addEventListener('touchstart', function(e) {
+            if (isCloseTarget(e.target)) return;
+            var t = e.touches[0];
+            if (!t) return;
+            e.preventDefault();
+            var startX = t.clientX, startY = t.clientY;
+            var origX = panel.offsetLeft, origY = panel.offsetTop;
+            function onMove(ev) {
+                var mt = ev.touches[0];
+                if (!mt) return;
+                panel.style.left = Math.max(0, origX + mt.clientX - startX) + 'px';
+                panel.style.top = Math.max(0, origY + mt.clientY - startY) + 'px';
+            }
+            function onUp() {
+                document.removeEventListener('touchmove', onMove);
+                document.removeEventListener('touchend', onUp);
+            }
+            document.addEventListener('touchmove', onMove, { passive: true });
+            document.addEventListener('touchend', onUp);
+        });
+    }
+
+    function initCreativeAssist() {
+        assistConfig = loadAssistConfig();
+        pushAssistConfig();
+
+        var btn = $('btn-assist');
+        if (btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                toggleAssistPanel();
+            });
+        }
+        var closeBtn = $('assist-panel-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                closeAssistPanel();
+            });
+        }
+        // 空状态中的查找按钮
+        var findBtn = $('assist-find-btn');
+        if (findBtn) {
+            findBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                closeAssistPanel();
+                if (findPanelVisible()) closeFindPanel();
+                else openFindPanel();
+            });
+        }
+
+        // Tab 切换 = 模式开关
+        var tabs = document.querySelectorAll('.assist-tab');
+        for (var i = 0; i < tabs.length; i++) {
+            tabs[i].addEventListener('click', function(e) {
+                e.stopPropagation();
+                var name = this.getAttribute('data-assist-tab');
+                var section = this.closest('.assist-section');
+                if (!section) return;
+                if (section.id === 'assist-section-brush') {
+                    assistConfig.brush.mode = name === 'sustain' ? 'sustain' : 'normal';
+                } else if (section.id === 'assist-section-eraser') {
+                    assistConfig.eraser.mode = name === 'chain' ? 'chain' : 'area';
+                }
+                saveAssistConfig();
+                syncAssistPanelUI();
+            });
+        }
+
+        // Toggle 开关
+        var toggles = document.querySelectorAll('.assist-toggle');
+        for (var j = 0; j < toggles.length; j++) {
+            toggles[j].addEventListener('click', function(e) {
+                e.stopPropagation();
+                var on = !this.classList.contains('active');
+                if (this.id === 'assist-sustain-preview') {
+                    assistConfig.brush.sustain.preview = on;
+                } else if (this.id === 'assist-sustain-fade') {
+                    assistConfig.brush.sustain.fade = on;
+                }
+                saveAssistConfig();
+                syncAssistPanelUI();
+            });
+        }
+
+        // 分段单选组
+        function bindSeg(containerId, attrName, apply) {
+            var container = $(containerId);
+            if (!container) return;
+            var btns = container.querySelectorAll('.assist-seg-btn');
+            for (var k = 0; k < btns.length; k++) {
+                btns[k].addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var val = this.getAttribute(attrName);
+                    setAssistSegActive(containerId, this);
+                    apply(val);
+                    saveAssistConfig();
+                    syncAssistPanelUI();
+                });
+            }
+        }
+        bindSeg('assist-overwrite-seg', 'data-assist-overwrite', function(v) { assistConfig.brush.sustain.overlap = v; });
+        bindSeg('assist-ease-seg', 'data-assist-ease', function(v) { assistConfig.brush.sustain.ease = v; });
+        bindSeg('assist-area-shape-seg', 'data-assist-shape', function(v) { assistConfig.eraser.area.shape = v; });
+
+        // 同类判定 (多选)
+        var simBtns = document.querySelectorAll('#assist-chain-similar-seg .assist-seg-btn');
+        for (var s = 0; s < simBtns.length; s++) {
+            simBtns[s].addEventListener('click', function(e) {
+                e.stopPropagation();
+                this.classList.toggle('active');
+                var attr = this.getAttribute('data-assist-similar');
+                assistConfig.eraser.chain.sim[attr] = this.classList.contains('active');
+                saveAssistConfig();
+            });
+        }
+
+        // 数值输入
+        bindAssistNumber('assist-normal-velocity', function(v) { assistConfig.brush.normal.velocity = v; }, 1, 100, 100);
+        bindAssistNumber('assist-sustain-length', function(v) { assistConfig.brush.sustain.length = v; }, 0, 64, 5);
+        bindAssistNumber('assist-sustain-gap', function(v) { assistConfig.brush.sustain.gap = v; }, 0, 64, 0);
+        bindAssistNumber('assist-sustain-minvel', function(v) { assistConfig.brush.sustain.minVel = v; }, 1, 100, 10);
+        bindAssistNumber('assist-area-radius', function(v) { assistConfig.eraser.area.radius = v; }, 0, 32, 3);
+        bindAssistNumber('assist-chain-limit', function(v) { assistConfig.eraser.chain.limit = v; }, 1, 1024, 64);
+
+        initAssistDrag();
+        syncAssistPanelUI();
+    }
+
+    // ============ 音符查找/替换浮层 ============
+    var findState = {
+        mode: 'find',
+        inst: [],
+        keyMode: 'single',
+        keySingle: null,
+        keyRange: [null, null],
+        velMode: 'single',
+        velSingle: null,
+        velMin: 0, velMax: 100,
+        results: [],
+        index: -1
+    };
+    var FIND_MAX_KEYS = 88;
+
+    function findKeyLabel(key) {
+        return getNbsKeyPitchLabel(key) + getNbsKeyOctave(key);
+    }
+
+    function findPanelVisible() {
+        var panel = $('find-panel');
+        return panel && panel.style.display !== 'none';
+    }
+
+    function fillFindKeySelect(sel, includeEmpty) {
+        if (!sel) return;
+        sel.innerHTML = '';
+        if (includeEmpty) {
+            var e0 = document.createElement('option');
+            e0.value = '';
+            e0.textContent = '不限';
+            sel.appendChild(e0);
+        }
+        for (var k = 0; k < FIND_MAX_KEYS; k++) {
+            var o = document.createElement('option');
+            o.value = k;
+            o.textContent = findKeyLabel(k) + ' (' + k + ')';
+            sel.appendChild(o);
+        }
+    }
+
+    function findDistinctKeys() {
+        var notes = state.pianoRoll ? state.pianoRoll.getNotes() : [];
+        var set = {};
+        for (var i = 0; i < notes.length; i++) set[notes[i].key] = true;
+        return Object.keys(set).map(Number).sort(function(a, b) { return a - b; });
+    }
+
+    function buildFindInstrumentChips() {
+        var wrap = $('find-cond-instruments');
+        if (!wrap) return;
+        var notes = state.pianoRoll ? state.pianoRoll.getNotes() : [];
+        var set = {};
+        for (var i = 0; i < notes.length; i++) set[notes[i].instrument] = true;
+        var insts = Object.keys(set).map(Number).sort(function(a, b) { return a - b; });
+        var names = getInstrumentNames();
+        wrap.innerHTML = '';
+        for (var j = 0; j < insts.length; j++) {
+            (function(inst) {
+                var chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'find-mini-btn' + (findState.inst.indexOf(inst) >= 0 ? ' active' : '');
+                chip.textContent = names[inst] || ('音色' + inst);
+                chip.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var idx = findState.inst.indexOf(inst);
+                    if (idx >= 0) findState.inst.splice(idx, 1);
+                    else findState.inst.push(inst);
+                    this.classList.toggle('active');
+                    runFind();
+                });
+                wrap.appendChild(chip);
+            })(insts[j]);
+        }
+    }
+
+    function buildFindPanels() {
+        fillFindKeySelect($('find-key-single-select'), true);
+        fillFindKeySelect($('find-key-range-start'), true);
+        fillFindKeySelect($('find-key-range-end'), true);
+        buildFindInstrumentChips();
+        // 替换区选择框
+        var repInst = $('find-replace-instrument');
+        if (repInst) {
+            repInst.innerHTML = '';
+            var e0 = document.createElement('option');
+            e0.value = '';
+            e0.textContent = '不变';
+            repInst.appendChild(e0);
+            var names = getInstrumentNames();
+            for (var i = 0; i < names.length; i++) {
+                var o = document.createElement('option');
+                o.value = i;
+                o.textContent = names[i];
+                repInst.appendChild(o);
+            }
+        }
+        var repKey = $('find-replace-key');
+        if (repKey) {
+            repKey.innerHTML = '';
+            var e1 = document.createElement('option');
+            e1.value = '';
+            e1.textContent = '不变';
+            repKey.appendChild(e1);
+            for (var k = 0; k < FIND_MAX_KEYS; k++) {
+                var ok = document.createElement('option');
+                ok.value = k;
+                ok.textContent = findKeyLabel(k) + ' (' + k + ')';
+                repKey.appendChild(ok);
+            }
+        }
+    }
+
+    function syncFindPanelUI() {
+        // 键模式分段
+        var keyBtns = document.querySelectorAll('.find-key-mode-seg .find-seg-btn');
+        for (var i = 0; i < keyBtns.length; i++) {
+            keyBtns[i].classList.toggle('active', keyBtns[i].getAttribute('data-key-mode') === findState.keyMode);
+        }
+        var singleWrap = $('find-key-single'), rangeWrap = $('find-key-range');
+        if (singleWrap) singleWrap.style.display = findState.keyMode === 'single' ? '' : 'none';
+        if (rangeWrap) rangeWrap.style.display = findState.keyMode === 'range' ? '' : 'none';
+        // 音量模式分段
+        var velBtns = document.querySelectorAll('.find-vel-mode-seg .find-seg-btn');
+        for (var j = 0; j < velBtns.length; j++) {
+            velBtns[j].classList.toggle('active', velBtns[j].getAttribute('data-vel-mode') === findState.velMode);
+        }
+        var velSingle = $('find-vel-single'), velRange = $('find-vel-range');
+        if (velSingle) velSingle.style.display = findState.velMode === 'single' ? '' : 'none';
+        if (velRange) velRange.style.display = findState.velMode === 'range' ? '' : 'none';
+        var velMinEl = $('find-vel-min'), velMaxEl = $('find-vel-max'), velEqEl = $('find-vel-eq');
+        if (velMinEl) velMinEl.value = findState.velMin;
+        if (velMaxEl) velMaxEl.value = findState.velMax;
+        if (velEqEl) velEqEl.value = (findState.velSingle === null || findState.velSingle === undefined) ? '' : findState.velSingle;
+        var keySel = $('find-key-single-select');
+        if (keySel) keySel.value = (findState.keySingle === null || findState.keySingle === undefined) ? '' : findState.keySingle;
+        var keyStart = $('find-key-range-start'), keyEnd = $('find-key-range-end');
+        if (keyStart) keyStart.value = (findState.keyRange[0] === null || findState.keyRange[0] === undefined) ? '' : findState.keyRange[0];
+        if (keyEnd) keyEnd.value = (findState.keyRange[1] === null || findState.keyRange[1] === undefined) ? '' : findState.keyRange[1];
+        // 查找/替换模式
+        var modeBtns = document.querySelectorAll('.find-modes .find-mode');
+        for (var m = 0; m < modeBtns.length; m++) {
+            modeBtns[m].classList.toggle('active', modeBtns[m].getAttribute('data-find-mode') === findState.mode);
+        }
+        var repArea = $('find-replace-area');
+        if (repArea) repArea.style.display = findState.mode === 'replace' ? '' : 'none';
+        // 当前高亮展示
+        var countEl = $('find-result-count');
+        if (countEl) {
+            countEl.textContent = findState.results.length > 0 ? ((findState.index + 1) + '/' + findState.results.length) : '0/0';
+        }
+        var prevBtn = $('find-prev'), nextBtn = $('find-next');
+        var hasNav = findState.results.length > 1;
+        if (prevBtn) prevBtn.disabled = !hasNav;
+        if (nextBtn) nextBtn.disabled = !hasNav;
+    }
+
+    function openFindPanel() {
+        var panel = $('find-panel');
+        if (!panel) return;
+        buildFindPanels();
+        syncFindPanelUI();
+        runFind();
+        panel.style.display = 'flex';
+        panel.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeFindPanel() {
+        var panel = $('find-panel');
+        if (!panel) return;
+        panel.style.display = 'none';
+        panel.setAttribute('aria-hidden', 'true');
+        if (state.pianoRoll) state.pianoRoll.setFindHighlight(null);
+    }
+
+    function runFind() {
+        if (!state.pianoRoll) return;
+        var notes = state.pianoRoll.getNotes();
+        var results = [];
+        for (var i = 0; i < notes.length; i++) {
+            var n = notes[i];
+            if (findState.inst.length > 0 && findState.inst.indexOf(n.instrument) < 0) continue;
+            if (findState.keyMode === 'single') {
+                if (findState.keySingle !== null && n.key !== findState.keySingle) continue;
+            } else if (findState.keyMode === 'range') {
+                var ks = findState.keyRange[0], ke = findState.keyRange[1];
+                if (ks !== null && n.key < ks) continue;
+                if (ke !== null && n.key > ke) continue;
+            }
+            if (findState.velMode === 'single') {
+                if (findState.velSingle !== null && n.velocity !== findState.velSingle) continue;
+            } else if (findState.velMode === 'range') {
+                if (n.velocity < findState.velMin || n.velocity > findState.velMax) continue;
+            }
+            results.push(n.id);
+        }
+        findState.results = results;
+        findState.index = results.length > 0 ? 0 : -1;
+        highlightFindResult();
+        syncFindPanelUI();
+    }
+
+    function highlightFindResult() {
+        if (!state.pianoRoll) return;
+        var id = null;
+        if (findState.index >= 0 && findState.results.length > 0) {
+            id = findState.results[findState.index];
+        }
+        state.pianoRoll.setFindHighlight(id);
+        if (id !== null) scrollToNote(id);
+    }
+
+    function scrollToNote(noteId) {
+        var pr = state.pianoRoll;
+        if (!pr) return;
+        var notes = pr.getNotes();
+        var note = null;
+        for (var i = 0; i < notes.length; i++) {
+            if (notes[i].id === noteId) { note = notes[i]; break; }
+        }
+        if (!note || !pr._tickToScreen || !pr._layerToScreen) return;
+        var pw = pr._currentPanelWidth, th = pr._cfg.timelineHeight;
+        var cellW = pr._cfg.cellW * pr.zoom, cellH = pr._cfg.cellH * pr.zoom;
+        var cw = pr.displayWidth, ch = pr.displayHeight;
+        var sx = pr._tickToScreen(note.tick);
+        var sy = pr._layerToScreen(note.layer);
+        var need = false;
+        if (sx + cellW > cw) {
+            pr.scrollX = Math.max(0, note.tick * cellW - (cw - pw) + cellW);
+            need = true;
+        } else if (sx < pw) {
+            pr.scrollX = Math.max(0, note.tick * cellW);
+            need = true;
+        }
+        if (sy + cellH > ch) {
+            pr.scrollY = Math.max(0, note.layer * cellH - (ch - th) + cellH);
+            need = true;
+        } else if (sy < th) {
+            pr.scrollY = Math.max(0, note.layer * cellH);
+            need = true;
+        }
+        if (need) {
+            pr._fullRedrawNeeded = true;
+            pr.requestRender();
+        }
+    }
+
+    function findGo(delta) {
+        if (findState.results.length === 0) return;
+        findState.index = (findState.index + delta + findState.results.length) % findState.results.length;
+        highlightFindResult();
+        syncFindPanelUI();
+    }
+
+    function findSelectAll() {
+        if (!state.pianoRoll || findState.results.length === 0) return;
+        state.pianoRoll.selectNotes(findState.results.slice());
+    }
+
+    function getReplaceValues() {
+        var vals = {};
+        var instSel = $('find-replace-instrument');
+        var keySel = $('find-replace-key');
+        var velInput = $('find-replace-velocity');
+        if (instSel && instSel.value !== '') vals.instrument = parseInt(instSel.value, 10);
+        if (keySel && keySel.value !== '') vals.key = parseInt(keySel.value, 10);
+        if (velInput && velInput.value !== '') {
+            var v = parseInt(velInput.value, 10);
+            if (!isNaN(v)) vals.velocity = clampNum(v, 1, 100, 100);
+        }
+        return vals;
+    }
+
+    function applyReplaceToNote(note) {
+        if (!note) return false;
+        var vals = getReplaceValues();
+        if (Object.keys(vals).length === 0) return false;
+        var changed = false;
+        for (var k in vals) {
+            if (note[k] !== vals[k]) { note[k] = vals[k]; changed = true; }
+        }
+        return changed;
+    }
+
+    function syncAfterReplace() {
+        state.pianoRoll._fullRedrawNeeded = true;
+        state.pianoRoll.render();
+        state.notes = state.pianoRoll.getNotes();
+        buildNoteIndex(state.notes);
+        updateNoteCount();
+        updateProgressUI();
+        markDirty();
+    }
+
+    function findReplaceCurrent() {
+        if (!state.pianoRoll || findState.index < 0 || findState.results.length === 0) return;
+        pushUndo();
+        var id = findState.results[findState.index];
+        var notes = state.pianoRoll.getNotes();
+        for (var i = 0; i < notes.length; i++) {
+            if (notes[i].id === id) { applyReplaceToNote(notes[i]); break; }
+        }
+        syncAfterReplace();
+        runFind();
+    }
+
+    function findReplaceAll() {
+        if (!state.pianoRoll || findState.results.length === 0) return;
+        if (Object.keys(getReplaceValues()).length === 0) return;
+        pushUndo();
+        var ids = {};
+        for (var i = 0; i < findState.results.length; i++) ids[findState.results[i]] = true;
+        var notes = state.pianoRoll.getNotes();
+        var applied = 0;
+        for (var j = 0; j < notes.length; j++) {
+            if (ids[notes[j].id]) {
+                if (applyReplaceToNote(notes[j])) applied++;
+            }
+        }
+        if (applied > 0) syncAfterReplace();
+        runFind();
+    }
+
+    function initFindPanel() {
+        var closeBtn = $('find-panel-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                closeFindPanel();
+            });
+        }
+        // 查找/替换模式
+        var modeBtns = document.querySelectorAll('.find-modes .find-mode');
+        for (var i = 0; i < modeBtns.length; i++) {
+            modeBtns[i].addEventListener('click', function(e) {
+                e.stopPropagation();
+                findState.mode = this.getAttribute('data-find-mode') === 'replace' ? 'replace' : 'find';
+                syncFindPanelUI();
+            });
+        }
+        // 键模式
+        var keyBtns = document.querySelectorAll('.find-key-mode-seg .find-seg-btn');
+        for (var j = 0; j < keyBtns.length; j++) {
+            keyBtns[j].addEventListener('click', function(e) {
+                e.stopPropagation();
+                findState.keyMode = this.getAttribute('data-key-mode') || 'single';
+                syncFindPanelUI();
+                runFind();
+            });
+        }
+        // 音量模式
+        var velBtns = document.querySelectorAll('.find-vel-mode-seg .find-seg-btn');
+        for (var v = 0; v < velBtns.length; v++) {
+            velBtns[v].addEventListener('click', function(e) {
+                e.stopPropagation();
+                findState.velMode = this.getAttribute('data-vel-mode') || 'single';
+                syncFindPanelUI();
+                runFind();
+            });
+        }
+        // 键值输入
+        var keySel = $('find-key-single-select');
+        if (keySel) keySel.addEventListener('change', function() {
+            findState.keySingle = this.value === '' ? null : parseInt(this.value, 10);
+            runFind();
+        });
+        var keyStart = $('find-key-range-start');
+        if (keyStart) keyStart.addEventListener('change', function() {
+            findState.keyRange[0] = this.value === '' ? null : parseInt(this.value, 10);
+            syncFindPanelUI();
+            runFind();
+        });
+        var keyEnd = $('find-key-range-end');
+        if (keyEnd) keyEnd.addEventListener('change', function() {
+            findState.keyRange[1] = this.value === '' ? null : parseInt(this.value, 10);
+            syncFindPanelUI();
+            runFind();
+        });
+        // 音量单个数值
+        var velEq = $('find-vel-eq');
+        if (velEq) velEq.addEventListener('change', function() {
+            var v = parseInt(this.value, 10);
+            if (isNaN(v)) { findState.velSingle = null; }
+            else { findState.velSingle = Math.max(0, Math.min(100, v)); this.value = findState.velSingle; }
+            runFind();
+        });
+        // 音量范围
+        ['find-vel-min', 'find-vel-max'].forEach(function(id) {
+            var el = $(id);
+            if (!el) return;
+            el.addEventListener('change', function() {
+                var v = parseInt(el.value, 10);
+                if (isNaN(v)) v = 0;
+                v = Math.max(0, Math.min(100, v));
+                el.value = v;
+                if (id === 'find-vel-min') {
+                    findState.velMin = v;
+                    if (findState.velMax < v) { findState.velMax = v; var mx = $('find-vel-max'); if (mx) mx.value = v; }
+                } else {
+                    findState.velMax = v;
+                    if (findState.velMin > v) { findState.velMin = v; var mn = $('find-vel-min'); if (mn) mn.value = v; }
+                }
+                runFind();
+            });
+        });
+        // 全选/清除音色
+        var instAll = $('find-inst-all');
+        if (instAll) instAll.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var wrap = $('find-cond-instruments');
+            var btns = wrap ? wrap.querySelectorAll('.find-mini-btn') : [];
+            findState.inst.length = 0;
+            for (var a = 0; a < btns.length; a++) {
+                var instVal = parseInt(btns[a].getAttribute('data-inst'), 10);
+                if (!isNaN(instVal)) {
+                    btns[a].classList.add('active');
+                    findState.inst.push(instVal);
+                }
+            }
+            runFind();
+        });
+        var instClear = $('find-inst-clear');
+        if (instClear) instClear.addEventListener('click', function(e) {
+            e.stopPropagation();
+            findState.inst.length = 0;
+            var wrap = $('find-cond-instruments');
+            var btns = wrap ? wrap.querySelectorAll('.find-mini-btn') : [];
+            for (var c = 0; c < btns.length; c++) btns[c].classList.remove('active');
+            runFind();
+        });
+        // 重置 / 清空条件
+        var resetBtn = $('find-reset');
+        if (resetBtn) resetBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            findState.inst.length = 0;
+            findState.keyMode = 'single';
+            findState.keySingle = null;
+            findState.keyRange = [null, null];
+            findState.velMode = 'single';
+            findState.velSingle = null;
+            findState.velMin = 0; findState.velMax = 100;
+            buildFindPanels();
+            syncFindPanelUI();
+            runFind();
+        });
+        var clearBtn = $('find-clear-all');
+        if (clearBtn) clearBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            findState.keySingle = null;
+            findState.keyRange = [null, null];
+            findState.velSingle = null;
+            findState.velMin = 0; findState.velMax = 100;
+            buildFindPanels();
+            syncFindPanelUI();
+            runFind();
+        });
+        // 导航
+        var prevBtn = $('find-prev');
+        if (prevBtn) prevBtn.addEventListener('click', function(e) { e.stopPropagation(); findGo(-1); });
+        var nextBtn = $('find-next');
+        if (nextBtn) nextBtn.addEventListener('click', function(e) { e.stopPropagation(); findGo(1); });
+        var selAll = $('find-select-all');
+        if (selAll) selAll.addEventListener('click', function(e) { e.stopPropagation(); findSelectAll(); });
+        // 替换
+        var repCurrent = $('find-replace-current');
+        if (repCurrent) repCurrent.addEventListener('click', function(e) { e.stopPropagation(); findReplaceCurrent(); });
+        var repAll = $('find-replace-all');
+        if (repAll) repAll.addEventListener('click', function(e) { e.stopPropagation(); findReplaceAll(); });
+    }
+
     function switchTool(tool) {
         if (!state.pianoRoll) return;
         state.pianoRoll.setTool(tool);
@@ -2248,6 +3119,8 @@
                 allBtns[j].classList.add('active');
             }
         }
+        // 创作辅助悬浮窗内容跟随当前工具
+        if (assistPanelVisible()) updateAssistPanelForTool();
         if (tool === 'performance') {
             state.performanceMode = true;
             // 强制开启键盘钢琴
@@ -3151,6 +4024,8 @@
                 handleStop();
                 if (state.pianoRoll) state.pianoRoll._clearSelection();
                 hideContextMenu();
+                if (assistPanelVisible()) closeAssistPanel();
+                if (findPanelVisible()) closeFindPanel();
                 var aboutEl = $('about-popup');
                 if (aboutEl) { aboutEl.style.display = ''; aboutEl.classList.remove('active'); }
             } else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -3190,6 +4065,10 @@
             } else if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
                 e.preventDefault();
                 handleDuplicate();
+            } else if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+                e.preventDefault();
+                if (findPanelVisible()) closeFindPanel();
+                else openFindPanel();
             } else if (window.innerWidth < 768 && e.key === 'm' && !e.ctrlKey && !e.metaKey) {
                 e.preventDefault();
                 toggleMuteSelectedTrack();
@@ -5182,6 +6061,22 @@
             });
         }
 
+        // 附加: 查找音符入口 (顶栏无对应按钮, 手动添加)
+        if (body && !body.querySelector('[data-landscape-find]')) {
+            var findEntry = document.createElement('button');
+            findEntry.setAttribute('data-landscape-find', '1');
+            findEntry.className = 'toolbar-btn drawer-find-entry';
+            findEntry.title = '查找音符 (Ctrl+F)';
+            findEntry.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;';
+            findEntry.innerHTML = '<i class="fa-solid fa-magnifying-glass icon"></i><span class="label">查找音符</span>';
+            findEntry.addEventListener('click', function() {
+                closeLandscapeDrawer();
+                if (findPanelVisible()) closeFindPanel();
+                else openFindPanel();
+            });
+            body.appendChild(findEntry);
+        }
+
         // 打开抽屉
         btn.addEventListener('click', function() {
             drawer.classList.add('visible');
@@ -5608,7 +6503,9 @@
                 item.addEventListener('click', function() {
                     var action = item.getAttribute('data-action');
                     menu.style.display = 'none';
-                    if (action === 'scale-precision') {
+                    if (action === 'dedupe-notes') {
+                        dedupeCurrentNotes();
+                    } else if (action === 'scale-precision') {
                         showScalePrecisionDialog();
                     } else if (action === 'remove-empty-tracks') {
                         removeEmptyTracks();
@@ -5626,6 +6523,9 @@
                         showSnapDialog();
                     } else if (action === 'pitch-shift') {
                         showPitchShiftDialog();
+                    } else if (action === 'find-notes') {
+                        if (findPanelVisible()) closeFindPanel();
+                        else openFindPanel();
                     }
                 });
             })(items[i]);
@@ -5976,6 +6876,58 @@
     }
 
     // 清除空轨: 删除所有没有任何音符的 layer
+    // ============ 消除重复音符 ============
+    // 对当前项目所有音符去重: 同一 tick 下 音色(instrument) + 音调(key) 完全相同的音符只保留一个
+    function dedupeCurrentNotes() {
+        if (!state.pianoRoll) return;
+        var notes = state.pianoRoll.getNotes();
+        if (notes.length < 2) {
+            showAppAlert('没有可去重的音符', {title: '消除重复音符'});
+            return;
+        }
+        var seen = {};
+        var kept = [];
+        var removed = 0;
+        for (var i = 0; i < notes.length; i++) {
+            var n = notes[i];
+            var key = n.tick + ':' + n.instrument + ':' + n.key;
+            if (seen[key]) { removed++; continue; }
+            seen[key] = true;
+            kept.push(n);
+        }
+        if (removed === 0) {
+            // 诊断: 统计"看似重复"但属性不同的情况, 帮助定位原因
+            var sameTickKey = 0;   // 同 tick 同 key, 但音色不同
+            var sameTickInst = 0;  // 同 tick 同 instrument, 但音调不同
+            var sameKeyInst = 0;   // 同 key 同 instrument, 但时间不同 (相邻/其他 tick)
+            var seenTK = {}, seenTI = {}, seenKI = {};
+            for (var j = 0; j < notes.length; j++) {
+                var m = notes[j];
+                var tk = m.tick + ':' + m.key;
+                var ti = m.tick + ':' + m.instrument;
+                var ki = m.key + ':' + m.instrument;
+                if (seenTK[tk]) sameTickKey++; else seenTK[tk] = true;
+                if (seenTI[ti]) sameTickInst++; else seenTI[ti] = true;
+                if (seenKI[ki]) sameKeyInst++; else seenKI[ki] = true;
+            }
+            var msg = '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。';
+            if (sameTickKey > 0) msg += '\n\n提示: 有 ' + sameTickKey + ' 个音符同一时间音调相同但音色不同 (instrument 不同)';
+            if (sameTickInst > 0) msg += '\n提示: 有 ' + sameTickInst + ' 个音符同一时间音色相同但音调不同 (key 不同)';
+            if (sameKeyInst > 0) msg += '\n提示: 有 ' + sameKeyInst + ' 个音符音色音调相同但时间不同 (tick 不同)';
+            showAppAlert(msg, {title: '消除重复音符'});
+            return;
+        }
+        showAppConfirm('将删除 ' + removed + ' 个重复音符（同一时间、音色与音调完全相同的音符只保留一个，忽略音量差异），是否继续？', {title: '消除重复音符', icon: 'fa-solid fa-copy'}).then(function(ok) {
+            if (!ok) return;
+            state.pianoRoll.setNotes(kept);
+            state.notes = kept;
+            state.pianoRoll.render();
+            if (typeof renderTrackPanel === 'function') renderTrackPanel();
+            if (typeof state.pushHistory === 'function') state.pushHistory();
+            showAppAlert('已删除 ' + removed + ' 个重复音符', {title: '消除重复音符'});
+        });
+    }
+
     function removeEmptyTracks() {
         if (!state.pianoRoll) return;
         var notes = state.pianoRoll.getNotes();
@@ -12128,6 +13080,7 @@ function buildTimbreFittingRows(info) {
             read_velocity: $('midi-read-velocity') ? $('midi-read-velocity').checked : true,
             precision: $('midi-precision') ? parseInt($('midi-precision').value) : 1,
             keep_note_length: $('midi-keep-note-length') ? $('midi-keep-note-length').value : 'none',
+            dedupe_notes: $('midi-dedupe-notes') ? $('midi-dedupe-notes').checked : false,
             sustain_tracks: _sustainTrackIndices.slice(),
             snap_enabled: $('midi-snap-enabled') ? $('midi-snap-enabled').checked : false,
             snap_beat: $('midi-snap-beat') ? parseInt($('midi-snap-beat').value) : 4,
@@ -12202,6 +13155,7 @@ function buildTimbreFittingRows(info) {
                     read_velocity: settings.read_velocity,
                     precision: settings.precision,
                     keep_note_length: settings.keep_note_length,
+                    dedupe_notes: settings.dedupe_notes,
                     sustain_track_indices: (settings.sustain_tracks || []).slice(),
                     snap_enabled: settings.snap_enabled,
                     snap_beat: settings.snap_beat,
@@ -12244,6 +13198,7 @@ function buildTimbreFittingRows(info) {
                 if (saved.read_velocity !== undefined && $('midi-read-velocity')) $('midi-read-velocity').checked = saved.read_velocity;
                 if (saved.precision !== undefined && $('midi-precision')) $('midi-precision').value = saved.precision;
                 if (saved.keep_note_length !== undefined && $('midi-keep-note-length')) $('midi-keep-note-length').value = saved.keep_note_length;
+                if (saved.dedupe_notes !== undefined && $('midi-dedupe-notes')) $('midi-dedupe-notes').checked = saved.dedupe_notes;
                 if (Array.isArray(saved.sustain_track_indices)) {
                     _sustainTrackIndices = saved.sustain_track_indices.slice();
                 }
@@ -13215,54 +14170,89 @@ function buildTimbreFittingRows(info) {
         }
     });
 
-    // ============ Button Tooltip System ============
+    // ============ 通用 Tooltip 系统 ============
+    // 所有带 title 属性的元素 (含动态创建): 悬浮显示, 延迟 0.4s
+    // 使用自定义样式, 背景完整包裹文字; 显示时暂存并清除原生 title, 避免双重 tooltip
     (function() {
         var tooltipEl = null;
         var tooltipTimeout = null;
         var tooltipTarget = null;
+        var TOOLTIP_DELAY = 400;
 
         function ensureTooltip() {
             if (tooltipEl) return;
             tooltipEl = document.createElement('div');
             tooltipEl.className = 'btn-tooltip';
-            tooltipEl.style.cssText = 'position:fixed;z-index:99999;padding:6px 10px;background:rgba(0,0,0,0.88);color:#fff;font-size:12px;border-radius:6px;pointer-events:none;opacity:0;transition:opacity 0.15s;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+            tooltipEl.style.cssText = 'position:fixed;z-index:99999;padding:6px 10px;background:rgba(0,0,0,0.88);color:#fff;font-size:12px;line-height:1.45;border-radius:6px;pointer-events:none;opacity:0;transition:opacity 0.15s;max-width:280px;box-shadow:0 4px 12px rgba(0,0,0,0.3);word-break:break-word;white-space:normal;';
             document.body.appendChild(tooltipEl);
         }
 
-        function showTooltip(btn, text) {
+        function showTooltip(el, text) {
             ensureTooltip();
-            tooltipTarget = btn;
             tooltipEl.textContent = text;
-            var rect = btn.getBoundingClientRect();
-            tooltipEl.style.left = rect.left + rect.width / 2 + 'px';
-            tooltipEl.style.top = (rect.bottom + 8) + 'px';
-            tooltipEl.style.transform = 'translateX(-50%)';
             tooltipEl.style.opacity = '1';
+            var rect = el.getBoundingClientRect();
+            var tw = tooltipEl.offsetWidth;
+            var th = tooltipEl.offsetHeight;
+            var x = rect.left + rect.width / 2 - tw / 2;
+            x = Math.max(8, Math.min(x, window.innerWidth - tw - 8));
+            var y = rect.bottom + 8;
+            if (y + th > window.innerHeight - 8) {
+                y = Math.max(8, rect.top - th - 8);
+            }
+            tooltipEl.style.left = x + 'px';
+            tooltipEl.style.top = y + 'px';
         }
 
         function hideTooltip() {
             if (tooltipEl) tooltipEl.style.opacity = '0';
             tooltipTarget = null;
-            if (tooltipTimeout) clearTimeout(tooltipTimeout);
+            if (tooltipTimeout) { clearTimeout(tooltipTimeout); tooltipTimeout = null; }
         }
 
-        function attachTooltips() {
-            var buttons = document.querySelectorAll('.toolbar-btn, .status-control-btn');
-            for (var i = 0; i < buttons.length; i++) {
-                (function(btn) {
-                    var title = btn.getAttribute('title');
-                    if (!title) return;
-                    btn.addEventListener('mouseenter', function() {
-                        if (tooltipTimeout) clearTimeout(tooltipTimeout);
-                        tooltipTimeout = setTimeout(function() { showTooltip(btn, btn.getAttribute('title') || title); }, 200);
-                    });
-                    btn.addEventListener('mouseleave', hideTooltip);
-                    btn.addEventListener('mousedown', hideTooltip);
-                })(buttons[i]);
+        // 事件委托: 覆盖所有带 title 的元素 (含动态创建)
+        document.addEventListener('mouseover', function(e) {
+            var t = e.target;
+            if (!t || !t.getAttribute) return;
+            // 检测鼠标是否已离开当前 tooltipTarget (移入其外部元素)
+            var tt = tooltipTarget;
+            if (tt && tt !== t && !tt.contains(t)) {
+                restoreTitle(tt);
+                hideTooltip();
+            }
+            if (tooltipTarget === t) return;
+            var title = t.getAttribute('title');
+            if (!title) return;
+            // 暂存并移除原生 title, 避免浏览器原生 tooltip 双重显示
+            t.setAttribute('data-tt-title', title);
+            t.removeAttribute('title');
+            if (tooltipTimeout) { clearTimeout(tooltipTimeout); tooltipTimeout = null; }
+            tooltipTarget = t;
+            tooltipTimeout = setTimeout(function() { showTooltip(t, title); }, TOOLTIP_DELAY);
+        });
+
+        // 移出窗口/文档边界时兜底隐藏并恢复 title
+        document.addEventListener('mouseout', function(e) {
+            if (!e.relatedTarget && tooltipTarget) {
+                restoreTitle(tooltipTarget);
+                hideTooltip();
+            }
+        });
+
+        // 点击时隐藏
+        document.addEventListener('mousedown', hideTooltip);
+
+        function restoreTitle(el) {
+            if (!el) return;
+            var orig = el.getAttribute('data-tt-title');
+            if (orig !== null) {
+                el.setAttribute('title', orig);
+                el.removeAttribute('data-tt-title');
             }
         }
 
-        window.attachTooltips = attachTooltips;
+        // 兼容旧接口 (保留空实现, 动态元素已由委托覆盖)
+        window.attachTooltips = function() {};
     })();
 
     // ============ 启动 ============

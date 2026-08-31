@@ -1383,6 +1383,8 @@ function _convertMidiToNBS(arrayBuffer, settings) {
     var readVelocity = settings.read_velocity !== false;
     var precision = settings.precision !== undefined ? settings.precision : 1;
     var keepNoteLength = settings.keep_note_length || 'none';
+    // 消除重复音符: 删除同一时间 (tick) 中音色与音调完全相同的音符, 减少总音符数
+    var dedupeNotes = settings.dedupe_notes === true;
     var snapEnabled = settings.snap_enabled === true;
     var snapBeat = settings.snap_beat !== undefined ? settings.snap_beat : 4;
     // 音域处理模式: 0=不应用, 1=单独音符归一法, 2=整体八度偏移法, 3=整体半音偏移法
@@ -1732,12 +1734,15 @@ function _convertMidiToNBS(arrayBuffer, settings) {
     }
 
     // ---- 计算每个 channel 需要的层数 ----
+    // 注意: 必须与 Phase 3 (音符转换) 的 layer 分配逻辑一致,
+    // 包括音色拟合 slot 和延音 (sustain) 的额外 layer 占用,
+    // 否则 channelLayersNeeded 会偏小, 导致音符溢出到下一个 channel 的 layer 区间
     var channelUsedTicks = {}; // "ch,nbsTick" -> count
     for (var i = 0; i < events.length; i++) {
         var e = events[i];
         var ch = e.channel;
 
-        // 检查是否忽略该通道
+        // 检查是否忽略该通道 (与 Phase 3 过滤逻辑一致)
         if (ch === 9) {
             var pInst = _has(percussionInstruments, e.note) ? percussionInstruments[e.note] : -1;
             if (pInst === -1) continue;
@@ -1759,8 +1764,47 @@ function _convertMidiToNBS(arrayBuffer, settings) {
         } else {
             nbsTick = Math.floor(nbsTickRaw);
         }
+
+        // 计算该音符的拟合 slot 数量 (与 Phase 3 一致: 每个 slot 也会占用一个 layer)
+        var fitSlotCount = 0;
+        if (ch === 9) {
+            if (percussionFitting && _has(percussionFitting, e.note)) {
+                var pFitSlots = percussionFitting[e.note];
+                for (var pfi = 1; pfi < pFitSlots.length; pfi++) {
+                    if (pFitSlots[pfi] >= 0) fitSlotCount++;
+                }
+            }
+        } else {
+            if (timbreFitting && _has(timbreFitting, ch)) {
+                var tFitSlots = timbreFitting[ch];
+                for (var tfi = 1; tfi < tFitSlots.length; tfi++) {
+                    if (tFitSlots[tfi] >= 0) fitSlotCount++;
+                }
+            }
+        }
+
+        // 该音符在本 tick 需要的 layer 数 = 1 (自身) + fitSlotCount (拟合 slot)
+        var layerUnits = 1 + fitSlotCount;
         var ctKey = ch + ',' + nbsTick;
-        channelUsedTicks[ctKey] = (channelUsedTicks[ctKey] || 0) + 1;
+        channelUsedTicks[ctKey] = (channelUsedTicks[ctKey] || 0) + layerUnits;
+
+        // 如果需要保持音符长度, 后续 tick 也需要 layer (与 Phase 3 一致)
+        var shouldSustainPre = false;
+        if (keepNoteLength === 'all') {
+            shouldSustainPre = true;
+        } else if (keepNoteLength === 'sustain') {
+            shouldSustainPre = !!sustainTracksSet[e.track || 0];
+        }
+        if (shouldSustainPre) {
+            var preDurationTicks = e.duration_ticks || 1;
+            var preNoteLength = Math.max(2, Math.floor(preDurationTicks / deltaPerTick));
+            for (var preSt = 1; preSt < preNoteLength; preSt++) {
+                var preTargetTick = nbsTick + preSt;
+                if (preTargetTick > maxNbsTick + 100) break;
+                var preKey = ch + ',' + preTargetTick;
+                channelUsedTicks[preKey] = (channelUsedTicks[preKey] || 0) + layerUnits;
+            }
+        }
     }
 
     var channelLayersNeeded = {};
@@ -2175,6 +2219,22 @@ function _convertMidiToNBS(arrayBuffer, settings) {
                 });
             }
         }
+    }
+
+    // ---- 消除重复音符 ----
+    // 删除同一 tick 中 音色(instrument) + 音调(key) 完全相同的重复音符
+    // 每 tick 每个 (instrument, key) 只保留一个音符 (保留第一个)
+    if (dedupeNotes) {
+        var dedupeSeen = {}; // "tick:instrument:key" -> true
+        var dedupedNotes = [];
+        for (var di = 0; di < songNotes.length; di++) {
+            var dn = songNotes[di];
+            var dKey = dn.tick + ':' + dn.instrument + ':' + dn.key;
+            if (dedupeSeen[dKey]) continue;
+            dedupeSeen[dKey] = true;
+            dedupedNotes.push(dn);
+        }
+        songNotes = dedupedNotes;
     }
 
     // ---- 构建 layers 列表 ----

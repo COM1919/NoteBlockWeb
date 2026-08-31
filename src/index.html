@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260829c">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260831m">
 </head>
 <body>
 
@@ -57,6 +57,9 @@
             <button class="toolbar-btn toolbar-collapsible" id="btn-about" data-group="overflow" title="关于">
                 <i class="fa-solid fa-circle-info icon"></i>
             </button>
+            <button class="toolbar-btn toolbar-collapsible" id="btn-assist" data-group="overflow" title="创作辅助">
+                <i class="fa-solid fa-wand-magic-sparkles icon"></i>
+            </button>
             <button class="toolbar-btn toolbar-collapsible" id="btn-functions" data-group="overflow" title="功能">
                 <i class="fa-solid fa-table-cells-large icon"></i>
             </button>
@@ -68,13 +71,9 @@
 
     <!-- ========== 功能菜单 ========== -->
     <div class="functions-menu" id="functions-menu" style="display:none;">
-        <div class="functions-menu-item" data-action="scale-precision">
-            <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
-            <span>缩放精度</span>
-        </div>
-        <div class="functions-menu-item" data-action="pitch-shift">
-            <i class="fa-solid fa-music"></i>
-            <span>音调偏移</span>
+        <div class="functions-menu-item" data-action="dedupe-notes">
+            <i class="fa-solid fa-copy"></i>
+            <span>消除重复音符</span>
         </div>
         <div class="functions-menu-item" data-action="sustain-fill">
             <i class="fa-solid fa-fill-drip"></i>
@@ -83,6 +82,14 @@
         <div class="functions-menu-item" data-action="clear-sustain">
             <i class="fa-solid fa-eraser"></i>
             <span>清除延音</span>
+        </div>
+        <div class="functions-menu-item" data-action="scale-precision">
+            <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+            <span>缩放精度</span>
+        </div>
+        <div class="functions-menu-item" data-action="pitch-shift">
+            <i class="fa-solid fa-music"></i>
+            <span>音调偏移</span>
         </div>
         <div class="functions-menu-item" data-action="arpeggio-tracks">
             <i class="fa-solid fa-arrows-up-down"></i>
@@ -96,13 +103,17 @@
             <i class="fa-solid fa-sliders"></i>
             <span>音域处理</span>
         </div>
-        <div class="functions-menu-item" data-action="remove-empty-tracks">
-            <i class="fa-solid fa-trash-can"></i>
-            <span>清除空轨道</span>
-        </div>
         <div class="functions-menu-item" data-action="snap-notes">
             <i class="fa-solid fa-magnet"></i>
             <span>音符吸附</span>
+        </div>
+        <div class="functions-menu-item" data-action="find-notes">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <span>查找音符</span>
+        </div>
+        <div class="functions-menu-item" data-action="remove-empty-tracks">
+            <i class="fa-solid fa-trash-can"></i>
+            <span>清除空轨道</span>
         </div>
         <div class="functions-menu-item" data-action="export">
             <i class="fa-solid fa-file-export"></i>
@@ -306,6 +317,194 @@
         <button class="mobile-tool-trigger" id="mobile-tool-trigger" title="工具">
             <i class="fa-solid fa-arrow-pointer"></i>
         </button>
+    </div>
+
+    <!-- ========== 创作辅助悬浮窗 ========== -->
+    <div class="assist-panel" id="assist-panel" style="display:none;" aria-hidden="true">
+        <div class="assist-panel-header" id="assist-panel-header">
+            <i class="fa-solid fa-wand-magic-sparkles" style="margin-right:6px;"></i>
+            <span>创作辅助</span>
+            <button class="assist-panel-close" id="assist-panel-close" title="关闭">&times;</button>
+        </div>
+        <div class="assist-panel-body">
+            <!-- 画笔/默认工具: 放置配置 -->
+            <div class="assist-section" id="assist-section-brush" style="display:none;">
+                <div class="assist-tabs">
+                    <button class="assist-tab active" data-assist-tab="normal">普通放置</button>
+                    <button class="assist-tab" data-assist-tab="sustain">延音放置</button>
+                </div>
+                <!-- 普通放置 -->
+                <div class="assist-tab-body" id="assist-tab-normal">
+                    <div class="assist-row">
+                        <label>音符音量</label>
+                        <input class="assist-number" type="number" id="assist-normal-velocity" min="1" max="100" step="1">
+                    </div>
+                </div>
+                <!-- 延音放置 -->
+                <div class="assist-tab-body" id="assist-tab-sustain" style="display:none;">
+                    <div class="assist-row">
+                        <label>预览显示</label>
+                        <button class="assist-toggle active" id="assist-sustain-preview" type="button">开</button>
+                    </div>
+                    <div class="assist-row">
+                        <label>延音长度 N</label>
+                        <input class="assist-number" type="number" id="assist-sustain-length" min="0" max="64" step="1">
+                    </div>
+                    <div class="assist-row">
+                        <label>覆盖逻辑</label>
+                    </div>
+                    <div class="assist-seg" id="assist-overwrite-seg">
+                        <button class="assist-seg-btn active" data-assist-overwrite="overwrite">直接覆盖</button>
+                        <button class="assist-seg-btn" data-assist-overwrite="shrink">缩小长度</button>
+                        <button class="assist-seg-btn" data-assist-overwrite="skip">禁止覆盖</button>
+                    </div>
+                    <div class="assist-row" id="assist-shrink-gap-row" style="display:none;">
+                        <label>留空长度 K</label>
+                        <input class="assist-number" type="number" id="assist-sustain-gap" min="0" max="64" step="1">
+                    </div>
+                    <div class="assist-row">
+                        <label>是否淡出</label>
+                        <button class="assist-toggle" id="assist-sustain-fade" type="button">关</button>
+                    </div>
+                    <div class="assist-fade-options" id="assist-fade-options" style="display:none;">
+                        <div class="assist-row">
+                            <label>最小音量</label>
+                            <input class="assist-number" type="number" id="assist-sustain-minvel" min="1" max="100" step="1">
+                        </div>
+                        <div class="assist-row"><label>淡出样式</label></div>
+                        <div class="assist-seg" id="assist-ease-seg">
+                            <button class="assist-seg-btn active" data-assist-ease="linear">线性</button>
+                            <button class="assist-seg-btn" data-assist-ease="easeIn">缓入</button>
+                            <button class="assist-seg-btn" data-assist-ease="easeOut">缓出</button>
+                            <button class="assist-seg-btn" data-assist-ease="quadIn">二次缓入</button>
+                            <button class="assist-seg-btn" data-assist-ease="quadOut">二次缓出</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 橡皮工具: 清除配置 -->
+            <div class="assist-section" id="assist-section-eraser" style="display:none;">
+                <div class="assist-tabs">
+                    <button class="assist-tab active" data-assist-tab="area">区域清除</button>
+                    <button class="assist-tab" data-assist-tab="chain">连续清除</button>
+                </div>
+                <!-- 区域清除 -->
+                <div class="assist-tab-body" id="assist-tab-area">
+                    <div class="assist-row">
+                        <label>清除半径 R</label>
+                        <input class="assist-number" type="number" id="assist-area-radius" min="0" max="32" step="1">
+                    </div>
+                    <div class="assist-row"><label>区域形状</label></div>
+                    <div class="assist-seg" id="assist-area-shape-seg">
+                        <button class="assist-seg-btn active" data-assist-shape="circle">圆形</button>
+                        <button class="assist-seg-btn" data-assist-shape="square">正方形</button>
+                    </div>
+                </div>
+                <!-- 连续清除 -->
+                <div class="assist-tab-body" id="assist-tab-chain" style="display:none;">
+                    <div class="assist-row"><label>同类判定 (AND)</label></div>
+                    <div class="assist-seg assist-chain-seg" id="assist-chain-similar-seg">
+                        <button class="assist-seg-btn" data-assist-similar="instrument">音色</button>
+                        <button class="assist-seg-btn" data-assist-similar="key">音调</button>
+                        <button class="assist-seg-btn" data-assist-similar="velocity">音量</button>
+                    </div>
+                    <div class="assist-row">
+                        <label>数量限制</label>
+                        <input class="assist-number" type="number" id="assist-chain-limit" min="1" max="1024" step="1">
+                    </div>
+                </div>
+            </div>
+            <!-- 选择/演奏工具: 空状态 -->
+            <div class="assist-section" id="assist-section-empty" style="display:none;">
+                <div class="assist-empty">该工具暂无创作辅助功能</div>
+                <button class="assist-find-btn" id="assist-find-btn" type="button">
+                    <i class="fa-solid fa-magnifying-glass" style="margin-right:6px;"></i>查找音符
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="assist-panel-mask" id="assist-panel-mask" style="display:none;"></div>
+
+    <!-- ========== 音符查找/替换浮层 ========== -->
+    <div class="find-panel" id="find-panel" style="display:none;" aria-hidden="true">
+        <div class="find-panel-header" id="find-panel-header">
+            <i class="fa-solid fa-magnifying-glass" style="margin-right:6px;"></i>
+            <span id="find-panel-title">查找音符</span>
+            <button class="find-panel-close" id="find-panel-close" title="关闭">&times;</button>
+        </div>
+        <div class="find-panel-body">
+            <div class="find-modes">
+                <button class="find-mode active" data-find-mode="find">查找</button>
+                <button class="find-mode" data-find-mode="replace">替换</button>
+            </div>
+            <div class="find-cond-block">
+                <div class="find-cond-title">音色</div>
+                <div class="find-cond-instrument" id="find-cond-instruments"></div>
+                <div class="find-cond-toolbar">
+                    <button class="find-mini-btn" id="find-inst-all">全选</button>
+                    <button class="find-mini-btn" id="find-inst-clear">清除</button>
+                </div>
+            </div>
+            <div class="find-cond-block">
+                <div class="find-cond-title">音调</div>
+                <div class="find-seg find-key-mode-seg">
+                    <button class="find-seg-btn active" data-key-mode="single">单个</button>
+                    <button class="find-seg-btn" data-key-mode="range">范围</button>
+                </div>
+                <div class="find-key-single" id="find-key-single">
+                    <select id="find-key-single-select"></select>
+                </div>
+                <div class="find-key-range" id="find-key-range" style="display:none;">
+                    <select id="find-key-range-start"></select>
+                    <span style="color:var(--text-secondary);">~</span>
+                    <select id="find-key-range-end"></select>
+                </div>
+            </div>
+            <div class="find-cond-block">
+                <div class="find-cond-title">音量</div>
+                <div class="find-seg find-vel-mode-seg">
+                    <button class="find-seg-btn active" data-vel-mode="single">数值</button>
+                    <button class="find-seg-btn" data-vel-mode="range">范围</button>
+                </div>
+                <div class="find-vel-single" id="find-vel-single">
+                    <input class="assist-number" type="number" id="find-vel-eq" min="0" max="100" step="1" placeholder="音量">
+                </div>
+                <div class="find-vel-range" id="find-vel-range" style="display:none;">
+                    <input class="assist-number" type="number" id="find-vel-min" min="0" max="100" step="1">
+                    <span style="color:var(--text-secondary);">~</span>
+                    <input class="assist-number" type="number" id="find-vel-max" min="0" max="100" step="1">
+                </div>
+            </div>
+            <div class="find-cond-toolbar">
+                <button class="find-mini-btn" id="find-reset">重置</button>
+                <button class="find-mini-btn" id="find-clear-all">清空条件 (匹配全部)</button>
+            </div>
+            <div class="find-result-bar">
+                <button class="find-nav-btn" id="find-prev" title="上一个">&uarr;</button>
+                <span class="find-count" id="find-result-count">0/0</span>
+                <button class="find-nav-btn" id="find-next" title="下一个">&darr;</button>
+                <button class="find-mini-btn" id="find-select-all">全部选择</button>
+            </div>
+            <div class="find-replace-area" id="find-replace-area" style="display:none;">
+                <div class="find-cond-title">替换为</div>
+                <div class="find-replace-row">
+                    <label>音色</label>
+                    <select id="find-replace-instrument"></select>
+                </div>
+                <div class="find-replace-row">
+                    <label>音调</label>
+                    <select id="find-replace-key"></select>
+                </div>
+                <div class="find-replace-row">
+                    <label>音量</label>
+                    <input class="assist-number" type="number" id="find-replace-velocity" min="1" max="100" step="1">
+                </div>
+                <div class="find-replace-actions">
+                    <button class="find-mini-btn" id="find-replace-current">替换当前</button>
+                    <button class="find-mini-btn" id="find-replace-all">全部替换</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- ========== 设置弹窗 ========== -->
@@ -695,6 +894,12 @@
                             <button class="midi-track-btn" id="midi-sustain-tracks-btn" style="margin-left:8px;padding:1px 10px;font-size:11px;display:none;height:auto;min-height:22px;width:auto;min-width:64px;white-space:nowrap;">选择轨道</button>
                             <span id="midi-sustain-tracks-count" style="display:none;font-size:11px;color:var(--text-secondary);margin-left:4px;"></span>
                         </div>
+                        <div class="midi-settings-row">
+                            <label style="white-space:nowrap;">
+                                <input type="checkbox" id="midi-dedupe-notes"> 消除重复音符
+                                <i class="fa-solid fa-circle-question" style="cursor:help;color:var(--text-tertiary);font-size:12px;margin-left:2px;" title="删除同一时间中音色和音调完全相同的重复音符。用于在尽可能保持听感的条件下减少总音符数量，但会对歌曲质量造成一些损失"></i>
+                            </label>
+                        </div>
                         <div class="midi-settings-row" style="margin-top:4px;">
                             <label style="font-size:12px;color:var(--text-tertiary);">
                                 <input type="checkbox" id="midi-remember"> 记住以上设置
@@ -932,10 +1137,10 @@
     </div>
 
     <!-- ========== 横屏抽屉 (移动端) ========== -->
-    <button id="landscape-menu-btn" style="position:fixed;top:4px;right:4px;z-index:1001;width:36px;height:36px;border-radius:8px;background:rgba(255,255,255,0.08);border:1px solid var(--ctrl-stroke-default);color:var(--text-primary);cursor:pointer;font-size:16px;">
+    <button id="landscape-menu-btn" class="landscape-menu-btn" style="position:fixed;top:4px;right:4px;z-index:1001;width:36px;height:36px;border-radius:8px;background:rgba(255,255,255,0.08);border:1px solid var(--ctrl-stroke-default);color:var(--text-primary);cursor:pointer;font-size:16px;">
         <i class="fa-solid fa-bars"></i>
     </button>
-    <div class="landscape-drawer" id="landscape-drawer" style="position:fixed;top:0;right:0;width:280px;height:100vh;z-index:10005;background:rgba(22,33,62,0.98);backdrop-filter:blur(16px);border-left:1px solid var(--ctrl-stroke-default);box-shadow:-4px 0 20px rgba(0,0,0,0.3);transform:translateX(100%);transition:transform 0.25s ease;">
+    <div class="landscape-drawer" id="landscape-drawer" style="position:fixed;top:0;right:0;width:50vw;height:100vh;z-index:10005;background:rgba(22,33,62,0.98);backdrop-filter:blur(16px);border-left:1px solid var(--ctrl-stroke-default);box-shadow:-4px 0 20px rgba(0,0,0,0.3);transform:translateX(100%);transition:transform 0.25s ease;">
         <div style="display:flex;align-items:center;padding:8px;border-bottom:1px solid var(--ctrl-stroke-default);">
             <span style="font-size:14px;font-weight:600;flex:1;">菜单</span>
             <button id="landscape-drawer-close" style="background:none;border:none;color:var(--text-secondary);font-size:20px;cursor:pointer;padding:4px;">&times;</button>
@@ -960,7 +1165,7 @@
     }
 </script>
 <!-- nbs_client.js 必须在 api_client.js 之前加载 (api_client.js 引用 NBSClient 全局对象) -->
-<script src="/static/js/nbs_client.js?v=20260805a"></script>
+<script src="/static/js/nbs_client.js?v=20260831d"></script>
 <script src="/static/js/api_client.js?v=20260718m"></script>
 <script src="/static/js/custom_dropdown.js?v=20260728d"></script>
 <script src="/static/js/i18n.js?v=20260809a"></script>
@@ -968,13 +1173,13 @@
 <script src="/static/js/sf3_player.js?v=20260808a"></script>
 <script src="/static/js/spessa_player.js?v=20260808a"></script>
 <script src="/static/js/soundfont_loader.js?v=20260808b"></script>
-<script src="/static/js/piano_roll.js?v=20260829d"></script>
+<script src="/static/js/piano_roll.js?v=20260831m"></script>
 <script src="/static/js/fls_core.js?v=20260728a"></script>
 <script src="/static/js/fls_track_panel.js?v=20260718m"></script>
 <script src="/static/js/fls_playlist.js?v=20260728e"></script>
 <script src="/static/js/fls_group_roll.js?v=20260728d"></script>
 <script src="/static/js/fls_pianoroll.js?v=20260728d"></script>
-<script src="/static/js/main.js?v=20260829c"></script>
+<script src="/static/js/main.js?v=20260831n"></script>
 
 </body>
 </html>

@@ -4932,12 +4932,9 @@ textarea:disabled {
             --status-height: 28px;
         }
 
-        /* 顶部工具栏：更紧凑 */
+        /* 顶部工具栏：横屏时移入侧边栏抽屉, 顶栏本身隐藏 */
         .toolbar {
-            padding: 0 8px;
-            min-height: 36px;
-            height: 36px;
-            padding-right: 48px;
+            display: none;
         }
 
         /* 工具栏按钮：更紧凑 */
@@ -4996,15 +4993,14 @@ textarea:disabled {
             transform: scale(0.92);
         }
 
-        /* 横屏右侧抽屉 */
+        /* 横屏右侧抽屉: 宽度为屏幕的一半 */
         .landscape-drawer {
             display: block;
             position: fixed;
             top: 0;
             right: 0;
             bottom: 0;
-            width: 260px;
-            max-width: 75vw;
+            width: 50vw;
             background: var(--mica-base);
             border-left: 1px solid var(--ctrl-stroke-default);
             z-index: 9998;
@@ -5160,7 +5156,6 @@ textarea:disabled {
         padding: 0 12px;
         min-height: 36px;
         height: 36px;
-        padding-right: 48px;
     }
 
     .toolbar-btn {
@@ -5189,9 +5184,9 @@ textarea:disabled {
         white-space: nowrap;
     }
 
-    /* 横屏右上角菜单按钮 */
+    /* 折叠抽屉仅手机横屏 (≤768px) 使用, 桌面/平板端隐藏, 避免遮挡工具栏右侧功能按钮 */
     .landscape-menu-btn {
-        display: inline-flex;
+        display: none;
         align-items: center;
         justify-content: center;
         position: fixed;
@@ -5214,9 +5209,9 @@ textarea:disabled {
         transform: scale(0.92);
     }
 
-    /* 横屏右侧抽屉 */
+    /* 横屏右侧抽屉 (桌面端隐藏) */
     .landscape-drawer {
-        display: block;
+        display: none;
         position: fixed;
         top: 0;
         right: 0;
@@ -5234,7 +5229,7 @@ textarea:disabled {
         transform: translateX(0);
     }
     .landscape-drawer-mask {
-        display: block;
+        display: none;
         position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, 0.35);
@@ -6099,6 +6094,12 @@ textarea:disabled {
     .toolbar { padding-right: 8px !important; }
     .toolbar-right { margin-left: auto !important; }
     #btn-settings, #btn-about, #btn-functions { display: inline-flex !important; }
+    /* 触控端横屏: 汉堡按钮/抽屉由 max-width:768px 横屏媒体查询控制 (顶部工具栏已移入抽屉),
+       这里不再强制隐藏 */
+}
+/* 触控端竖屏: 隐藏关于按钮 (空间不足, 设置中已有入口) */
+@media (hover: none) and (pointer: coarse) and (orientation: portrait) and (max-width: 768px) {
+    #btn-about { display: none !important; }
 }
 
 @media (hover: none) and (pointer: coarse) and (min-width: 769px) {
@@ -6403,5 +6404,495 @@ textarea:disabled {
     .mobile-tool-switcher {
         right: calc(max(12px, env(safe-area-inset-right)) + 1px);
         bottom: calc(max(calc(var(--status-height, 28px) + 8px), calc(env(safe-area-inset-bottom) + 8px)) + 52px);
+    }
+}
+
+/* ==================================================================
+   22. 创作辅助悬浮窗
+   ================================================================== */
+.assist-panel {
+    position: fixed;
+    z-index: 100300;
+    width: 300px;
+    max-width: calc(100vw - 16px);
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    background: rgba(24, 26, 40, 0.96);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    font-size: 13px;
+    color: var(--text-primary, #eaeaea);
+}
+.assist-panel-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    user-select: none;
+    cursor: move;
+    flex-shrink: 0;
+    font-weight: 600;
+    font-size: 13px;
+    background: rgba(255, 255, 255, 0.03);
+}
+.assist-panel-close {
+    margin-left: auto;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-secondary, #aaa);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+.assist-panel-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+.assist-panel-body {
+    padding: 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    min-height: 60px;
+}
+.assist-panel-body::-webkit-scrollbar {
+    width: 6px;
+}
+.assist-panel-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+.assist-empty {
+    padding: 22px 8px;
+    text-align: center;
+    color: var(--text-tertiary, #888);
+    font-size: 13px;
+}
+.assist-find-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    margin: 8px 0 4px;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary, #eaeaea);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.assist-find-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Tab 按钮组 (单选模式) */
+.assist-tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    padding: 2px;
+}
+.assist-tab {
+    flex: 1;
+    padding: 6px 4px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-secondary, #aaa);
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.assist-tab.active {
+    background: rgba(76, 154, 255, 0.22);
+    color: var(--accent, #6ab0ff);
+    font-weight: 600;
+}
+.assist-tab:not(.active):hover {
+    color: var(--text-primary);
+}
+
+/* 配置行 */
+.assist-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    min-height: 28px;
+}
+.assist-row label {
+    font-size: 12px;
+    color: var(--text-secondary, #b0b0b0);
+    flex-shrink: 0;
+}
+.assist-number {
+    width: 64px;
+    padding: 4px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--text-primary, #fff);
+    font-size: 12px;
+    text-align: center;
+    box-sizing: border-box;
+    min-height: 26px;
+}
+.assist-number:focus {
+    outline: none;
+    border-color: var(--accent, #6ab0ff);
+}
+
+/* 按钮式 Toggle (开/关) */
+.assist-toggle {
+    min-width: 44px;
+    padding: 4px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary, #aaa);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    min-height: 26px;
+}
+.assist-toggle.active {
+    background: rgba(76, 194, 255, 0.24);
+    border-color: rgba(76, 194, 255, 0.6);
+    color: #7fd4ff;
+}
+
+/* 单选/分段按钮组 */
+.assist-seg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+.assist-seg-btn {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary, #aaa);
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+    min-height: 26px;
+}
+.assist-seg-btn.active {
+    background: rgba(76, 154, 255, 0.25);
+    border-color: rgba(76, 154, 255, 0.7);
+    color: #8fc5ff;
+}
+.assist-seg-btn:not(.active):hover {
+    background: rgba(255, 255, 255, 0.09);
+    color: var(--text-primary);
+}
+
+/* 遮罩层: 点击面板外区域关闭 */
+.assist-panel-mask {
+    display: none !important;
+}
+
+/* ==================================================================
+   23. 音符查找/替换浮层
+   ================================================================== */
+.find-panel {
+    position: fixed;
+    top: 48px;
+    right: 12px;
+    z-index: 9510;
+    width: 380px;
+    max-width: calc(100vw - 16px);
+    max-height: min(80vh, 640px);
+    display: flex;
+    flex-direction: column;
+    background: rgba(24, 26, 40, 0.96);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--text-primary, #eaeaea);
+}
+.find-panel-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    user-select: none;
+    cursor: move;
+    flex-shrink: 0;
+    font-weight: 600;
+    font-size: 13px;
+    background: rgba(255, 255, 255, 0.03);
+}
+.find-panel-close {
+    margin-left: auto;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-secondary, #aaa);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+.find-panel-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+.find-panel-body {
+    padding: 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* 查找/替换模式切换 */
+.find-modes {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    padding: 2px;
+}
+.find-mode {
+    flex: 1;
+    padding: 6px 4px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-secondary, #aaa);
+    font-size: 12px;
+    cursor: pointer;
+}
+.find-mode.active {
+    background: rgba(76, 154, 255, 0.22);
+    color: var(--accent, #6ab0ff);
+    font-weight: 600;
+}
+
+/* 条件块 */
+.find-cond-block {
+    margin-bottom: 10px;
+    padding: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+}
+.find-cond-title {
+    font-size: 11px;
+    color: var(--text-tertiary, #999);
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+.find-cond-instrument {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 6px;
+    max-height: 96px;
+    overflow-y: auto;
+}
+.find-cond-toolbar {
+    display: flex;
+    gap: 6px;
+    margin: 4px 0 8px;
+}
+.find-mini-btn {
+    padding: 4px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary, #bbb);
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+    min-height: 24px;
+    white-space: nowrap;
+}
+.find-mini-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
+}
+
+/* 段模式切换 (音调/音量) */
+.find-seg {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 5px;
+    padding: 2px;
+}
+.find-seg-btn {
+    flex: 1;
+    padding: 4px 4px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary, #aaa);
+    font-size: 11px;
+    cursor: pointer;
+    min-height: 24px;
+}
+.find-seg-btn.active {
+    background: rgba(76, 154, 255, 0.22);
+    color: var(--accent, #6ab0ff);
+}
+
+.find-panel select {
+    width: 100%;
+    padding: 4px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.3);
+    color: var(--text-primary, #fff);
+    font-size: 12px;
+    min-height: 26px;
+    box-sizing: border-box;
+}
+.find-key-range {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.find-vel-single {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.find-vel-single input {
+    width: 100%;
+    box-sizing: border-box;
+}
+.find-vel-range {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* 结果导航栏 */
+.find-result-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 0;
+    padding: 6px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+}
+.find-nav-btn {
+    width: 26px;
+    height: 26px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary, #bbb);
+    font-size: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.find-nav-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
+}
+.find-nav-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+.find-count {
+    flex: 1;
+    text-align: center;
+    font-family: var(--font-family-mono, monospace);
+    font-size: 12px;
+    color: var(--text-secondary, #bbb);
+}
+
+/* 替换区 */
+.find-replace-area {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.find-replace-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.find-replace-row label {
+    flex: 0 0 40px;
+    font-size: 11px;
+    color: var(--text-secondary, #aaa);
+}
+.find-replace-row select,
+.find-replace-row input {
+    flex: 1;
+}
+.find-replace-actions {
+    display: flex;
+    gap: 6px;
+}
+
+/* 触控端: 悬浮窗与查找浮层控件的触控尺寸 */
+@media (hover: none) and (pointer: coarse) {
+    .assist-panel {
+        width: min(300px, calc(100vw - 16px));
+        max-height: 60vh;
+    }
+    .assist-tab,
+    .assist-seg-btn,
+    .assist-toggle,
+    .find-mode,
+    .find-seg-btn,
+    .find-mini-btn,
+    .find-nav-btn {
+        min-height: 32px;
+    }
+    .assist-number {
+        min-height: 32px;
+    }
+}
+
+/* 移动端竖屏: 悬浮窗/查找浮层占满可用宽度 */
+@media (max-width: 768px) {
+    .find-panel {
+        top: 8px;
+        right: 8px;
+        left: 8px;
+        width: auto;
+        max-width: none;
+        max-height: 70vh;
     }
 }

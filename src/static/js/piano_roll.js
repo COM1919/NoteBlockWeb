@@ -77,6 +77,11 @@
         var c = hexToRgb(hex);
         return rgbToStr(c.r * factor, c.g * factor, c.b * factor);
     }
+    // 数值夹取 (min <= v <= max, 越界回退 fallback)
+    function clampInt(v, min, max, fallback) {
+        if (typeof v !== 'number' || isNaN(v)) v = fallback;
+        return Math.max(min, Math.min(max, Math.round(v)));
+    }
 
     // ============ 构造函数 ============
     function PianoRoll(canvasId) {
@@ -212,6 +217,15 @@
         this.onNotePreview = null;
         this.onSelectionChanged = null;
         this.onPianoKeyClick = null;
+        this.onNoteGroupAdded = null;  // function(group, isStart) - 整组放置(延音), 用于一次撤销
+        this.onEraseStart = null;      // function() - 清除手势开始, 用于 pushUndo
+
+        // 创作辅助配置 (由 main.js 通过 setAssistConfig 注入)
+        this.assistConfig = null;
+        // 延音放置预览: 悬停单元格列表 [{tick, layer, velocity}] 或 null
+        this._hoverSustainCells = null;
+        // 查找浮层当前命中音符 id (独立高亮)
+        this._findHighlightId = null;
 
         // 放置/删除动画队列
         this._noteAnims = [];
@@ -290,6 +304,7 @@
 
     PianoRoll.prototype.setTool = function(tool) {
         this.currentTool = tool;
+        this._hoverSustainCells = null;
         if (tool !== 'performance') {
             this.performanceSelectedLayers = [];
             this._highlightLayer = -1;
@@ -417,6 +432,12 @@
         window.addEventListener('mouseup', function(e) { self._onMouseUp(e); });
         this.canvas.addEventListener('mouseleave', function() {
             self._clearTrackPanelTooltip();
+            // 清除延音放置预览
+            if (self._hoverSustainCells) {
+                self._hoverSustainCells = null;
+                self._fullRedrawNeeded = true;
+                self.requestRender();
+            }
             if (self._trackPanelHover || self._trackPanelPressed) {
                 self._trackPanelHover = null;
                 self._trackPanelPressed = null;
@@ -1442,13 +1463,17 @@
             return;
         }
 
-        // 时间轴标尺: 点击跳转播放头 (仅点击时间栏才跳转)
+        // 时间轴标尺: 拖动滑条形式 (按下不跳转, 拖动时保持按下点与播放头的相对偏移, 轻点才跳转)
         if (y < this._cfg.timelineHeight && x >= pw) {
-            var tick = this._screenToTickNearest(x);
-            if (tick >= 0) {
-                this.seekToTick(tick);
-                if (this.onTimelineSeek) this.onTimelineSeek(tick);
-            }
+            this._isTimelineDrag = true;
+            this._mouseDown = true;
+            this._timelineDragStartX = x;
+            this._timelineDragMoved = false;
+            var phTick = (this._smoothedPlayheadTick !== undefined && this._smoothedPlayheadTick !== null)
+                ? this._smoothedPlayheadTick : this.playheadTick;
+            var phX = this._tickToScreen(phTick);
+            // 记录鼠标与播放头的相对偏移, 拖动时保持该偏移, 避免一开始就跳转到鼠标位置
+            this._timelineDragOffsetX = phX - x;
             return;
         }
 
@@ -1542,11 +1567,9 @@
         }
 
         if (this.currentTool === 'eraser' && e.button === 0) {
-            if (clickedNote) {
-                this.removeNote(clickedNote.id);
-                this._addDeleteAnim(clickedNote.tick, clickedNote.layer);
-                if (this.onNotesChanged) this.onNotesChanged([]);
-            }
+            // 橡皮: 统一清除入口 (区域清除 / 连续清除, 配置来自创作辅助)
+            if (this.onNoteDragStart) this.onNoteDragStart();
+            this._eraseAt(x, y);
             return;
         }
 
@@ -1558,19 +1581,11 @@
             if (brushKey === null || brushKey === undefined || brushKey < 0) brushKey = brushLayer;
             // 仅编辑区内生效: 排除左侧音轨面板/时间轴上方的空白区域
             if (x >= this._currentPanelWidth && y >= this._cfg.timelineHeight && brushTick >= 0 && brushLayer >= 0 && brushLayer < this.trackCount) {
-                // 走标准放置流程: onNoteAdded 内部会 pushUndo / addNote / 持久化 / 动画
-                if (this.onNoteAdded) {
-                    this.onNoteAdded({
-                        tick: brushTick, layer: brushLayer,
-                        instrument: this.currentInstrument,
-                        key: brushKey,
-                        velocity: 100, pan: 50, pitch: 0
-                    });
-                } else {
-                    this._removeNoteAtPos(brushTick, brushLayer);
-                    this.addNote({ tick: brushTick, layer: brushLayer, instrument: this.currentInstrument, key: brushKey, velocity: 100, pan: 50, pitch: 0 });
-                    if (this.onNotesChanged) this.onNotesChanged([]);
-                }
+                // 记录当前格, 供 mousemove 同格去重
+                this._lastPaintTick = brushTick;
+                this._lastPaintLayer = brushLayer;
+                // 统一放置入口: 按配置走普通放置/延音放置 (内部走 onNoteAdded / onNoteGroupAdded)
+                this._placeBrushNote(brushTick, brushLayer, brushKey, true);
             }
             return;
         }
@@ -1731,11 +1746,27 @@
             this.requestRender();
         }
 
+        // 延音放置: 悬停预览 (画笔/默认工具延音模式下显示整组放置位置, 不落库)
+        if (this.currentTool === 'brush' || this.currentTool === 'default') {
+            this._updateSustainPreview(x, y);
+        }
+
         if (!this._mouseDown) return;
 
         // 顶部滑动条拖拽 (左右翻页滚动视图)
         if (this._isDraggingProgressBar) {
             this._scrollFromSliderX(x);
+            return;
+        }
+
+        // 时间轴标尺拖拽 (拖动滑条: 保持按下时的相对偏移, 不跳转到鼠标位置)
+        if (this._isTimelineDrag) {
+            if (Math.abs(x - this._timelineDragStartX) > this._dragThreshold) {
+                this._timelineDragMoved = true;
+            }
+            var rdragTick = this._screenToTick(x + this._timelineDragOffsetX);
+            this.seekToTick(rdragTick);
+            if (this.onTimelineSeek) this.onTimelineSeek(rdragTick);
             return;
         }
 
@@ -1780,12 +1811,7 @@
 
         if (this._mouseButton === 0) {
             if (this.currentTool === 'eraser') {
-                var eraserHit = this._getNoteAt(x, y);
-                if (eraserHit) {
-                    this.removeNote(eraserHit.id);
-                    this._addDeleteAnim(eraserHit.tick, eraserHit.layer);
-                    if (this.onNotesChanged) this.onNotesChanged([]);
-                }
+                this._eraseAt(x, y);
             } else if (this.currentTool === 'brush') {
                 var brushTick = this._screenToTickNearest(x);
                 var brushLayer = this._screenToLayer(y);
@@ -1794,10 +1820,12 @@
                 // 否则未选音调时按住拖动一笔也画不出来)
                 if (brushKey === null || brushKey === undefined || brushKey < 0) brushKey = brushLayer;
                 if (x >= this._currentPanelWidth && y >= this._cfg.timelineHeight && brushTick >= 0 && brushLayer >= 0 && brushLayer < this.trackCount) {
-                    // 拖动绘制: undo 已在 mousedown 时通过 onNoteAdded 记录一次, 这里只放置+持久化
-                    this._removeNoteAtPos(brushTick, brushLayer);
-                    this.addNote({ tick: brushTick, layer: brushLayer, instrument: this.currentInstrument, key: brushKey, velocity: 100, pan: 50, pitch: 0 });
-                    if (this.onNotesChanged) this.onNotesChanged([]);
+                    // 同格去重 (与触控 _paintStroke 一致, 避免同格重复放置)
+                    if (this._lastPaintTick === brushTick && this._lastPaintLayer === brushLayer) return;
+                    this._lastPaintTick = brushTick;
+                    this._lastPaintLayer = brushLayer;
+                    // 拖动绘制: undo 已在 mousedown 时记录一次, 这里只放置+持久化 (统一入口, 支持延音模式)
+                    this._placeBrushNote(brushTick, brushLayer, brushKey, false);
                 }
             } else if (this.currentTool === 'select' && this._isSelecting && this._selectionRect) {
                 // 选择框: 锚点固定为网格坐标, 当前角跟随鼠标 (网格坐标)
@@ -1853,6 +1881,19 @@
         // 播放头拖拽结束
         if (this._isDraggingPlayhead) {
             this._isDraggingPlayhead = false;
+            return;
+        }
+
+        // 时间轴标尺拖拽结束 (未滑动的轻点 → 跳转到点击位置)
+        if (this._isTimelineDrag) {
+            this._isTimelineDrag = false;
+            if (!this._timelineDragMoved) {
+                var rupTick = this._screenToTickNearest(this._timelineDragStartX);
+                if (rupTick >= 0) {
+                    this.seekToTick(rupTick);
+                    if (this.onTimelineSeek) this.onTimelineSeek(rupTick);
+                }
+            }
             return;
         }
 
@@ -1966,12 +2007,9 @@
         // 触控画笔/橡皮只应在编辑区内生效 (排除左侧音轨面板/时间轴区域)
         if (x < this._currentPanelWidth || y < this._cfg.timelineHeight) return;
         if (this.currentTool === 'eraser') {
-            var hit = this._getNoteAt(x, y);
-            if (hit) {
-                this.removeNote(hit.id);
-                this._addDeleteAnim(hit.tick, hit.layer);
-                if (this.onNotesChanged) this.onNotesChanged([]);
-            }
+            // 橡皮: 统一清除入口 (区域清除/连续清除)
+            if (isStart && this.onNoteDragStart) this.onNoteDragStart();
+            this._eraseAt(x, y);
             return;
         }
         var brushTick = this._screenToTickNearest(x);
@@ -1984,26 +2022,8 @@
         if (!isStart && this._lastPaintTick === brushTick && this._lastPaintLayer === brushLayer) return;
         this._lastPaintTick = brushTick;
         this._lastPaintLayer = brushLayer;
-        if (isStart) {
-            // 首次按下: 走标准放置流程 (内部会 pushUndo / addNote / 持久化 / 动画)
-            if (this.onNoteAdded) {
-                this.onNoteAdded({
-                    tick: brushTick, layer: brushLayer,
-                    instrument: this.currentInstrument,
-                    key: brushKey,
-                    velocity: 100, pan: 50, pitch: 0
-                });
-            } else {
-                this._removeNoteAtPos(brushTick, brushLayer);
-                this.addNote({ tick: brushTick, layer: brushLayer, instrument: this.currentInstrument, key: brushKey, velocity: 100, pan: 50, pitch: 0 });
-                if (this.onNotesChanged) this.onNotesChanged([]);
-            }
-        } else {
-            // 滑动绘制: undo 已在按下时记录一次, 这里只放置+持久化
-            this._removeNoteAtPos(brushTick, brushLayer);
-            this.addNote({ tick: brushTick, layer: brushLayer, instrument: this.currentInstrument, key: brushKey, velocity: 100, pan: 50, pitch: 0 });
-            if (this.onNotesChanged) this.onNotesChanged([]);
-        }
+        // 统一放置入口: 普通放置 / 延音放置 (isStart 走 onNoteAdded / onNoteGroupAdded 记录一次 undo)
+        this._placeBrushNote(brushTick, brushLayer, brushKey, isStart);
     };
 
     PianoRoll.prototype._onTouchStart = function(e) {
@@ -2062,13 +2082,21 @@
                 return;
             }
 
-            // 时间轴标尺: 点击跳转播放头 (仅点击时间栏才跳转)
+            // 时间轴标尺: 拖动滑条形式 (按下不跳转, 拖动时保持按下点与播放头的相对偏移, 轻点才跳转)
             if (y < this._cfg.timelineHeight && x >= pw) {
-                var tick = this._screenToTickNearest(x);
-                if (tick >= 0) {
-                    this.seekToTick(tick);
-                    if (this.onTimelineSeek) this.onTimelineSeek(tick);
-                }
+                this._isTimelineDrag = true;
+                this._touchMode = 'timeline-drag';
+                this._touchStartX = x;
+                this._touchStartY = y;
+                this._lastTouchX = x;
+                this._lastTouchY = y;
+                this._timelineDragStartX = x;
+                this._timelineDragMoved = false;
+                var tphTick = (this._smoothedPlayheadTick !== undefined && this._smoothedPlayheadTick !== null)
+                    ? this._smoothedPlayheadTick : this.playheadTick;
+                var tphX = this._tickToScreen(tphTick);
+                // 记录手指与播放头的相对偏移, 拖动时保持该偏移, 避免一开始就跳转到手指位置
+                this._timelineDragOffsetX = tphX - x;
                 return;
             }
 
@@ -2263,6 +2291,21 @@
                 return;
             }
 
+            // 时间轴标尺拖拽 (拖动滑条: 保持按下时的相对偏移, 不跳转到手指位置)
+            if (this._touchMode === 'timeline-drag' && this._isTimelineDrag) {
+                if (Math.abs(x - this._timelineDragStartX) > 10 || Math.abs(y - this._touchStartY) > 10) {
+                    this._timelineDragMoved = true;
+                }
+                var tdragTick = this._screenToTick(x + this._timelineDragOffsetX);
+                this.seekToTick(tdragTick);
+                if (this.onTimelineSeek) this.onTimelineSeek(tdragTick);
+                this._lastTouchX = x;
+                this._lastTouchY = y;
+                this._fullRedrawNeeded = true;
+                this.requestRender();
+                return;
+            }
+
             // 顶部滑动条拖拽 (左右翻页滚动视图)
             if (this._touchMode === 'progress-drag' && this._isDraggingProgressBar) {
                 this._scrollFromSliderX(x);
@@ -2400,6 +2443,22 @@
         if (this._touchMode === 'playhead-drag') {
             this._isDraggingPlayhead = false;
             this._touchMode = 'none';
+            this._fullRedrawNeeded = true;
+            this.render();
+            return;
+        }
+
+        // 时间轴标尺拖拽结束 (未滑动的轻点 → 跳转到点击位置)
+        if (this._touchMode === 'timeline-drag') {
+            this._isTimelineDrag = false;
+            this._touchMode = 'none';
+            if (!this._timelineDragMoved) {
+                var tuptick = this._screenToTickNearest(this._timelineDragStartX);
+                if (tuptick >= 0) {
+                    this.seekToTick(tuptick);
+                    if (this.onTimelineSeek) this.onTimelineSeek(tuptick);
+                }
+            }
             this._fullRedrawNeeded = true;
             this.render();
             return;
@@ -2740,6 +2799,12 @@
         var tick = this._screenToTick(x);
         var layer = this._screenToLayer(y);
         if (tick < 0 || layer < 0 || layer >= this.trackCount) return;
+        var bcfg = this._getBrushConfig();
+        if (bcfg && bcfg.mode === 'sustain') {
+            // 延音放置: 默认工具点击同样触发 (内部按配置处理覆盖/缩小/跳过, 走 onNoteGroupAdded)
+            this._placeBrushNote(tick, layer, this.getSelectedKey(), true);
+            return;
+        }
         var noteAt = this._getNoteAt(x, y);
         if (noteAt) return; // 已有音符则不再放置
         if (!this.onNoteAdded) return;
@@ -2749,11 +2814,354 @@
         this.onNoteAdded({
             tick: tick, layer: layer,
             instrument: this.currentInstrument,
-            key: useKey, velocity: 100, pan: 50, pitch: 0
+            key: useKey, velocity: this._getPlaceVelocity(), pan: 50, pitch: 0
         });
         if (this.onNotePreview) {
             this.onNotePreview(this.currentInstrument, useKey);
         }
+    };
+
+    // ============ 创作辅助: 配置注入 ============
+    PianoRoll.prototype.setAssistConfig = function(cfg) {
+        this.assistConfig = cfg || null;
+        this._hoverSustainCells = null;
+        this._fullRedrawNeeded = true;
+        this.render();
+    };
+
+    PianoRoll.prototype._getBrushConfig = function() {
+        return (this.assistConfig && this.assistConfig.brush) ? this.assistConfig.brush : null;
+    };
+
+    PianoRoll.prototype._getEraserConfig = function() {
+        return (this.assistConfig && this.assistConfig.eraser) ? this.assistConfig.eraser : null;
+    };
+
+    // 普通放置的音符音量 (默认 100)
+    PianoRoll.prototype._getPlaceVelocity = function() {
+        var bcfg = this._getBrushConfig();
+        if (!bcfg || !bcfg.normal) return 100;
+        return clampInt(bcfg.normal.velocity, 1, 100, 100);
+    };
+
+    // 当前格是否有音符 (触控/鼠标放置时的障碍判定)
+    PianoRoll.prototype._noteAtCell = function(tick, layer) {
+        for (var i = 0; i < this.notes.length; i++) {
+            if (this.notes[i].tick === tick && this.notes[i].layer === layer) return true;
+        }
+        return false;
+    };
+
+    // 统一放置入口: 根据配置走 普通放置 / 延音放置
+    // isStart=true 表示一笔手势的首次调用 (走 onNoteAdded/onNoteGroupAdded 记录一次撤销)
+    PianoRoll.prototype._placeBrushNote = function(tick, layer, key, isStart) {
+        var bcfg = this._getBrushConfig();
+        if (bcfg && bcfg.mode === 'sustain') {
+            this._placeSustainAt(tick, layer, isStart);
+            return;
+        }
+        var note = {
+            tick: tick, layer: layer,
+            instrument: this.currentInstrument,
+            key: key,
+            velocity: this._getPlaceVelocity(), pan: 50, pitch: 0
+        };
+        if (isStart) {
+            if (this.onNoteAdded) {
+                this.onNoteAdded(note);
+            } else {
+                this._removeNoteAtPos(tick, layer);
+                this.addNote(note);
+                if (this.onNotesChanged) this.onNotesChanged([]);
+            }
+        } else {
+            this._removeNoteAtPos(tick, layer);
+            this.addNote(note);
+            if (this.onNotesChanged) this.onNotesChanged([]);
+        }
+    };
+
+    // ============ 延音放置 (伪延音) ============
+    PianoRoll.prototype._sustainVelocities = function(count, startVel, fade, minVel, easeType) {
+        var vels = [startVel];
+        var easeFns = {
+            linear: function(p) { return p; },
+            easeIn: function(p) { return p * p; },
+            easeOut: function(p) { return 1 - (1 - p) * (1 - p); },
+            quadIn: function(p) { return p * p * p; },
+            quadOut: function(p) { return 1 - Math.pow(1 - p, 3); }
+        };
+        var ease = easeFns[easeType] || easeFns.linear;
+        if (fade && count > 0) {
+            for (var i = 1; i <= count; i++) {
+                var p = i / count;
+                var v = Math.round(startVel - (startVel - minVel) * ease(p));
+                vels.push(clampInt(v, 1, 100, 100));
+            }
+        } else {
+            for (var j = 1; j <= count; j++) vels.push(startVel);
+        }
+        return vels;
+    };
+
+    // 计算延音组布局: 返回 {startTick, layer, count, mode} 或 null (整组放弃)
+    // count = 延音音符个数 (不含首音符)
+    PianoRoll.prototype._sustainPlan = function(tick, layer) {
+        var bcfg = this._getBrushConfig() || {};
+        var st = bcfg.sustain || {};
+        var N = clampInt(st.length, 0, 64, 5);
+        var mode = (st.overlap === 'shrink' || st.overlap === 'skip') ? st.overlap : 'overwrite';
+        var gap = clampInt(st.gap, 0, 64, 0);
+        var count = N;
+        // 禁止覆盖: 首音符格被占用 → 整组不放置
+        if (mode === 'skip' && this._noteAtCell(tick, layer)) return null;
+        // 缩小长度: 遇到障碍提前收尾 (组内最大 tick <= 障碍tick - 留空K - 1)
+        if (mode === 'shrink') {
+            var eff = null;
+            for (var i = 0; i <= N; i++) {
+                if (this._noteAtCell(tick + i, layer)) { eff = i - 1 - gap; break; }
+            }
+            if (eff === null) eff = N;
+            if (eff < 0) return null;
+            count = Math.min(N, eff);
+        }
+        // 曲长上限截断
+        var cap = count;
+        if (this.totalTicks && this.totalTicks > 0) {
+            var remain = Math.floor(this.totalTicks - tick - 1);
+            if (remain < 0) remain = 0;
+            cap = Math.min(count, remain);
+        }
+        count = Math.max(0, cap);
+        return { startTick: tick, layer: layer, count: count, mode: mode };
+    };
+
+    // 生成延音组音符数组 (首音符 + count 个延音音符)
+    PianoRoll.prototype._computeSustainGroup = function(tick, layer, key) {
+        var plan = this._sustainPlan(tick, layer);
+        if (!plan) return null;
+        var bcfg = this._getBrushConfig() || {};
+        var st = bcfg.sustain || {};
+        var startVel = this._getPlaceVelocity();
+        var fade = !!st.fade;
+        var minVel = clampInt(st.minVel, 1, 100, 10);
+        var easeType = st.ease || 'linear';
+        var vels = this._sustainVelocities(plan.count, startVel, fade, minVel, easeType);
+        var group = [];
+        for (var i = 0; i <= plan.count; i++) {
+            var cellTick = plan.startTick + i;
+            // skip 模式: 已有音符的格子跳过 (不放置, 不替换)
+            if (plan.mode === 'skip' && this._noteAtCell(cellTick, plan.layer)) continue;
+            group.push({
+                tick: cellTick, layer: plan.layer,
+                instrument: this.currentInstrument,
+                key: key,
+                velocity: vels[i], pan: 50, pitch: 0
+            });
+        }
+        return group;
+    };
+
+    // 执行一组放置:
+    // - isStart=true 且存在 onNoteGroupAdded: 交给 main 处理 (一次 pushUndo + addNote)
+    // - 否则 (滑动续笔/无回调): 直接批量写入, 一次渲染
+    PianoRoll.prototype._executePlaceGroup = function(group, isStart) {
+        if (isStart && this.onNoteGroupAdded) {
+            this.onNoteGroupAdded(group);
+            return;
+        }
+        for (var i = 0; i < group.length; i++) {
+            var n = group[i];
+            this._removeNoteAtPos(n.tick, n.layer);
+            this.addNote(n);
+        }
+        if (this.onNotesChanged) this.onNotesChanged([]);
+    };
+
+    // 在指定格放置一组延音 (key 来自当前选中音高, 回退为层号)
+    PianoRoll.prototype._placeSustainAt = function(tick, layer, isStart) {
+        var key = this.getSelectedKey();
+        if (key === null || key === undefined || key < 0) key = layer;
+        var group = this._computeSustainGroup(tick, layer, key);
+        if (!group || group.length === 0) return;
+        this._executePlaceGroup(group, isStart);
+        // 试听提示音: 仅首音符触发, 延音音符不逐个试听
+        if (isStart && this.onNotePreview) {
+            this.onNotePreview(group[0].instrument, group[0].key);
+        }
+    };
+
+    // 悬停预览: 计算与放置完全一致的位置集合 (不落库)
+    PianoRoll.prototype._computeSustainPreview = function(tick, layer) {
+        var plan = this._sustainPlan(tick, layer);
+        if (!plan) return null;
+        var bcfg = this._getBrushConfig() || {};
+        var st = bcfg.sustain || {};
+        var startVel = this._getPlaceVelocity();
+        var vels = this._sustainVelocities(plan.count, startVel, !!st.fade, clampInt(st.minVel, 1, 100, 10), st.ease || 'linear');
+        var cells = [];
+        for (var i = 0; i <= plan.count; i++) {
+            var cellTick = plan.startTick + i;
+            // skip 模式: 预览也跳过已占用格子
+            if (plan.mode === 'skip' && this._noteAtCell(cellTick, plan.layer)) continue;
+            cells.push({ tick: cellTick, layer: plan.layer, velocity: vels[i] });
+        }
+        return cells;
+    };
+
+    PianoRoll.prototype._updateSustainPreview = function(x, y) {
+        var bcfg = this._getBrushConfig();
+        var want = bcfg && bcfg.mode === 'sustain' && bcfg.sustain && bcfg.sustain.preview !== false;
+        var prev = null;
+        if (want && (this.currentTool === 'brush' || this.currentTool === 'default')) {
+            var lx = this._screenToTick(x);
+            var ly = this._screenToLayer(y);
+            if (x >= this._currentPanelWidth && y >= this._cfg.timelineHeight && lx >= 0 && ly >= 0 && ly < this.trackCount) {
+                prev = this._computeSustainPreview(lx, ly);
+            }
+        }
+        var changed = (prev === null) !== (this._hoverSustainCells === null);
+        if (!changed && prev !== null && this._hoverSustainCells !== null) {
+            if (prev.length !== this._hoverSustainCells.length) changed = true;
+            else {
+                for (var i = 0; i < prev.length; i++) {
+                    if (prev[i].tick !== this._hoverSustainCells[i].tick || prev[i].layer !== this._hoverSustainCells[i].layer) {
+                        changed = true; break;
+                    }
+                }
+            }
+        }
+        if (changed) {
+            this._hoverSustainCells = prev;
+            this._fullRedrawNeeded = true;
+            this.requestRender();
+        }
+    };
+
+    // 绘制延音放置预览 (半透明块, 叠加音量透明度映射)
+    PianoRoll.prototype._drawSustainPreview = function() {
+        if (!this._hoverSustainCells || this._hoverSustainCells.length === 0) return;
+        if (this.currentTool !== 'brush' && this.currentTool !== 'default') return;
+        if (!this._getBrushConfig() || this._getBrushConfig().mode !== 'sustain') return;
+        var ctx = this.ctx;
+        var cfg = this._cfg;
+        var w = this.displayWidth, h = this.displayHeight;
+        var cellW = cfg.cellW * this.zoom, cellH = cfg.cellH * this.zoom;
+        var pw = this._currentPanelWidth;
+        for (var i = 0; i < this._hoverSustainCells.length; i++) {
+            var c = this._hoverSustainCells[i];
+            var sx = this._tickToScreen(c.tick);
+            var sy = this._layerToScreen(c.layer);
+            if (sx + cellW < pw || sx > w || sy + cellH < cfg.timelineHeight || sy > h) continue;
+            var alpha = 0.35 * this._velocityToOpacity(c.velocity);
+            ctx.fillStyle = 'rgba(120, 200, 255,' + alpha.toFixed(3) + ')';
+            ctx.fillRect(sx + 1, sy + 1, Math.max(1, cellW - 2), Math.max(1, cellH - 2));
+        }
+    };
+
+    // ============ 橡皮: 区域清除 / 连续清除 ============
+    // 在指定屏幕坐标执行一次清除 (区域清除 = 以该格为中心; 连续清除 = 从命中音符级联扩散)
+    PianoRoll.prototype._eraseAt = function(x, y) {
+        if (x < this._currentPanelWidth || y < this._cfg.timelineHeight) return;
+        var ecfg = this._getEraserConfig();
+        var mode = ecfg && ecfg.mode === 'chain' ? 'chain' : 'area';
+        if (mode === 'chain') {
+            var hit = this._getNoteAt(x, y);
+            if (!hit) return;
+            this.removeNotesByIds(this._collectChainNotes(hit));
+            if (this.onNotesChanged) this.onNotesChanged([]);
+            return;
+        }
+        // 区域清除
+        var cx = this._screenToTick(x);
+        var cy = this._screenToLayer(y);
+        if (cy < 0 || cy >= this.trackCount) return;
+        var R = clampInt(ecfg && ecfg.area ? ecfg.area.radius : 3, 0, 32, 3);
+        var shape = ecfg && ecfg.area && ecfg.area.shape === 'square' ? 'square' : 'circle';
+        var ids = [];
+        for (var i = 0; i < this.notes.length; i++) {
+            var n = this.notes[i];
+            var dx = n.tick - cx, dy = n.layer - cy;
+            var inRange = shape === 'square'
+                ? (Math.abs(dx) <= R && Math.abs(dy) <= R)
+                : (dx * dx + dy * dy <= R * R);
+            if (inRange) ids.push(n.id);
+        }
+        if (ids.length > 0) {
+            this.removeNotesByIds(ids);
+            if (this.onNotesChanged) this.onNotesChanged([]);
+        }
+    };
+
+    // 连续清除: 从命中音符 8 方向 BFS, 只扩散到满足同类判定的音符
+    PianoRoll.prototype._collectChainNotes = function(start) {
+        var ecfg = this._getEraserConfig() || {};
+        var chain = ecfg.chain || {};
+        var sim = chain.sim || {};
+        var limit = clampInt(chain.limit, 1, 1024, 64);
+        var wantInst = !!sim.instrument, wantKey = !!sim.key, wantVel = !!sim.velocity;
+        var anyAttr = wantInst || wantKey || wantVel;
+        // 建立 (tick_layer) → note 索引, 便于 O(1) 邻居查找
+        var cellMap = {};
+        for (var i = 0; i < this.notes.length; i++) {
+            cellMap[this.notes[i].tick + '_' + this.notes[i].layer] = this.notes[i];
+        }
+        var ids = [start.id];
+        var visited = {};
+        visited[start.id] = true;
+        var queue = [start];
+        var dirs = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+        while (queue.length > 0 && ids.length < limit) {
+            var cur = queue.shift();
+            for (var d = 0; d < dirs.length; d++) {
+                var nt = cur.tick + dirs[d][0];
+                var nl = cur.layer + dirs[d][1];
+                if (nt < 0 || nl < 0 || nl >= this.trackCount) continue;
+                var nb = cellMap[nt + '_' + nl];
+                if (!nb || visited[nb.id]) continue;
+                if (anyAttr) {
+                    if (wantInst && nb.instrument !== start.instrument) continue;
+                    if (wantKey && nb.key !== start.key) continue;
+                    if (wantVel && nb.velocity !== start.velocity) continue;
+                }
+                visited[nb.id] = true;
+                ids.push(nb.id);
+                queue.push(nb);
+                if (ids.length >= limit) return ids;
+            }
+        }
+        return ids;
+    };
+
+    // ============ 查找浮层: 当前命中高亮 ============
+    PianoRoll.prototype.setFindHighlight = function(noteId) {
+        this._findHighlightId = (noteId === null || noteId === undefined) ? null : noteId;
+        this._fullRedrawNeeded = true;
+        this.render();
+    };
+
+    PianoRoll.prototype._drawFindHighlight = function() {
+        var id = this._findHighlightId;
+        if (id === null || id === undefined) return;
+        var note = null;
+        for (var i = 0; i < this.notes.length; i++) {
+            if (this.notes[i].id === id) { note = this.notes[i]; break; }
+        }
+        if (!note) return;
+        var cfg = this._cfg, pw = this._currentPanelWidth;
+        var w = this.displayWidth, h = this.displayHeight;
+        var cellW = cfg.cellW * this.zoom, cellH = cfg.cellH * this.zoom;
+        var x = this._tickToScreen(note.tick);
+        var y = this._layerToScreen(note.layer);
+        if (x + cellW < pw || x > w || y + cellH < cfg.timelineHeight || y > h) return;
+        var ctx = this.ctx;
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 214, 70, 0.25)';
+        ctx.fillRect(x + 1, y + 1, cellW - 2, cellH - 2);
+        ctx.strokeStyle = 'rgba(255, 214, 70, 0.95)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, cellW - 2, cellH - 2);
+        ctx.restore();
     };
 
     // ============ 公开方法 ============
@@ -3487,6 +3895,12 @@
 
         // 动画中的音符 (删除/放置效果)
         this._drawAnimatedNotes();
+
+        // 延音放置预览 (半透明块, 显示整组将放置的位置, 叠加音量透明度)
+        this._drawSustainPreview();
+
+        // 查找浮层: 当前命中音符高亮
+        this._drawFindHighlight();
 
         // 进度条 + 时间轴: 在音符之后绘制, 覆盖溢出到顶部区域的音符
         // (背景模式时时间轴半透明, 音符透过可见; 非背景模式时时间轴不透明, 完全覆盖音符)
