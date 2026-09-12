@@ -160,7 +160,8 @@ const API = {
                             stereo: (l.stereo !== undefined && l.stereo !== null) ? l.stereo : 100,
                             lock: (l.lock !== undefined && l.lock !== null) ? l.lock : 0
                         };
-                    })
+                    }),
+                    customInstruments: song.customInstruments || []
                 };
                 if (onProgress) onProgress(0, 0, 0, 50, 0, 'process');
                 var nbsBytes = NBSClient._writeNBS(songData);

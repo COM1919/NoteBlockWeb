@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260831m">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260905b">
 </head>
 <body>
 
@@ -60,6 +60,9 @@
             <button class="toolbar-btn toolbar-collapsible" id="btn-assist" data-group="overflow" title="创作辅助">
                 <i class="fa-solid fa-wand-magic-sparkles icon"></i>
             </button>
+            <button class="toolbar-btn toolbar-collapsible" id="btn-custom-instruments" data-group="overflow" title="自定义音色">
+                <i class="fa-solid fa-wave-square icon"></i>
+            </button>
             <button class="toolbar-btn toolbar-collapsible" id="btn-functions" data-group="overflow" title="功能">
                 <i class="fa-solid fa-table-cells-large icon"></i>
             </button>
@@ -71,7 +74,7 @@
 
     <!-- ========== 功能菜单 ========== -->
     <div class="functions-menu" id="functions-menu" style="display:none;">
-        <div class="functions-menu-item" data-action="dedupe-notes">
+        <div class="functions-menu-item" data-action="dedupe-notes" title="删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞">
             <i class="fa-solid fa-copy"></i>
             <span>消除重复音符</span>
         </div>
@@ -282,7 +285,7 @@
     </div>
 
     <!-- ========== 隐藏的文件输入 ========== -->
-    <input type="file" id="file-input" accept=".nbs,.mid,.midi" style="display:none;">
+    <input type="file" id="file-input" accept=".nbs,.mid,.midi,.zip" style="display:none;">
 
     <!-- ========== 移动端 FAB (竖屏) ========== -->
     <div class="mobile-fab-deselect" id="mobile-fab-deselect" style="display:none;position:fixed;bottom:84px;right:72px;z-index:9997;width:40px;height:40px;border-radius:50%;background:rgba(30,30,46,0.92);border:1px solid rgba(255,255,255,0.12);color:#eaeaea;cursor:pointer;font-size:15px;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.3);">
@@ -546,6 +549,11 @@
                             <input type="checkbox" id="settings-volume-opacity"> 音符音量透明度 (音量越低越透明)
                         </label>
                     </div>
+                    <div class="settings-row">
+                        <label class="settings-label">
+                            <input type="checkbox" id="settings-show-octave"> 音调文字显示八度数字 (如 A4, C5)
+                        </label>
+                    </div>
                     <div class="settings-row" style="display:flex;align-items:center;gap:8px;">
                         <label class="settings-label" style="margin:0;">NBS 导出版本:</label>
                         <select id="settings-nbs-version" style="padding:3px 6px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);">
@@ -784,6 +792,147 @@
         <div id="performance-countdown-text" style="font-size:120px;font-weight:700;color:var(--accent);text-shadow:0 0 40px rgba(76,194,255,0.6);font-family:var(--font-family);"></div>
     </div>
 
+    <!-- ========== 自定义音色管理弹窗 ========== -->
+    <div class="popup" id="custom-instruments-popup" style="display:none;">
+        <div class="popup-content settings-dialog" style="width:600px;max-width:94vw;display:flex;flex-direction:column;">
+            <div class="settings-header">
+                <i class="fa-solid fa-wave-square"></i>
+                <h4>自定义音色</h4>
+                <button class="settings-close-btn" id="custom-inst-close" title="关闭">&times;</button>
+            </div>
+            <div class="settings-body">
+                <div class="ci-topbar">
+                    <button class="popup-btn popup-btn-primary" id="custom-inst-import" type="button">
+                        <i class="fa-solid fa-file-import" style="margin-right:5px;"></i>导入音色
+                    </button>
+                    <button class="popup-btn" id="ci-backup-export" type="button" title="把全部自定义音色打包为 zip 备份，浏览器数据丢失后可通过「导入音色备份」恢复">
+                        <i class="fa-solid fa-box-archive" style="margin-right:5px;"></i>导出音色备份
+                    </button>
+                    <button class="popup-btn" id="ci-backup-import" type="button" title="从备份 zip 恢复自定义音色（同名同内容自动跳过，重名异内容会提示处理）">
+                        <i class="fa-solid fa-box-open" style="margin-right:5px;"></i>导入音色备份
+                    </button>
+                    <span class="ci-topbar-hint">把一段音频（如某个乐器/人声/音效采样）变成一个可演奏音色</span>
+                </div>
+                <input type="file" id="ci-file-input" class="ci-sr-file" accept="audio/*">
+                <input type="file" id="ci-backup-file-input" class="ci-sr-file" accept=".zip,application/zip">
+                <div id="custom-inst-list" class="ci-list"></div>
+                <div id="custom-inst-empty" class="ci-empty" style="display:none;">
+                    <i class="fa-solid fa-wave-square" style="font-size:34px;color:var(--text-tertiary);margin-bottom:10px;display:block;"></i>
+                    还没有自定义音色。点击「导入音色」添加第一个吧。
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 音频修正窗口 (导入向导步骤: 修正音准) ========== -->
+    <div class="popup" id="custom-inst-fix-popup" style="display:none;">
+        <div class="popup-content settings-dialog" style="width:920px;max-width:96vw;display:flex;flex-direction:column;">
+            <div class="settings-header">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <h4>音频修正</h4>
+                <button class="settings-close-btn" id="custom-inst-fix-close" title="关闭">&times;</button>
+            </div>
+            <div class="settings-body">
+                <div id="custom-inst-fix-source" class="ci-fix-source"></div>
+                <div class="ci-fix-layout">
+                    <div class="ci-fix-left">
+                        <canvas id="ci-fix-wave" class="ci-fix-wave"></canvas>
+                    </div>
+                    <div class="ci-fix-right">
+                        <div class="ci-fix-detect" id="ci-fix-detect">正在检测音高…</div>
+                        <div class="ci-fix-slider-row">
+                            <span class="ci-fix-slider-label">半音</span>
+                            <input type="range" id="ci-fix-semi" min="-24" max="24" step="1" value="0">
+                            <span class="ci-fix-slider-val" id="ci-fix-semi-val">+0</span>
+                        </div>
+                        <div class="ci-fix-slider-row">
+                            <span class="ci-fix-slider-label">音分</span>
+                            <input type="range" id="ci-fix-cents" min="-50" max="50" step="1" value="0">
+                            <span class="ci-fix-slider-val" id="ci-fix-cents-val">+0¢</span>
+                        </div>
+                        <div class="ci-fix-base-row">
+                            <span>修正后基准: <b id="ci-fix-base">--</b></span>
+                            <span class="ci-fix-tip">以 F#3 为参照, 音频原样(1x)播放时的音高</span>
+                        </div>
+                        <div class="ci-fix-btns">
+                            <button class="popup-btn" id="ci-fix-auto" type="button">自动调整</button>
+                            <button class="popup-btn" id="ci-fix-play" type="button">▶ 试听</button>
+                            <button class="popup-btn" id="ci-fix-redetect" type="button">重新检测</button>
+                        </div>
+                        <div class="ci-fix-tip" id="ci-fix-explain">拖动滑块或点「自动调整」修正音准, 拖动后自动试听修正结果</div>
+                    </div>
+                </div>
+                <div class="ci-fix-monitor-wrap">
+                    <canvas id="ci-fix-monitor" class="ci-fix-monitor"></canvas>
+                    <span class="ci-fix-live" id="ci-fix-live">实时监视: 播放时显示波形与频率</span>
+                </div>
+            </div>
+            <div class="popup-actions">
+                <button class="popup-btn popup-btn-primary" id="custom-inst-fix-next" disabled>下一步: 设置音色信息</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 自定义音色信息设置弹窗 (导入向导步骤: 设置音色信息) ========== -->
+    <div class="popup" id="custom-inst-info-popup" style="display:none;">
+        <div class="popup-content settings-dialog" style="width:460px;max-width:92vw;display:flex;flex-direction:column;">
+            <div class="settings-header">
+                <i class="fa-solid fa-sliders"></i>
+                <h4>设置音色信息</h4>
+                <button class="settings-close-btn" id="custom-inst-info-close" title="关闭">&times;</button>
+            </div>
+            <div class="settings-body">
+                <div id="custom-inst-info-source" style="font-size:11px;color:var(--text-tertiary);margin-bottom:12px;"></div>
+                <div class="settings-row">
+                    <label class="settings-label" style="min-width:64px;">名称</label>
+                    <input type="text" id="custom-inst-name" maxlength="40" placeholder="输入音色名称">
+                </div>
+                <div id="custom-inst-name-err" class="ci-name-err" style="display:none;"></div>
+                <div class="ci-color-section">
+                    <label class="settings-label" style="margin-bottom:8px;">图标颜色</label>
+                    <div class="ci-rgb-picker" id="custom-inst-colors">
+                        <div class="ci-rgb-preview-row">
+                            <span class="ci-rgb-preview" id="ci-rgb-preview"></span>
+                            <input type="text" id="ci-hex-input" class="ci-hex-input" maxlength="7" value="#4aa3ff">
+                        </div>
+                        <div class="ci-rgb-sliders">
+                            <div class="ci-rgb-slider-row">
+                                <span class="ci-rgb-slider-label">R</span>
+                                <input type="range" id="ci-slider-r" min="0" max="255" step="1" value="74" class="ci-rgb-slider ci-slider-r">
+                                <span class="ci-rgb-slider-val" id="ci-val-r">74</span>
+                            </div>
+                            <div class="ci-rgb-slider-row">
+                                <span class="ci-rgb-slider-label">G</span>
+                                <input type="range" id="ci-slider-g" min="0" max="255" step="1" value="163" class="ci-rgb-slider ci-slider-g">
+                                <span class="ci-rgb-slider-val" id="ci-val-g">163</span>
+                            </div>
+                            <div class="ci-rgb-slider-row">
+                                <span class="ci-rgb-slider-label">B</span>
+                                <input type="range" id="ci-slider-b" min="0" max="255" step="1" value="255" class="ci-rgb-slider ci-slider-b">
+                                <span class="ci-rgb-slider-val" id="ci-val-b">255</span>
+                            </div>
+                        </div>
+                        <div class="ci-rgb-presets" id="ci-rgb-presets"></div>
+                    </div>
+                </div>
+                <div class="ci-basekey-row">
+                    <label class="settings-label" style="min-width:64px;">基准音高</label>
+                    <span class="ci-basekey-hint" id="custom-inst-pitch-hint">33 (F#3)</span>
+                    <span class="ci-basekey-tip">音频原样播放对应的音高</span>
+                </div>
+                <div class="settings-row" style="margin-top:6px;gap:6px;">
+                    <button class="popup-btn" id="custom-inst-preview" type="button">试听</button>
+                    <button class="popup-btn" id="custom-inst-preview-low" type="button" title="低 7 个半音试听">试听(低7)</button>
+                    <button class="popup-btn" id="custom-inst-preview-high" type="button" title="高 7 个半音试听">试听(高7)</button>
+                </div>
+            </div>
+            <div class="popup-actions">
+                <button class="popup-btn" id="custom-inst-info-back" type="button" style="margin-right:auto;">‹ 上一步</button>
+                <button class="popup-btn popup-btn-primary" id="custom-inst-info-ok" disabled>完成</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ========== MIDI 导入弹窗 (核心) ========== -->
     <div class="popup" id="midi-popup" style="display:none;">
         <div class="popup-content midi-import-dialog" style="display:flex;flex-direction:column;">
@@ -897,7 +1046,13 @@
                         <div class="midi-settings-row">
                             <label style="white-space:nowrap;">
                                 <input type="checkbox" id="midi-dedupe-notes"> 消除重复音符
-                                <i class="fa-solid fa-circle-question" style="cursor:help;color:var(--text-tertiary);font-size:12px;margin-left:2px;" title="删除同一时间中音色和音调完全相同的重复音符。用于在尽可能保持听感的条件下减少总音符数量，但会对歌曲质量造成一些损失"></i>
+                                <i class="fa-solid fa-circle-question" style="cursor:help;color:var(--text-tertiary);font-size:12px;margin-left:2px;" title="删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞"></i>
+                            </label>
+                        </div>
+                        <div class="midi-settings-row" style="margin-top:4px;">
+                            <label style="white-space:nowrap;">
+                                <input type="checkbox" id="midi-dedupe-reorder" checked> 重排序音符
+                                <i class="fa-solid fa-circle-question" style="cursor:help;color:var(--text-tertiary);font-size:12px;margin-left:2px;" title="删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞"></i>
                             </label>
                         </div>
                         <div class="midi-settings-row" style="margin-top:4px;">
@@ -1165,21 +1320,29 @@
     }
 </script>
 <!-- nbs_client.js 必须在 api_client.js 之前加载 (api_client.js 引用 NBSClient 全局对象) -->
-<script src="/static/js/nbs_client.js?v=20260831d"></script>
-<script src="/static/js/api_client.js?v=20260718m"></script>
+<script src="/static/js/nbs_client.js?v=20260912a"></script>
+<script src="/static/js/api_client.js?v=20260905a"></script>
 <script src="/static/js/custom_dropdown.js?v=20260728d"></script>
-<script src="/static/js/i18n.js?v=20260809a"></script>
-<script src="/static/js/audio_engine.js?v=20260728a"></script>
+<script src="/static/js/i18n.js?v=20260912b"></script>
+<script src="/static/js/audio_engine.js?v=20260906e"></script>
+<script src="/static/js/custom_instruments.js?v=20260905a"></script>
+<script src="/static/js/audio_fix_utils.js?v=20260905a"></script>
 <script src="/static/js/sf3_player.js?v=20260808a"></script>
 <script src="/static/js/spessa_player.js?v=20260808a"></script>
 <script src="/static/js/soundfont_loader.js?v=20260808b"></script>
-<script src="/static/js/piano_roll.js?v=20260831m"></script>
+<script src="/static/js/piano_roll.js?v=20260912a"></script>
 <script src="/static/js/fls_core.js?v=20260728a"></script>
 <script src="/static/js/fls_track_panel.js?v=20260718m"></script>
 <script src="/static/js/fls_playlist.js?v=20260728e"></script>
 <script src="/static/js/fls_group_roll.js?v=20260728d"></script>
 <script src="/static/js/fls_pianoroll.js?v=20260728d"></script>
-<script src="/static/js/main.js?v=20260831n"></script>
+<!-- 本地化第三方库: ZIP 打包 (jszip) / MP3 编码 (lamejs) -->
+<script src="/static/vendor/jszip.min.js?v=20260905a"></script>
+<script src="/static/vendor/lame.min.js?v=20260905a"></script>
+<!-- 离线渲染引擎: audio_render.js 必须在 main.js 之前加载 -->
+<script src="/static/js/render_jsmix.js?v=20260906e"></script>
+<script src="/static/js/audio_render.js?v=20260906f"></script>
+<script src="/static/js/main.js?v=20260912b"></script>
 
 </body>
 </html>

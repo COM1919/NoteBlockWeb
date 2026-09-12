@@ -7,7 +7,7 @@ FastAPI 静态托管服务
 """
 import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
@@ -149,50 +149,11 @@ app.add_middleware(GZipMiddleware, minimum_size=512, compresslevel=6)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.join(BASE_DIR, "src")
 STATIC_DIR = os.path.join(SRC_DIR, "static")
-SF2_DIR = os.path.join(BASE_DIR, "sf2")
 
 # 前端资源挂载在 /static 前缀 (与 index.html 中的 /static/... 绝对路径保持一致,
 # 因此打包/重组目录后无需修改 index.html)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-
-# ========== SoundFont 音色库配置 ==========
-# 从 sf2/config.yaml 读取移动端/PC端音色库配置。
-# 配置支持 url（客户端直链下载，减少服务器压力）或 file（从本服务器 /sf2/<file> 下载）。
-def load_sf2_config():
-    """加载 sf2/config.yaml，返回标准化后的移动端/PC端音色库配置"""
-    config_path = os.path.join(SF2_DIR, 'config.yaml')
-    default = {'mobile': None, 'pc': None}
-    if not os.path.exists(config_path):
-        return default
-    try:
-        import yaml
-        with open(config_path, 'r', encoding='utf-8') as f:
-            cfg = yaml.safe_load(f) or {}
-    except Exception as e:
-        print(f"[警告] 加载 sf2/config.yaml 失败: {e}")
-        return default
-
-    def _normalize(entry, key):
-        if not isinstance(entry, dict):
-            return None
-        name = entry.get('name') or ('移动端音色库' if key == 'mobile' else 'PC 端音色库')
-        url = str(entry.get('url', '')).strip()
-        file = str(entry.get('file', '')).strip()
-        # 优先使用 url；没有 url 时使用 file
-        source = url if url else file
-        source_type = 'url' if url else ('file' if file else None)
-        if not source_type:
-            return None
-        return {'name': name, 'source': source, 'type': source_type}
-
-    return {
-        'mobile': _normalize(cfg.get('mobile'), 'mobile'),
-        'pc': _normalize(cfg.get('pc'), 'pc')
-    }
-
-
-SF2_CONFIG = load_sf2_config()
 
 # 服务器配置 (从 config.yaml 读取)
 SERVER_HOST = CONFIG.get('server', {}).get('host', '0.0.0.0')
@@ -230,30 +191,6 @@ async def get_config():
             "name": str(CONFIG.get('soundfont', {}).get('name', ''))
         }
     }
-
-
-@app.get("/api/sf2/config")
-async def get_sf2_config():
-    """获取 SoundFont 音色库配置（移动端/PC端）。
-
-    服务器不会主动下载远程 SF2 文件，而是把配置（url 或本地文件名）推送给客户端，
-    由客户端根据设备类型自行下载，减少服务器带宽压力。
-    """
-    return {
-        "mobile": SF2_CONFIG.get('mobile'),
-        "pc": SF2_CONFIG.get('pc')
-    }
-
-
-@app.get("/sf2/{filename}")
-async def download_sf2_file(filename: str):
-    """提供 sf2/ 目录下的音色库文件下载（仅当配置文件中使用 file 模式时由客户端访问）。"""
-    # 防止路径穿越
-    safe_name = os.path.basename(filename)
-    file_path = os.path.join(SF2_DIR, safe_name)
-    if not os.path.exists(file_path) or not os.path.isfile(file_path):
-        raise HTTPException(status_code=404, detail="音色库文件不存在")
-    return FileResponse(file_path, filename=safe_name)
 
 
 # 启动服务器

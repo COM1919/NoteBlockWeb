@@ -478,7 +478,51 @@
                 [/^将删除\s*(\d+)\s*个空轨 \(从\s*(\d+)\s*减到\s*(\d+)\)，是否继续？$/, 'Delete $1 empty track(s) (from $2 down to $3)? Continue?'],
                 [/^删除音轨 "(.+)" 及其所有 Clip\?$/, 'Delete track "$1" and all its clips?'],
                 [/^(.+) \(副本\)$/, '$1 (copy)'],
-                [/^(.+) · (\d+) 音轨 · (\d+) 音符$/, '$1 · $2 track(s) · $3 note(s)']
+                [/^(.+) · (\d+) 音轨 · (\d+) 音符$/, '$1 · $2 track(s) · $3 note(s)'],
+                // ============ 运行时补充正则 1 (en-US) ============
+                // 通用动态句
+                [/^已选择: (.+)$/, 'Selected: $1'], [/^乐器 (\d+)$/, 'Instrument $1'],
+                [/^乐器 #(\d+)(.*)$/, function(m, num, rest) {
+                    var s = 'Instrument #' + num;
+                    if (rest) {
+                        s += rest.replace(/\s*·\s*(立体声|单声道)\s*/g, function(mm, ch) { return ' · ' + translate(ch); })
+                                .replace(/\s*·\s*基准\s*/g, ' · base ');
+                    }
+                    return s;
+                }],
+                [/^自定义音色 (\d+)$/, 'Custom instrument $1'], [/^自定义音色 #(\d+)$/, 'Custom instrument #$1'],
+                [/^导入音色 (\d+)$/, 'Import instrument $1'], [/^(\d+) 轨道$/, '$1 track(s)'], [/^(\d+) 音符$/, '$1 note(s)'],
+                [/^通道 (\d+) · (\d+) 音符$/, 'Channel $1 · $2 note(s)'], [/^鼓音符 (.+) · (.+)$/, 'Drum note $1 · $2'],
+                [/^(.+)\(通道(\d+)\)$/, function(m, name, ch) { return translate(name) + ' (channel ' + ch + ')'; }], [/^(.+) \(超出范围\)$/, function(m, name) { return translate(name) + ' (out of range)'; }],
+                [/^MIDI 文件格式损坏或数据不完整 \(轨道 (\d+)\)$/, 'MIDI file is corrupted or incomplete (track $1)'],
+                [/^删除 Clip "(.+)"\?$/, 'Delete clip "$1"?'], [/^\(槽位 (\d+)\)$/, '(slot $1)'],
+                // 自定义音色导入/修正流程
+                [/^来源文件: (.+) \(([\d.]+) MB\)$/, 'Source file: $1 ($2 MB)'],
+                [/^来源文件: (.+) \(([\d.]+) MB\) · 已按修正结果转换$/, 'Source file: $1 ($2 MB) · converted per correction'],
+                [/^检测音高: (.+)$/, 'Detected pitch: $1'],
+                [/^当前修正倍率 ×([\d.]+)。可点「试听」对比修正效果；满意后点下一步。$/, 'Current correction ratio ×$1. Click "Preview" to compare; click Next when satisfied.'],
+                [/^播放修正后采样 · 倍率 ×([\d.]+) · 输出基准 (.+)$/, 'Corrected sample playback · ratio ×$1 · output base $2'],
+                [/^已导入自定义音色「(.+)」，可在乐器选择中选用$/, 'Custom instrument "$1" imported. Select it in the instrument picker.'],
+                [/^确定删除自定义音色「(.+)」吗？\n引用该音色的 NBS 文件中对应乐器将静音。$/, 'Delete custom instrument "$1"?\nInstruments referencing it in NBS files will be silent.'],
+                // 消除重复音符
+                [/^未发现重复音符。\n判定标准: 同一时间\(tick\) \+ 相同音色 \+ 相同音调，忽略音量差异。(?:\n\n提示: 有 (\d+) 个音符同一时间音调相同但音色不同 \(instrument 不同\))?(?:\n提示: 有 (\d+) 个音符同一时间音色相同但音调不同 \(key 不同\))?(?:\n提示: 有 (\d+) 个音符音色音调相同但时间不同 \(tick 不同\))?$/, function(m, k, i, t) {
+                    var s = 'No duplicate notes found.\nCriterion: same tick, same instrument and same pitch, ignoring velocity.';
+                    if (k) s += '\n\nHint: ' + k + ' note(s) share the same tick and pitch but differ in instrument';
+                    if (i) s += '\nHint: ' + i + ' note(s) share the same tick and instrument but differ in pitch';
+                    if (t) s += '\nHint: ' + t + ' note(s) share the same instrument and pitch but differ in tick';
+                    return s;
+                }],
+                [/^将删除 (\d+) 个重复音符，是否继续？$/, 'Delete $1 duplicate note(s)? Continue?'],
+                [/^已删除 (\d+) 个重复音符$/, 'Deleted $1 duplicate note(s)'],
+                // 作品包 / 音色备份
+                [/^作品包已导出，包含 (\d+) 个自定义音色音频。\n把 zip 分享给他人，导入后即可完整还原音色与歌曲。$/, 'Song pack exported with $1 custom-instrument audio file(s).\nShare the zip; importing it fully restores the instruments and song.'],
+                [/^作品包导出失败: (.+)$/, function(m, msg) { return 'Song pack export failed: ' + translate(msg); }], [/^NBS 打包失败: (.+)$/, function(m, msg) { return 'NBS packing failed: ' + translate(msg); }],
+                [/^已导出 (\d+) 个音色的备份。浏览器数据丢失后可随时导入恢复。$/, 'Backed up $1 instrument(s). You can import the backup anytime after losing browser data.'],
+                [/^备份导出失败: (.+)$/, function(m, msg) { return 'Backup export failed: ' + translate(msg); }],
+                [/^已存在同名音色「(.+)」，但音频内容不同。\n\n请选择处理方式：$/, 'An instrument named "$1" already exists, but the audio differs.\n\nChoose how to proceed:'],
+                [/^音色备份导入完成（(\d+) 项）。$/, 'Instrument backup imported ($1 item(s)).'], [/^压缩包缺少 (.+)$/, 'The package is missing $1'],
+                [/^无法识别的压缩包类型: (.+)$/, function(m, msg) { return 'Unrecognized package type: ' + translate(msg); }], [/^导入失败: (.+)$/, function(m, msg) { return 'Import failed: ' + translate(msg); }],
+                [/^(.+) \(导入\)$/, '$1 (imported)'], [/^(.+) \(自定义音色\)$/, '$1 (custom instrument)']
             ],
             'ja-JP': [
                 [/^音符:\s*(\d+)$/, '音符: $1'], [/^位置:\s*(\d+)$/, '位置: $1'],
@@ -529,7 +573,50 @@
                 [/^将删除\s*(\d+)\s*个空轨 \(从\s*(\d+)\s*减到\s*(\d+)\)，是否继续？$/, '$1 個の空トラックを削除します (全 $2 → $3)。続行しますか?'],
                 [/^删除音轨 "(.+)" 及其所有 Clip\?$/, 'トラック「$1」とそのすべての Clip を削除しますか?'],
                 [/^(.+) \(副本\)$/, '$1 (コピー)'],
-                [/^(.+) · (\d+) 音轨 · (\d+) 音符$/, '$1 · $2 トラック · $3 ノート']
+                [/^(.+) · (\d+) 音轨 · (\d+) 音符$/, '$1 · $2 トラック · $3 ノート'],
+                // ============ 运行时补充正则 1 (ja-JP) ============
+                [/^已选择: (.+)$/, '選択: $1'], [/^乐器 (\d+)$/, '楽器 $1'],
+                [/^乐器 #(\d+)(.*)$/, function(m, num, rest) {
+                    var s = '楽器 #' + num;
+                    if (rest) {
+                        s += rest.replace(/\s*·\s*(立体声|单声道)\s*/g, function(mm, ch) { return ' · ' + translate(ch); })
+                                .replace(/\s*·\s*基准\s*/g, ' · 基準 ');
+                    }
+                    return s;
+                }],
+                [/^自定义音色 (\d+)$/, 'カスタム楽器 $1'], [/^自定义音色 #(\d+)$/, 'カスタム楽器 #$1'],
+                [/^导入音色 (\d+)$/, 'インポート音色 $1'], [/^(\d+) 轨道$/, '$1 トラック'], [/^(\d+) 音符$/, '$1 ノート'],
+                [/^通道 (\d+) · (\d+) 音符$/, 'チャンネル $1 · $2 ノート'], [/^鼓音符 (.+) · (.+)$/, 'ドラムノート $1 · $2'],
+                [/^(.+)\(通道(\d+)\)$/, function(m, name, ch) { return translate(name) + '（チャンネル' + ch + '）'; }], [/^(.+) \(超出范围\)$/, function(m, name) { return translate(name) + '（範囲外）'; }],
+                [/^MIDI 文件格式损坏或数据不完整 \(轨道 (\d+)\)$/, 'MIDI ファイルが破損または不完全です（トラック $1）'],
+                [/^删除 Clip "(.+)"\?$/, 'Clip「$1」を削除しますか?'], [/^\(槽位 (\d+)\)$/, '（スロット $1）'],
+                // 自定义音色导入/修正流程
+                [/^来源文件: (.+) \(([\d.]+) MB\)$/, 'ソースファイル: $1 ($2 MB)'],
+                [/^来源文件: (.+) \(([\d.]+) MB\) · 已按修正结果转换$/, 'ソースファイル: $1 ($2 MB) · 修正結果で変換済み'],
+                [/^检测音高: (.+)$/, '検出ピッチ: $1'],
+                [/^当前修正倍率 ×([\d.]+)。可点「试听」对比修正效果；满意后点下一步。$/, '現在の修正倍率 ×$1。「試聴」で効果を比較できます。問題なければ次へ進みます。'],
+                [/^播放修正后采样 · 倍率 ×([\d.]+) · 输出基准 (.+)$/, '修正後サンプルの再生 · 倍率 ×$1 · 出力基準 $2'],
+                [/^已导入自定义音色「(.+)」，可在乐器选择中选用$/, 'カスタム楽器「$1」をインポートしました。楽器選択で使用できます。'],
+                [/^确定删除自定义音色「(.+)」吗？\n引用该音色的 NBS 文件中对应乐器将静音。$/, 'カスタム楽器「$1」を削除しますか?\nこれを参照する NBS ファイルの対応楽器は無音になります。'],
+                // 消除重复音符
+                [/^未发现重复音符。\n判定标准: 同一时间\(tick\) \+ 相同音色 \+ 相同音调，忽略音量差异。(?:\n\n提示: 有 (\d+) 个音符同一时间音调相同但音色不同 \(instrument 不同\))?(?:\n提示: 有 (\d+) 个音符同一时间音色相同但音调不同 \(key 不同\))?(?:\n提示: 有 (\d+) 个音符音色音调相同但时间不同 \(tick 不同\))?$/, function(m, k, i, t) {
+                    var s = '重複ノートは見つかりませんでした。\n判定基準: 同一時間(tick) + 同一音色 + 同一音程、音量差は無視。';
+                    if (k) s += '\n\nヒント: ' + k + ' ノートが同一時間・同一音程だが音色が異なります (instrument が異なる)';
+                    if (i) s += '\nヒント: ' + i + ' ノートが同一時間・同一音色だが音程が異なります (key が異なる)';
+                    if (t) s += '\nヒント: ' + t + ' ノートが同一音色・同一音程だが時間が異なります (tick が異なる)';
+                    return s;
+                }],
+                [/^将删除 (\d+) 个重复音符，是否继续？$/, '重複ノート $1 個を削除します。続行しますか?'],
+                [/^已删除 (\d+) 个重复音符$/, '$1 個の重複ノートを削除しました'],
+                // 作品包 / 音色备份
+                [/^作品包已导出，包含 (\d+) 个自定义音色音频。\n把 zip 分享给他人，导入后即可完整还原音色与歌曲。$/, '作品パックをエクスポートしました（カスタム楽器音声 $1 個を含む）。\nzip を共有すれば、インポート後に楽器と曲が完全に復元されます。'],
+                [/^作品包导出失败: (.+)$/, function(m, msg) { return '作品パックのエクスポートに失敗: ' + translate(msg); }], [/^NBS 打包失败: (.+)$/, function(m, msg) { return 'NBS パッキングに失敗: ' + translate(msg); }],
+                [/^已导出 (\d+) 个音色的备份。浏览器数据丢失后可随时导入恢复。$/, '$1 個の楽器バックアップをエクスポートしました。ブラウザデータが失われても、いつでもインポートして復元できます。'],
+                [/^备份导出失败: (.+)$/, function(m, msg) { return 'バックアップのエクスポートに失敗: ' + translate(msg); }],
+                [/^已存在同名音色「(.+)」，但音频内容不同。\n\n请选择处理方式：$/, '同名の楽器「$1」が既に存在しますが、音声内容が異なります。\n\n処理方法を選択してください:'],
+                [/^音色备份导入完成（(\d+) 项）。$/, '楽器バックアップのインポートが完了しました（$1 項目）。'], [/^压缩包缺少 (.+)$/, 'パッケージに $1 がありません'],
+                [/^无法识别的压缩包类型: (.+)$/, function(m, msg) { return '認識できないパッケージタイプ: ' + translate(msg); }], [/^导入失败: (.+)$/, function(m, msg) { return 'インポートに失敗: ' + translate(msg); }],
+                [/^(.+) \(导入\)$/, '$1（インポート）'], [/^(.+) \(自定义音色\)$/, '$1（カスタム楽器）']
             ],
             'pt-BR': [
                 [/^音符:\s*(\d+)$/, 'Notas: $1'], [/^位置:\s*(\d+)$/, 'Posição: $1'],
@@ -580,7 +667,50 @@
                 [/^将删除\s*(\d+)\s*个空轨 \(从\s*(\d+)\s*减到\s*(\d+)\)，是否继续？$/, 'Excluir $1 faixa(s) vazia(s) (de $2 para $3)? Continuar?'],
                 [/^删除音轨 "(.+)" 及其所有 Clip\?$/, 'Excluir a faixa "$1" e todos os seus clipes?'],
                 [/^(.+) \(副本\)$/, '$1 (cópia)'],
-                [/^(.+) · (\d+) 音轨 · (\d+) 音符$/, '$1 · $2 faixa(s) · $3 nota(s)']
+                [/^(.+) · (\d+) 音轨 · (\d+) 音符$/, '$1 · $2 faixa(s) · $3 nota(s)'],
+                // ============ 运行时补充正则 1 (pt-BR) ============
+                [/^已选择: (.+)$/, 'Selecionado: $1'], [/^乐器 (\d+)$/, 'Instrumento $1'],
+                [/^乐器 #(\d+)(.*)$/, function(m, num, rest) {
+                    var s = 'Instrumento #' + num;
+                    if (rest) {
+                        s += rest.replace(/\s*·\s*(立体声|单声道)\s*/g, function(mm, ch) { return ' · ' + translate(ch); })
+                                .replace(/\s*·\s*基准\s*/g, ' · base ');
+                    }
+                    return s;
+                }],
+                [/^自定义音色 (\d+)$/, 'Instrumento personalizado $1'], [/^自定义音色 #(\d+)$/, 'Instrumento personalizado #$1'],
+                [/^导入音色 (\d+)$/, 'Importar instrumento $1'], [/^(\d+) 轨道$/, '$1 faixa(s)'], [/^(\d+) 音符$/, '$1 nota(s)'],
+                [/^通道 (\d+) · (\d+) 音符$/, 'Canal $1 · $2 nota(s)'], [/^鼓音符 (.+) · (.+)$/, 'Nota de bateria $1 · $2'],
+                [/^(.+)\(通道(\d+)\)$/, function(m, name, ch) { return translate(name) + ' (canal ' + ch + ')'; }], [/^(.+) \(超出范围\)$/, function(m, name) { return translate(name) + ' (fora da extensão)'; }],
+                [/^MIDI 文件格式损坏或数据不完整 \(轨道 (\d+)\)$/, 'Arquivo MIDI corrompido ou incompleto (faixa $1)'],
+                [/^删除 Clip "(.+)"\?$/, 'Excluir o clipe "$1"?'], [/^\(槽位 (\d+)\)$/, '(slot $1)'],
+                // 自定义音色导入/修正流程
+                [/^来源文件: (.+) \(([\d.]+) MB\)$/, 'Arquivo de origem: $1 ($2 MB)'],
+                [/^来源文件: (.+) \(([\d.]+) MB\) · 已按修正结果转换$/, 'Arquivo de origem: $1 ($2 MB) · convertido conforme correção'],
+                [/^检测音高: (.+)$/, 'Altura detectada: $1'],
+                [/^当前修正倍率 ×([\d.]+)。可点「试听」对比修正效果；满意后点下一步。$/, 'Fator de correção atual ×$1. Clique em "Prévia" para comparar; clique em Avançar quando estiver satisfeito.'],
+                [/^播放修正后采样 · 倍率 ×([\d.]+) · 输出基准 (.+)$/, 'Reprodução da amostra corrigida · fator ×$1 · base de saída $2'],
+                [/^已导入自定义音色「(.+)」，可在乐器选择中选用$/, 'Instrumento personalizado "$1" importado. Você pode selecioná-lo no seletor de instrumentos.'],
+                [/^确定删除自定义音色「(.+)」吗？\n引用该音色的 NBS 文件中对应乐器将静音。$/, 'Excluir o instrumento personalizado "$1"?\nOs instrumentos que o referenciam em arquivos NBS ficarão sem som.'],
+                // 消除重复音符
+                [/^未发现重复音符。\n判定标准: 同一时间\(tick\) \+ 相同音色 \+ 相同音调，忽略音量差异。(?:\n\n提示: 有 (\d+) 个音符同一时间音调相同但音色不同 \(instrument 不同\))?(?:\n提示: 有 (\d+) 个音符同一时间音色相同但音调不同 \(key 不同\))?(?:\n提示: 有 (\d+) 个音符音色音调相同但时间不同 \(tick 不同\))?$/, function(m, k, i, t) {
+                    var s = 'Nenhuma nota duplicada encontrada.\nCritério: mesmo tick + mesmo instrumento + mesma altura, ignorando a intensidade.';
+                    if (k) s += '\n\nDica: ' + k + ' nota(s) têm o mesmo tick e altura, mas instrumentos diferentes';
+                    if (i) s += '\nDica: ' + i + ' nota(s) têm o mesmo tick e instrumento, mas alturas diferentes';
+                    if (t) s += '\nDica: ' + t + ' nota(s) têm o mesmo instrumento e altura, mas ticks diferentes';
+                    return s;
+                }],
+                [/^将删除 (\d+) 个重复音符，是否继续？$/, 'Excluir $1 nota(s) duplicada(s)? Continuar?'],
+                [/^已删除 (\d+) 个重复音符$/, '$1 nota(s) duplicada(s) excluída(s)'],
+                // 作品包 / 音色备份
+                [/^作品包已导出，包含 (\d+) 个自定义音色音频。\n把 zip 分享给他人，导入后即可完整还原音色与歌曲。$/, 'Pacote de música exportado com $1 arquivo(s) de áudio de instrumentos personalizados.\nCompartilhe o zip; ao importá-lo, os instrumentos e a música são totalmente restaurados.'],
+                [/^作品包导出失败: (.+)$/, function(m, msg) { return 'Falha ao exportar o pacote de música: ' + translate(msg); }], [/^NBS 打包失败: (.+)$/, function(m, msg) { return 'Falha ao empacotar NBS: ' + translate(msg); }],
+                [/^已导出 (\d+) 个音色的备份。浏览器数据丢失后可随时导入恢复。$/, 'Backup de $1 instrumento(s) exportado. Você pode importá-lo a qualquer momento após perder os dados do navegador.'],
+                [/^备份导出失败: (.+)$/, function(m, msg) { return 'Falha ao exportar o backup: ' + translate(msg); }],
+                [/^已存在同名音色「(.+)」，但音频内容不同。\n\n请选择处理方式：$/, 'Já existe um instrumento chamado "$1", mas o áudio é diferente.\n\nEscolha como prosseguir:'],
+                [/^音色备份导入完成（(\d+) 项）。$/, 'Backup de instrumentos importado ($1 item(ns)).'], [/^压缩包缺少 (.+)$/, 'O pacote está sem $1'],
+                [/^无法识别的压缩包类型: (.+)$/, function(m, msg) { return 'Tipo de pacote não reconhecido: ' + translate(msg); }], [/^导入失败: (.+)$/, function(m, msg) { return 'Falha na importação: ' + translate(msg); }],
+                [/^(.+) \(导入\)$/, '$1 (importado)'], [/^(.+) \(自定义音色\)$/, '$1 (instrumento personalizado)']
             ],
             'id-ID': [
                 [/^音符:\s*(\d+)$/, 'Not: $1'], [/^位置:\s*(\d+)$/, 'Posisi: $1'],
@@ -631,12 +761,116 @@
                 [/^将删除\s*(\d+)\s*个空轨 \(从\s*(\d+)\s*减到\s*(\d+)\)，是否继续？$/, 'Hapus $1 trek kosong (dari $2 menjadi $3)? Lanjutkan?'],
                 [/^删除音轨 "(.+)" 及其所有 Clip\?$/, 'Hapus trek "$1" beserta semua Clip-nya?'],
                 [/^(.+) \(副本\)$/, '$1 (salinan)'],
-                [/^(.+) · (\d+) 音轨 · (\d+) 音符$/, '$1 · $2 trek · $3 not']
+                [/^(.+) · (\d+) 音轨 · (\d+) 音符$/, '$1 · $2 trek · $3 not'],
+                // ============ 运行时补充正则 1 (id-ID) ============
+                [/^已选择: (.+)$/, 'Terpilih: $1'], [/^乐器 (\d+)$/, 'Instrumen $1'],
+                [/^乐器 #(\d+)(.*)$/, function(m, num, rest) {
+                    var s = 'Instrumen #' + num;
+                    if (rest) {
+                        s += rest.replace(/\s*·\s*(立体声|单声道)\s*/g, function(mm, ch) { return ' · ' + translate(ch); })
+                                .replace(/\s*·\s*基准\s*/g, ' · dasar ');
+                    }
+                    return s;
+                }],
+                [/^自定义音色 (\d+)$/, 'Instrumen kustom $1'], [/^自定义音色 #(\d+)$/, 'Instrumen kustom #$1'],
+                [/^导入音色 (\d+)$/, 'Impor instrumen $1'], [/^(\d+) 轨道$/, '$1 trek'], [/^(\d+) 音符$/, '$1 not'],
+                [/^通道 (\d+) · (\d+) 音符$/, 'Kanal $1 · $2 not'], [/^鼓音符 (.+) · (.+)$/, 'Not drum $1 · $2'],
+                [/^(.+)\(通道(\d+)\)$/, function(m, name, ch) { return translate(name) + ' (kanal ' + ch + ')'; }], [/^(.+) \(超出范围\)$/, function(m, name) { return translate(name) + ' (di luar rentang)'; }],
+                [/^MIDI 文件格式损坏或数据不完整 \(轨道 (\d+)\)$/, 'Berkas MIDI rusak atau tidak lengkap (trek $1)'],
+                [/^删除 Clip "(.+)"\?$/, 'Hapus klip "$1"?'], [/^\(槽位 (\d+)\)$/, '(slot $1)'],
+                // 自定义音色导入/修正流程
+                [/^来源文件: (.+) \(([\d.]+) MB\)$/, 'Berkas sumber: $1 ($2 MB)'],
+                [/^来源文件: (.+) \(([\d.]+) MB\) · 已按修正结果转换$/, 'Berkas sumber: $1 ($2 MB) · dikonversi sesuai koreksi'],
+                [/^检测音高: (.+)$/, 'Nada terdeteksi: $1'],
+                [/^当前修正倍率 ×([\d.]+)。可点「试听」对比修正效果；满意后点下一步。$/, 'Faktor koreksi saat ini ×$1. Klik "Pratinjau" untuk membandingkan; klik Berikutnya jika sudah puas.'],
+                [/^播放修正后采样 · 倍率 ×([\d.]+) · 输出基准 (.+)$/, 'Pemutaran sampel terkoreksi · faktor ×$1 · basis keluaran $2'],
+                [/^已导入自定义音色「(.+)」，可在乐器选择中选用$/, 'Instrumen kustom "$1" diimpor. Anda dapat memilihnya di pemilih instrumen.'],
+                [/^确定删除自定义音色「(.+)」吗？\n引用该音色的 NBS 文件中对应乐器将静音。$/, 'Hapus instrumen kustom "$1"?\nInstrumen yang merujuknya di berkas NBS akan senyap.'],
+                // 消除重复音符
+                [/^未发现重复音符。\n判定标准: 同一时间\(tick\) \+ 相同音色 \+ 相同音调，忽略音量差异。(?:\n\n提示: 有 (\d+) 个音符同一时间音调相同但音色不同 \(instrument 不同\))?(?:\n提示: 有 (\d+) 个音符同一时间音色相同但音调不同 \(key 不同\))?(?:\n提示: 有 (\d+) 个音符音色音调相同但时间不同 \(tick 不同\))?$/, function(m, k, i, t) {
+                    var s = 'Tidak ada not duplikat yang ditemukan.\nKriteria: tick + instrumen + nada yang sama, mengabaikan kecepatan.';
+                    if (k) s += '\n\nTips: ' + k + ' not memiliki tick dan nada sama tetapi instrumen berbeda';
+                    if (i) s += '\nTips: ' + i + ' not memiliki tick dan instrumen sama tetapi nada berbeda';
+                    if (t) s += '\nTips: ' + t + ' not memiliki instrumen dan nada sama tetapi tick berbeda';
+                    return s;
+                }],
+                [/^将删除 (\d+) 个重复音符，是否继续？$/, 'Hapus $1 not duplikat? Lanjutkan?'],
+                [/^已删除 (\d+) 个重复音符$/, '$1 not duplikat dihapus'],
+                // 作品包 / 音色备份
+                [/^作品包已导出，包含 (\d+) 个自定义音色音频。\n把 zip 分享给他人，导入后即可完整还原音色与歌曲。$/, 'Paket lagu diekspor dengan $1 berkas audio instrumen kustom.\nBagikan zip-nya; setelah diimpor, instrumen dan lagu akan dipulihkan sepenuhnya.'],
+                [/^作品包导出失败: (.+)$/, function(m, msg) { return 'Gagal mengekspor paket lagu: ' + translate(msg); }], [/^NBS 打包失败: (.+)$/, function(m, msg) { return 'Gagal mengemas NBS: ' + translate(msg); }],
+                [/^已导出 (\d+) 个音色的备份。浏览器数据丢失后可随时导入恢复。$/, 'Backup $1 instrumen diekspor. Anda dapat mengimpornya kapan saja setelah data peramban hilang.'],
+                [/^备份导出失败: (.+)$/, function(m, msg) { return 'Gagal mengekspor cadangan: ' + translate(msg); }],
+                [/^已存在同名音色「(.+)」，但音频内容不同。\n\n请选择处理方式：$/, 'Instrumen bernama "$1" sudah ada, tetapi audio berbeda.\n\nPilih cara melanjutkan:'],
+                [/^音色备份导入完成（(\d+) 项）。$/, 'Backup instrumen diimpor ($1 item).'], [/^压缩包缺少 (.+)$/, 'Paket kehilangan $1'],
+                [/^无法识别的压缩包类型: (.+)$/, function(m, msg) { return 'Jenis paket tidak dikenal: ' + translate(msg); }], [/^导入失败: (.+)$/, function(m, msg) { return 'Gagal mengimpor: ' + translate(msg); }],
+                [/^(.+) \(导入\)$/, '$1 (diimpor)'], [/^(.+) \(自定义音色\)$/, '$1 (instrumen kustom)']
+            ],
+            // 以下语言仅补充「消除重复音符」相关动态句, 其余动态句仍回退 en-US
+            'es-ES': [
+                [/^未发现重复音符。\n判定标准: 同一时间\(tick\) \+ 相同音色 \+ 相同音调，忽略音量差异。(?:\n\n提示: 有 (\d+) 个音符同一时间音调相同但音色不同 \(instrument 不同\))?(?:\n提示: 有 (\d+) 个音符同一时间音色相同但音调不同 \(key 不同\))?(?:\n提示: 有 (\d+) 个音符音色音调相同但时间不同 \(tick 不同\))?$/, function(m, k, i, t) {
+                    var s = 'No se encontraron notas duplicadas.\nCriterio: mismo tick + mismo instrumento + misma altura, ignorando la velocidad.';
+                    if (k) s += '\n\nSugerencia: ' + k + ' nota(s) comparten el mismo tick y altura pero distinto instrumento';
+                    if (i) s += '\nSugerencia: ' + i + ' nota(s) comparten el mismo tick e instrumento pero distinta altura';
+                    if (t) s += '\nSugerencia: ' + t + ' nota(s) comparten el mismo instrumento y altura pero distinto tick';
+                    return s;
+                }],
+                [/^将删除 (\d+) 个重复音符，是否继续？$/, '¿Eliminar $1 nota(s) duplicada(s)? ¿Continuar?'],
+                [/^已删除 (\d+) 个重复音符$/, '$1 nota(s) duplicada(s) eliminada(s)']
+            ],
+            'ru-RU': [
+                [/^未发现重复音符。\n判定标准: 同一时间\(tick\) \+ 相同音色 \+ 相同音调，忽略音量差异。(?:\n\n提示: 有 (\d+) 个音符同一时间音调相同但音色不同 \(instrument 不同\))?(?:\n提示: 有 (\d+) 个音符同一时间音色相同但音调不同 \(key 不同\))?(?:\n提示: 有 (\d+) 个音符音色音调相同但时间不同 \(tick 不同\))?$/, function(m, k, i, t) {
+                    var s = 'Дубликаты нот не найдены.\nКритерий: тот же tick + тот же инструмент + та же высота, разница громкости игнорируется.';
+                    if (k) s += '\n\nПодсказка: ' + k + ' нот(ы) имеют тот же tick и высоту, но другой инструмент';
+                    if (i) s += '\nПодсказка: ' + i + ' нот(ы) имеют тот же tick и инструмент, но другую высоту';
+                    if (t) s += '\nПодсказка: ' + t + ' нот(ы) имеют тот же инструмент и высоту, но другой tick';
+                    return s;
+                }],
+                [/^将删除 (\d+) 个重复音符，是否继续？$/, 'Удалить $1 дублирующихся нот? Продолжить?'],
+                [/^已删除 (\d+) 个重复音符$/, '$1 дублирующихся нот удалено']
+            ],
+            'de-DE': [
+                [/^未发现重复音符。\n判定标准: 同一时间\(tick\) \+ 相同音色 \+ 相同音调，忽略音量差异。(?:\n\n提示: 有 (\d+) 个音符同一时间音调相同但音色不同 \(instrument 不同\))?(?:\n提示: 有 (\d+) 个音符同一时间音色相同但音调不同 \(key 不同\))?(?:\n提示: 有 (\d+) 个音符音色音调相同但时间不同 \(tick 不同\))?$/, function(m, k, i, t) {
+                    var s = 'Keine doppelten Noten gefunden.\nKriterium: gleicher Tick + gleiches Instrument + gleiche Tonhöhe, Lautstärke wird ignoriert.';
+                    if (k) s += '\n\nHinweis: ' + k + ' Note(n) haben den gleichen Tick und dieselbe Tonhöhe, aber ein anderes Instrument';
+                    if (i) s += '\nHinweis: ' + i + ' Note(n) haben den gleichen Tick und dasselbe Instrument, aber eine andere Tonhöhe';
+                    if (t) s += '\nHinweis: ' + t + ' Note(n) haben dasselbe Instrument und dieselbe Tonhöhe, aber einen anderen Tick';
+                    return s;
+                }],
+                [/^将删除 (\d+) 个重复音符，是否继续？$/, '$1 doppelte Note(n) löschen? Fortfahren?'],
+                [/^已删除 (\d+) 个重复音符$/, '$1 doppelte Note(n) gelöscht']
+            ],
+            'fr-FR': [
+                [/^未发现重复音符。\n判定标准: 同一时间\(tick\) \+ 相同音色 \+ 相同音调，忽略音量差异。(?:\n\n提示: 有 (\d+) 个音符同一时间音调相同但音色不同 \(instrument 不同\))?(?:\n提示: 有 (\d+) 个音符同一时间音色相同但音调不同 \(key 不同\))?(?:\n提示: 有 (\d+) 个音符音色音调相同但时间不同 \(tick 不同\))?$/, function(m, k, i, t) {
+                    var s = 'Aucune note en double trouvée.\nCritère : même tick + même instrument + même hauteur, la vélocité est ignorée.';
+                    if (k) s += '\n\nAstuce : ' + k + ' note(s) partagent le même tick et la même hauteur mais un instrument différent';
+                    if (i) s += '\nAstuce : ' + i + ' note(s) partagent le même tick et le même instrument mais une hauteur différente';
+                    if (t) s += '\nAstuce : ' + t + ' note(s) partagent le même instrument et la même hauteur mais un tick différent';
+                    return s;
+                }],
+                [/^将删除 (\d+) 个重复音符，是否继续？$/, 'Supprimer $1 note(s) en double ? Continuer ?'],
+                [/^已删除 (\d+) 个重复音符$/, '$1 note(s) en double supprimée(s)']
+            ],
+            'ko-KR': [
+                [/^未发现重复音符。\n判定标准: 同一时间\(tick\) \+ 相同音色 \+ 相同音调，忽略音量差异。(?:\n\n提示: 有 (\d+) 个音符同一时间音调相同但音色不同 \(instrument 不同\))?(?:\n提示: 有 (\d+) 个音符同一时间音色相同但音调不同 \(key 不同\))?(?:\n提示: 有 (\d+) 个音符音色音调相同但时间不同 \(tick 不同\))?$/, function(m, k, i, t) {
+                    var s = '중복 노트를 찾지 못했습니다.\n기준: 같은 tick + 같은 악기 + 같은 음높이, 음량 차이는 무시';
+                    if (k) s += '\n\n힌트: ' + k + '개 노트가 같은 tick과 음높이지만 악기가 다릅니다';
+                    if (i) s += '\n힌트: ' + i + '개 노트가 같은 tick과 악기지만 음높이가 다릅니다';
+                    if (t) s += '\n힌트: ' + t + '개 노트가 같은 악기와 음높이지만 tick이 다릅니다';
+                    return s;
+                }],
+                [/^将删除 (\d+) 个重复音符，是否继续？$/, '중복 노트 $1개를 삭제할까요? 계속하시겠습니까?'],
+                [/^已删除 (\d+) 个重复音符$/, '중복 노트 $1개를 삭제했습니다']
             ]
         };
-        var list = patterns[current] || patterns['en-US'] || [];
+        var list = patterns[current] || [];
         for (var i = 0; i < list.length; i++) {
             if (list[i][0].test(text)) return text.replace(list[i][0], list[i][1]);
+        }
+        // 兜底: 当前语言未覆盖的动态句回退到 en-US, 避免中文泄漏到非中文界面
+        var fallback = patterns['en-US'] || [];
+        for (var j = 0; j < fallback.length; j++) {
+            if (fallback[j][0].test(text)) return text.replace(fallback[j][0], fallback[j][1]);
         }
         return text;
     }
@@ -819,6 +1053,7 @@
     // translateStaticText 的文本节点直接命中。
     Object.assign(UI_TEXT['en-US'], {
         '请求失败': 'Request failed', '网络错误': 'Network error', '请求超时': 'Request timeout',
+        '文件损坏': 'Corrupted file', '磁盘已满': 'Disk is full', '编码错误': 'Encoding error',
         '播放失败': 'Playback failed', '暂停失败': 'Pause failed', '停止失败': 'Stop failed',
         '读取文件失败': 'Failed to read file', '添加音符失败': 'Failed to add note', '更新音符失败': 'Failed to update note',
         '删除音符失败': 'Failed to delete note', '批量操作失败': 'Batch operation failed', '设置速度失败': 'Failed to set tempo',
@@ -842,6 +1077,97 @@
         '(超出范围)': '(out of range)', '+ 添加音轨': '+ Add track',
         '用“|”分隔正整数，如 1|2|1|3': 'Use "|" to separate positive integers, e.g. 1|2|1|3',
         '及其所有 Clip?': 'and all its clips?'
+    });
+
+    // ============ 运行时补充词条 3 (en-US) ============
+    // 新增功能 (创作辅助/音频导出/自定义音色/消除重复音符/作品包备份) 的静态文案。
+    // 动态拼接语句由 translatePattern 整串匹配, 这里提供整句/整块静态命中,
+    // 其他语言经 translate() 的英文回退获得兜底。
+    Object.assign(UI_TEXT['en-US'], {
+        // 创作辅助面板
+        '创作辅助': 'Creation helper', '默认工具': 'Default tool', '选择工具': 'Select tool', '橡皮擦': 'Eraser', '画笔': 'Brush', '工具': 'Tool', '下一个': 'Next',
+        '普通放置': 'Normal placement', '延音放置': 'Sustain placement', '音符音量': 'Note velocity', '预览显示': 'Preview display',
+        '延音长度 N': 'Sustain length N', '覆盖逻辑': 'Overwrite logic', '直接覆盖': 'Overwrite directly', '缩小长度': 'Shrink length',
+        '禁止覆盖': 'Never overwrite', '留空长度 K': 'Empty length K', '是否淡出': 'Fade out', '最小音量': 'Min velocity',
+        '淡出样式': 'Fade style', '线性': 'Linear', '缓入': 'Ease in', '缓出': 'Ease out', '二次缓入': 'Quadratic ease in', '二次缓出': 'Quadratic ease out',
+        '区域清除': 'Area clear', '连续清除': 'Continuous clear', '清除半径 R': 'Clear radius R', '区域形状': 'Area shape', '圆形': 'Circle', '正方形': 'Square',
+        '同类判定 (AND)': 'Same-category match (AND)', '数量限制': 'Count limit', '该工具暂无创作辅助功能': 'No creation-helper options for this tool',
+        // 查找/替换
+        '查找音符 (Ctrl+F)': 'Find notes (Ctrl+F)', '查找音符': 'Find notes', '查找': 'Find', '替换': 'Replace', '单个': 'Single', '范围': 'Range', '数值': 'Value',
+        '清空条件 (匹配全部)': 'Clear conditions (match all)', '全部选择': 'Select all', '替换为': 'Replace with', '替换当前': 'Replace current', '全部替换': 'Replace all',
+        '不限': 'No limit', '不变': 'Unchanged',
+        // 音频导出弹窗
+        '导出为音频': 'Export as audio', '格式': 'Format', '码率': 'Bitrate', '风格': 'Style',
+        '同步应用到实时播放（可在主界面 ▶ 播放试听效果）': 'Apply to live playback (press ▶ in the main view to audition)',
+        '准备渲染…': 'Preparing to render…', '开始渲染…': 'Rendering…', '渲染完成': 'Render complete', '渲染中…': 'Rendering…', '编码 MP3…': 'Encoding MP3…',
+        'MP3 编码库未加载': 'MP3 encoder library not loaded', '渲染并导出音频': 'Render and export audio',
+        '音频已导出：': 'Audio exported:', '导出完成': 'Export complete', '音频导出失败：': 'Audio export failed:', '音频导出': 'Export audio',
+        // 音效风格预设
+        '原声': 'Original', '演唱会': 'Concert', '大厅': 'Hall', '俱乐部': 'Club', '摇滚': 'Rock', '复古': 'Retro', '纯净': 'Clean',
+        '无任何处理, 最接近 NBS 原始输出': 'No processing; closest to the raw NBS output',
+        '中频增强 + 轻房间混响 + 轻压缩, 伴奏欢唱感': 'Mid boost + light room reverb + light compression, sing-along feel',
+        '大厅/现场感混响 + 压缩靠前, 现场 PA 感': 'Hall/live reverb with upfront compression, PA feel',
+        '古典大空间混响, 柔和, 高频略收': 'Classic large-space reverb, soft, slightly rolled-off highs',
+        '低频增强 + 偏干 + 短混响, 节奏清晰': 'Bass boost + dry + short reverb, rhythmic clarity',
+        '中频提升 + 结实压缩, 乐队感': 'Mid lift + punchy compression, band feel',
+        '温和高频衰减 + 轻度饱和, 磁带感': 'Gentle high-end roll-off + light saturation, tape feel',
+        '平直 EQ + 轻压缩提升清晰度': 'Flat EQ + light compression for clarity',
+        // 自定义音色
+        '自定义音色': 'Custom instrument', '导入音色': 'Import instrument', '导出音色备份': 'Export instrument backup', '导入音色备份': 'Import instrument backup',
+        '把一段音频（如某个乐器/人声/音效采样）变成一个可演奏音色': 'Turn an audio clip (an instrument, voice or SFX sample) into a playable instrument',
+        '还没有自定义音色。点击「导入音色」添加第一个吧。': 'No custom instruments yet. Click "Import instrument" to add your first.',
+        '无法创建音频上下文': 'Could not create the audio context', '无法创建 AudioContext': 'Could not create an AudioContext',
+        '无法解码该音频文件，请尝试 mp3/wav/ogg 等格式': 'Could not decode this audio file. Try mp3/wav/ogg.',
+        '无法解码该音频文件，请尝试其它格式': 'Could not decode this audio file. Try another format.',
+        '正在检测音高…': 'Detecting pitch…', '音频修正': 'Pitch correction', '请输入名称': 'Enter a name',
+        '该名称已存在（不能与内置及已有自定义音色重复）': 'This name already exists (cannot collide with built-in or existing custom instruments)',
+        '保存失败，请重试': 'Save failed. Please retry.', '输入新的音色名称:': 'Enter a new instrument name:', '音色名称': 'Instrument name',
+        '该名称已存在，请换一个': 'This name already exists. Choose another.', '删除音色': 'Delete instrument',
+        '半音': 'Semitones', '音分': 'Cents', '修正后基准:': 'Corrected base:', '以 F#3 为参照, 音频原样(1x)播放时的音高': 'Pitch of the raw (1x) sample, referenced to F#3',
+        '自动调整': 'Auto-tune', '重新检测': 'Re-detect', '拖动滑块或点「自动调整」修正音准, 拖动后自动试听修正结果': 'Drag the slider or click "Auto-tune" to fix the pitch; the result previews automatically',
+        '实时监视: 播放时显示波形与频率': 'Live monitor: shows waveform and frequency while playing',
+        '下一步: 设置音色信息': 'Next: configure instrument info', '设置音色信息': 'Configure instrument info', '图标颜色': 'Icon color',
+        '基准音高': 'Base pitch', '音频原样播放对应的音高': 'Pitch of the raw playback', '试听(低7)': 'Preview (low 7)', '试听(高7)': 'Preview (high 7)',
+        '‹ 上一步': '‹ Back', '完成': 'Done', '输入音色名称': 'Enter an instrument name', '低 7 个半音试听': 'Preview 7 semitones lower', '高 7 个半音试听': 'Preview 7 semitones higher',
+        '■ 停止': '■ Stop', '▶ 试听': '▶ Preview', '立体声': 'Stereo', '单声道': 'Mono',
+        '更换颜色': 'Change color', '试听 MIDI 原音': 'Preview original MIDI timbre', '试听 NBS 组合音': 'Preview NBS layering',
+        '点击选择高音替代音色': 'Click to choose a substitute for high notes', '点击选择低音替代音色': 'Click to choose a substitute for low notes',
+        // 消除重复音符
+        '消除重复音符': 'Remove duplicate notes', '没有可去重的音符': 'No notes to deduplicate',
+        '重排序音符': 'Reorder notes',
+        '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'After removing duplicates, isolated consecutive notes in the track below move up to fill the gaps',
+        '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Removes notes with the same tick, instrument and pitch; enable "Reorder notes" to move isolated consecutive notes up and fill the gaps',
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'No duplicate notes found.\nCriterion: same tick, same instrument and same pitch, ignoring velocity.',
+        // 导出 NBS 弹窗
+        '标准 .nbs 只保存音色引用（不含音频），在其它设备/播放器上这些音色会静音。': 'A standard .nbs file stores only instrument references (no audio), so those instruments will be silent on other devices/players.',
+        '导出自定义音色作品包 (zip)：歌曲 + 使用到的音色音频一起打包，完整携带音色': 'Export custom instrument pack (zip): the song and the instrument audio it uses are packed together for full portability',
+        // 作品包 / 音色备份
+        '作品包': 'Song pack', '打包作品包…': 'Packing the song pack…',
+        'ZIP 打包库未加载，暂时无法导出作品包。请刷新页面重试。': 'ZIP library not loaded; cannot export the song pack. Refresh the page and retry.',
+        '当前没有自定义音色可备份。': 'No custom instruments to back up.', '音色备份': 'Instrument backup',
+        'ZIP 打包库未加载，暂时无法导出备份。请刷新页面重试。': 'ZIP library not loaded; cannot export the backup. Refresh the page and retry.',
+        '备份完成': 'Backup complete', '备份失败': 'Backup failed', '同名音色冲突': 'Name conflict',
+        '「替换」会用新音频覆盖本地同名音色；「重命名」则作为新音色导入。': '"Replace" overwrites the local instrument with the new audio; "Rename" imports it as a new instrument.',
+        '重命名导入': 'Rename and import', '替换现有音色': 'Replace existing instrument', '新名称': 'New name',
+        '导入备份': 'Import backup', '导入作品包': 'Import song pack',
+        '作品包导入完成，自定义音色已装载并重映射。': 'Song pack imported; custom instruments loaded and remapped.',
+        '作品包导入完成，歌曲已载入。': 'Song pack imported; the song has been loaded.',
+        '无法识别的压缩包类型': 'Unrecognized archive type', '缺少 metadata.json，不是有效的作品包/备份文件': 'Missing metadata.json; not a valid song pack/backup file',
+        'metadata.json 解析失败': 'Failed to parse metadata.json', '解析压缩包…': 'Parsing the archive…',
+        'ZIP 解析库未加载，无法导入 zip 文件。请刷新页面重试。': 'ZIP library not loaded; cannot import zip files. Refresh the page and retry.',
+        '缺少自定义音色': 'Missing custom instruments', '— 请选择替换音色 —': '— Choose a replacement instrument —',
+        '跳过（该音色静音）': 'Skip (instrument stays silent)',
+        '「替换」会把歌曲中该音色的音符改用到所选音色；「跳过」则让这些音符静音（仍保留在歌曲中）。': '"Replace" reassigns notes of that instrument to the chosen one; "Skip" leaves them silent (notes stay in the song).',
+        '替换并加载': 'Replace and load', '稍后导入': 'Import later',
+        '把全部自定义音色打包为 zip 备份，浏览器数据丢失后可通过「导入音色备份」恢复': 'Pack all custom instruments into a zip backup; after browser data loss, restore them via "Import instrument backup"',
+        '从备份 zip 恢复自定义音色（同名同内容自动跳过，重名异内容会提示处理）': 'Restore custom instruments from a backup zip (same name and content are skipped; same name with different content prompts for action)',
+        // 其他
+        '解析响应失败': 'Failed to parse the response', '删除 Clip': 'Delete clip', '重命名 Clip': 'Rename clip', 'Clip 名称:': 'Clip name:',
+        '新音轨名称:': 'New track name:', '添加音轨': 'Add track',
+        // 音频修正/导入剩余静态句
+        '未能检测到稳定音高（可能非单音或过短）。可手动用下方滑块设定，或换一段更清晰的单音采样。': 'No stable pitch detected (may be non-monophonic or too short). Set it manually with the slider below, or use a cleaner monophonic sample.',
+        '变速渲染失败，请重试': 'Pitch-shift rendering failed. Please retry.',
+        '请输入一个新的名称：': 'Enter a new name:'
     });
 
     // ============ ja-JP 完整本地化 ============
@@ -1089,6 +1415,8 @@
     // 与 en-US 补充词条 2 对应: 新增功能的错误消息与弹窗文本。
     Object.assign(UI_TEXT['ja-JP'], {
         '请求失败': 'リクエストに失敗', '网络错误': 'ネットワークエラー', '请求超时': 'リクエストがタイムアウト',
+        '文件损坏': 'ファイルが破損しています', '磁盘已满': 'ディスク容量が不足しています', '编码错误': 'エンコードエラー',
+        '立体声': 'ステレオ', '单声道': 'モノラル',
         '播放失败': '再生に失敗', '暂停失败': '一時停止に失敗', '停止失败': '停止に失敗',
         '读取文件失败': 'ファイルの読み込みに失敗', '添加音符失败': 'ノートの追加に失敗', '更新音符失败': 'ノートの更新に失敗',
         '删除音符失败': 'ノートの削除に失敗', '批量操作失败': '一括操作に失敗', '设置速度失败': 'テンポの設定に失敗',
@@ -1112,6 +1440,66 @@
         '(超出范围)': '(範囲外)', '+ 添加音轨': '+ トラックを追加',
         '用“|”分隔正整数，如 1|2|1|3': '「|」で正の整数を区切ります。例: 1|2|1|3',
         '及其所有 Clip?': 'とそのすべての Clip?'
+    });
+
+    // ============ 消除重复音符: 各语言静态词条 ============
+    // en-US 的对应词条已在运行时补充词条 3 中提供, 这里补齐其余语言,
+    // 避免非英语界面回退到英文。
+    Object.assign(UI_TEXT['ja-JP'], {
+        '消除重复音符': '重複ノートを削除', '没有可去重的音符': '削除できる重複ノートはありません',
+        '重排序音符': 'ノートを並べ直す',
+        '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': '重複ノートを削除した後、下の隣接トラックで孤立した連続ノートを上へ移動して空きを埋めます',
+        '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': '同じ時間・音色・音程が完全に一致する重複ノートを削除します。「ノートを並べ直す」をオンにすると、削除後に孤立した連続ノートを上へ移動して空きを埋めます',
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': '重複ノートは見つかりませんでした。\n判定基準: 同一時間(tick) + 同一音色 + 同一音程、音量差は無視。'
+    });
+    Object.assign(UI_TEXT['pt-BR'], {
+        '消除重复音符': 'Remover notas duplicadas', '没有可去重的音符': 'Nenhuma nota para desduplicar',
+        '重排序音符': 'Reordenar notas',
+        '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'Após excluir as duplicadas, move para cima as notas consecutivas isoladas da faixa adjacente abaixo para preencher as lacunas',
+        '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Remove notas com o mesmo tick, instrumento e altura; marque "Reordenar notas" para mover para cima as notas consecutivas isoladas e preencher as lacunas',
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Nenhuma nota duplicada encontrada.\nCritério: mesmo tick + mesmo instrumento + mesma altura, ignorando a intensidade.'
+    });
+    Object.assign(UI_TEXT['id-ID'], {
+        '消除重复音符': 'Hapus not duplikat', '没有可去重的音符': 'Tidak ada not untuk dihapus duplikatnya',
+        '重排序音符': 'Susun ulang not',
+        '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'Setelah menghapus not duplikat, not berurutan yang terisolasi di trek bersebelahan di bawah dipindahkan ke atas untuk mengisi celah',
+        '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Hapus not dengan tick, instrumen, dan nada yang sama; aktifkan "Susun ulang not" untuk memindahkan not berurutan yang terisolasi ke atas dan mengisi celah',
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Tidak ada not duplikat ditemukan.\nKriteria: tick + instrumen + nada yang sama, abaikan perbedaan kecepatan.'
+    });
+    Object.assign(UI_TEXT['es-ES'], {
+        '消除重复音符': 'Eliminar notas duplicadas', '没有可去重的音符': 'No hay notas para desduplicar',
+        '重排序音符': 'Reordenar notas',
+        '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'Tras eliminar los duplicados, las notas consecutivas aisladas de la pista adyacente inferior suben para rellenar los huecos',
+        '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Elimina notas con el mismo tick, instrumento y altura; activa "Reordenar notas" para subir las notas consecutivas aisladas y rellenar los huecos',
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'No se encontraron notas duplicadas.\nCriterio: mismo tick + mismo instrumento + misma altura, ignorando la velocidad.'
+    });
+    Object.assign(UI_TEXT['ru-RU'], {
+        '消除重复音符': 'Удалить дубликаты нот', '没有可去重的音符': 'Нет нот для удаления дубликатов',
+        '重排序音符': 'Переставить ноты',
+        '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'После удаления дубликатов изолированные последовательные ноты на соседней дорожке снизу сдвигаются вверх, заполняя пустоты',
+        '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Удаляет ноты с одинаковым tick, инструментом и высотой; включите «Переставить ноты», чтобы сдвинуть изолированные последовательные ноты вверх и заполнить пустоты',
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Дубликаты нот не найдены.\nКритерий: тот же tick + тот же инструмент + та же высота, разница громкости игнорируется.'
+    });
+    Object.assign(UI_TEXT['de-DE'], {
+        '消除重复音符': 'Doppelte Noten entfernen', '没有可去重的音符': 'Keine Noten zum Entfernen von Duplikaten',
+        '重排序音符': 'Noten neu anordnen',
+        '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'Nach dem Entfernen der Duplikate werden isolierte aufeinanderfolgende Noten der darunterliegenden Spur nach oben verschoben, um die Lücken zu füllen',
+        '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Entfernt Noten mit gleichem Tick, Instrument und gleicher Tonhöhe; aktivieren Sie „Noten neu anordnen“, um isolierte aufeinanderfolgende Noten nach oben zu verschieben und die Lücken zu füllen',
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Keine doppelten Noten gefunden.\nKriterium: gleicher Tick + gleiches Instrument + gleiche Tonhöhe, Lautstärke wird ignoriert.'
+    });
+    Object.assign(UI_TEXT['fr-FR'], {
+        '消除重复音符': 'Supprimer les notes en double', '没有可去重的音符': 'Aucune note à dédupliquer',
+        '重排序音符': 'Réorganiser les notes',
+        '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'Après suppression des doublons, les notes consécutives isolées de la piste adjacente inférieure remontent pour combler les vides',
+        '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Supprime les notes ayant le même tick, instrument et hauteur ; activez « Réorganiser les notes » pour faire remonter les notes consécutives isolées et combler les vides',
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Aucune note en double trouvée.\nCritère : même tick + même instrument + même hauteur, la vélocité est ignorée.'
+    });
+    Object.assign(UI_TEXT['ko-KR'], {
+        '消除重复音符': '중복 노트 제거', '没有可去重的音符': '중복 제거할 노트가 없습니다',
+        '重排序音符': '노트 재정렬',
+        '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': '중복 노트를 삭제한 뒤 아래 인접 트랙에서 고립된 연속 노트를 위로 이동해 빈 곳을 채웁니다',
+        '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': '같은 tick, 악기, 음높이의 중복 노트를 삭제합니다. "노트 재정렬"을 켜면 삭제 후 고립된 연속 노트를 위로 이동해 빈 곳을 채웁니다',
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': '중복 노트를 찾지 못했습니다.\n기준: 같은 tick + 같은 악기 + 같은 음높이, 음량 차이는 무시.'
     });
 
     window.WebNBSI18n = { init: init, apply: apply, getLocale: function() { return current; }, t: t, translate: translate, supported: SUPPORTED.slice() };

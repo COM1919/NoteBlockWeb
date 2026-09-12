@@ -51,6 +51,13 @@
     // NBS key 0 is MIDI A0; labels must use the MIDI pitch class, not key % 12.
     var PITCH_LABELS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
+    // 音调标签是否显示八度数字 (如 A4/C5), 与主界面设置 show_octave_labels 同步, 默认开启
+    var octaveLabelEnabled = true;
+    try { octaveLabelEnabled = localStorage.getItem('show_octave_labels') !== '0'; } catch (e) {}
+    function pitchClassLabel(pitchKey) {
+        return PITCH_LABELS[(pitchKey + 9) % 12] + (octaveLabelEnabled ? (Math.floor((pitchKey + 21) / 12) - 1) : '');
+    }
+
     // 键盘钢琴映射: NBS key → 键盘按键名 (反向映射)
     var KEY_LABELS = {
         36:'Z',37:'S',38:'X',39:'D',40:'C',41:'V',42:'G',43:'B',44:'H',45:'N',46:'J',47:'M',
@@ -3592,6 +3599,38 @@
 
     PianoRoll.prototype.setInstrument = function(instrument) { this.currentInstrument = instrument; };
 
+    // ============ 自定义音色颜色解析 (缓存) ============
+    // 自定音色 (instrument >= 20) 使用其设置颜色的纯色方块图标/底色
+    PianoRoll.prototype.refreshCustomInstrumentCache = function() {
+        this._customColorMap = null;
+        this._fullRedrawNeeded = true;
+        if (this.render) this.render();
+    };
+
+    PianoRoll.prototype._ensureCustomColorMap = function() {
+        if (this._customColorMap) return this._customColorMap;
+        var map = {};
+        if (window.CustomInstruments && typeof CustomInstruments.list === 'function') {
+            var list = CustomInstruments.list();
+            for (var i = 0; i < list.length; i++) {
+                if (list[i] && typeof list[i].instrument === 'number') {
+                    map[list[i].instrument] = list[i].color || '#4aa3ff';
+                }
+            }
+        }
+        this._customColorMap = map;
+        return map;
+    };
+
+    // 获取乐器颜色: 自定义音色用用户设置色, 其余用内置色板
+    PianoRoll.prototype._getInstrumentColor = function(instrument) {
+        if (typeof instrument === 'number' && instrument >= 20) {
+            var map = this._ensureCustomColorMap();
+            if (map[instrument]) return map[instrument];
+        }
+        return INSTRUMENT_COLORS[instrument % INSTRUMENT_COLORS.length];
+    };
+
     PianoRoll.prototype.setZoom = function(zoom, anchorX, anchorY) {
         var newZoom = Math.max(0.15, Math.min(4, zoom));
         // 双指缩放时保持锚点(手指中心)对应的世界坐标不变
@@ -4273,7 +4312,7 @@
             if (this._noteIndexDirty) this._rebuildNoteIndex();
             var inst = this._layerInstrument[layer];
             if (inst !== undefined) {
-                color = INSTRUMENT_COLORS[inst % INSTRUMENT_COLORS.length];
+                color = this._getInstrumentColor(inst);
             }
 
             // 行背景
@@ -4677,9 +4716,9 @@
                 var topClip = document.body.classList.contains('bg-active') ? 0 : cfg.timelineHeight;
                 if (nx + cellW < leftClip || nx > w || ny + cellH < topClip || ny > h) continue;
 
-                var color = INSTRUMENT_COLORS[note.instrument % INSTRUMENT_COLORS.length];
+                var color = this._getInstrumentColor(note.instrument);
                 var pitchKey = (typeof note.key === 'number' && note.key >= 0) ? note.key : note.layer;
-                var pitchLabel = PITCH_LABELS[(pitchKey + 9) % 12];
+                var pitchLabel = pitchClassLabel(pitchKey);
                 var isAnimatingLP = animNoteSet && animNoteSet[note.id];
 
                 var scale = isAnimatingLP ? animScale : (dragActive && isSelected ? 1.15 : 1);
@@ -4782,9 +4821,9 @@
                 continue;
             }
 
-            var color = INSTRUMENT_COLORS[anim.instrument % INSTRUMENT_COLORS.length];
+            var color = this._getInstrumentColor(anim.instrument);
             var animKey = (typeof anim.key === 'number' && anim.key >= 0) ? anim.key : anim.layer;
-            var pitchLabel = PITCH_LABELS[(animKey + 9) % 12];
+            var pitchLabel = pitchClassLabel(animKey);
 
             if (anim.type === 'place') {
                 // 放置: 0.3 -> 1.08 (ease-out-back 末段轻微回弹) -> 1.0
@@ -4945,9 +4984,9 @@
             ctx.restore();
         }
 
-        // 乐器图标 (右下角)
+        // 乐器图标 (右下角): 自定义音色无贴图, 用其颜色绘制小方块
         var instImg = this._instrumentImages[note.instrument];
-        if (instImg && instImg.complete && instImg.naturalWidth > 0 && bw > 14) {
+        if (bw > 14) {
             var iconSize = Math.max(6, Math.min(bw * 0.3, 12));
             var ix = bx + bw - iconSize - 2;
             var iy = by + bh - iconSize - 2;
@@ -4957,7 +4996,13 @@
             // 半透明白底
             ctx.fillStyle = 'rgba(255,255,255,0.7)';
             ctx.fillRect(ix - 1, iy - 1, iconSize + 2, iconSize + 2);
-            ctx.drawImage(instImg, 0, 0, instImg.naturalWidth, instImg.naturalHeight, ix, iy, iconSize, iconSize);
+            if ((typeof note.instrument === 'number' && note.instrument >= 20) || !(instImg && instImg.complete && instImg.naturalWidth > 0)) {
+                // 自定义音色 / 图标缺失: 纯色方块
+                ctx.fillStyle = this._getInstrumentColor(note.instrument);
+                ctx.fillRect(ix, iy, iconSize, iconSize);
+            } else {
+                ctx.drawImage(instImg, 0, 0, instImg.naturalWidth, instImg.naturalHeight, ix, iy, iconSize, iconSize);
+            }
             ctx.restore();
         }
 
@@ -5036,6 +5081,11 @@
             }
         }
         return Object.keys(this.selectedNotes);
+    };
+
+    // 切换音调标签八度数字显示 (主界面设置项同步)
+    PianoRoll.prototype.setOctaveLabelSetting = function(enabled) {
+        octaveLabelEnabled = !!enabled;
     };
 
     // 导出

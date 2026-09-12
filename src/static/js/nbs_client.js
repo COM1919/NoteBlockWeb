@@ -625,6 +625,27 @@ function _parseNBS(arrayBuffer) {
         });
     }
 
+    // ---- Custom Instruments (v6) ----
+    // 槽位 i 对应 instrument = 20 + i; 空槽(名称为空)视为未使用
+    var customInstruments = [];
+    if (version >= 6) {
+        var ciCount = reader.readByte();
+        for (var cii = 0; cii < ciCount; cii++) {
+            var ciName = reader.readString();
+            var ciFile = reader.readString();
+            var ciPitch = reader.readByte();
+            var ciPressKey = reader.readByte();
+            customInstruments.push({
+                instrument: 20 + cii,
+                name: ciName,
+                file: ciFile,
+                sound: ciFile,
+                pitch: ciPitch,
+                pressKey: ciPressKey
+            });
+        }
+    }
+
     // ---- 构建 song.length (复刻 Song.length 属性) ----
     var maxTick = 0;
     for (var i = 0; i < notes.length; i++) {
@@ -650,7 +671,8 @@ function _parseNBS(arrayBuffer) {
         layer_channel_map: {},
         loop: loopOn,
         max_loop_count: maxLoopCount,
-        loop_start: loopStart
+        loop_start: loopStart,
+        customInstruments: customInstruments
     };
 }
 
@@ -795,8 +817,12 @@ function _writeNBS(songData) {
                 // layer jump 是 unsigned short, 钳制到 65535 防止溢出回绕
                 writer.wShort(Math.min(n.layer - currentLayer, 65535));
                 currentLayer = n.layer;
-                // instrument 钳制到 vanilla 范围 [0, vanillaCount-1], 防止写入非法值导致其他 NBS 软件崩溃
-                writer.wByte(_clamp(n.instrument, 0, vanillaCount - 1));
+                // instrument 钳制到合法范围:
+                // v6 支持自定义乐器 (0-255), 音符编号 >= vanillaCount 指向 v6 自定义乐器块
+                // 旧格式只能写入 vanilla 范围内的编号, 防止非法值导致其他 NBS 软件崩溃
+                writer.wByte(version >= 6
+                    ? _clamp(n.instrument, 0, 255)
+                    : _clamp(n.instrument, 0, vanillaCount - 1));
                 // key 钳制到 NBS 合法范围 [0, 87], 防止写入非法值
                 writer.wByte(_clamp(n.key, 0, 87));
                 // version >= 4
@@ -821,8 +847,27 @@ function _writeNBS(songData) {
         writer.wByte(_clamp(layer.stereo, 0, 200));
     }
 
-    // ---- Custom Instruments (无) ----
-    writer.wByte(0);
+    // ---- Custom Instruments (v6) ----
+    // songData.customInstruments: 数组(长度=槽位数), 槽位 i 对应 instrument = 20+i
+    // 元素: {instrument,name,file,sound,pitch,pressKey} (或缺省表示空槽)
+    // 数量 = 最大使用槽位 + 1, 保证 NoteBlockStudio 序号对齐
+    if (version >= 6 && songData.customInstruments
+        && Array.isArray(songData.customInstruments) && songData.customInstruments.length > 0) {
+        writer.wByte(songData.customInstruments.length);
+        for (var cii3 = 0; cii3 < songData.customInstruments.length; cii3++) {
+            var ciDef = songData.customInstruments[cii3];
+            var ciName = (ciDef && (ciDef.name || '')) || '';
+            var ciFile = (ciDef && (ciDef.file || ciDef.sound || '')) || '';
+            var ciPitch = (ciDef && typeof ciDef.pitch === 'number') ? _clamp(ciDef.pitch, 0, 87) : 45;
+            var ciPress = (ciDef && typeof ciDef.pressKey === 'number') ? _clamp(ciDef.pressKey, 0, 87) : 45;
+            writer.wString(ciName);
+            writer.wString(ciFile);
+            writer.wByte(ciPitch);
+            writer.wByte(ciPress);
+        }
+    } else {
+        writer.wByte(0);
+    }
 
     return new Uint8Array(writer.toArrayBuffer());
 }
@@ -2005,7 +2050,7 @@ function _convertMidiToNBS(arrayBuffer, settings) {
         // note length
         var durationTicks = e.duration_ticks || 1;
         var noteLength = Math.max(1, Math.floor(durationTicks / deltaPerTick));
-        var pitchVal = _clamp(noteLength, 0, 255);
+        // 注意: pitch 单位为音分(音高微调), 不能把音符长度写入 pitch, 否则播放时会整体升调
 
         // 判断是否保持音符长度
         var shouldSustain = false;
@@ -2023,7 +2068,7 @@ function _convertMidiToNBS(arrayBuffer, settings) {
             key: nbsKey,
             velocity: velocity,
             pan: 50,
-            pitch: pitchVal
+            pitch: 0
         });
 
         // ---- 音色拟合: slot2/slot3 ----
@@ -2111,7 +2156,7 @@ function _convertMidiToNBS(arrayBuffer, settings) {
                         key: slotNbsKey,
                         velocity: velocity,
                         pan: 50,
-                        pitch: pitchVal
+                        pitch: 0
                     });
                     // 保持音符长度也应用于 slot2/slot3
                     if (shouldSustain) {
@@ -2131,7 +2176,7 @@ function _convertMidiToNBS(arrayBuffer, settings) {
                                 key: slotNbsKey,
                                 velocity: velocity,
                                 pan: 50,
-                                pitch: pitchVal
+                                pitch: 0
                             });
                         }
                     }
@@ -2156,7 +2201,7 @@ function _convertMidiToNBS(arrayBuffer, settings) {
                         key: nbsKey,
                         velocity: velocity,
                         pan: 50,
-                        pitch: pitchVal
+                        pitch: 0
                     });
                 }
             }
@@ -2227,14 +2272,19 @@ function _convertMidiToNBS(arrayBuffer, settings) {
     if (dedupeNotes) {
         var dedupeSeen = {}; // "tick:instrument:key" -> true
         var dedupedNotes = [];
+        var dedupeRemoved = [];
         for (var di = 0; di < songNotes.length; di++) {
             var dn = songNotes[di];
             var dKey = dn.tick + ':' + dn.instrument + ':' + dn.key;
-            if (dedupeSeen[dKey]) continue;
+            if (dedupeSeen[dKey]) { dedupeRemoved.push(dn); continue; }
             dedupeSeen[dKey] = true;
             dedupedNotes.push(dn);
         }
         songNotes = dedupedNotes;
+        // 重排序音符: 删除后把下方相邻轨道中孤立的连续音符向上移动, 填补空洞
+        if (settings.dedupe_reorder === true) {
+            window.dedupeReorderNotes(songNotes, dedupeRemoved);
+        }
     }
 
     // ---- 构建 layers 列表 ----
@@ -2467,4 +2517,87 @@ var NBSClient = {
     GM_PROGRAM_TABLE: GM_PROGRAM_TABLE,
     DRUM_NOTE_TABLE: DRUM_NOTE_TABLE,
     INSTRUMENT_NAMES: INSTRUMENT_NAMES
+};
+
+// ====================================================================
+// 消除重复音符的"重排序音符"扩展 (编辑器主界面与 MIDI 导入共用)
+// 坐标: x = tick(时间), y = layer(轨道). 删除音符 A(tick, layer) 后,
+// 若其下方相邻轨道同 tick 处存在连续堆积的音符块, 且该音符为孤立点
+// (同轨道 tick±1, tick±2 内存活音符数 < 2), 则由上至下一级级上移
+// 填补空洞; 直到某层原本就无音符(空洞)或遇到属于连续旋律的音符为止。
+// 仅改变音符的 layer, tick/key/velocity 等属性保持不变。
+// @param {Array} notes    保留(去重后)的音符数组, 会被就地修改 layer
+// @param {Array} removed  被删除的重复音符引用数组
+// @returns {number} 实际移动的音符数量
+// ====================================================================
+window.dedupeReorderNotes = function (notes, removed) {
+    if (!notes || !removed || notes.length === 0 || removed.length === 0) return 0;
+    var i, k;
+    // 相同坐标 (tick:layer) 的重复删除只处理一次, 视为同一个空洞
+    var unique = [];
+    var seenHole = {};
+    for (i = 0; i < removed.length; i++) {
+        var r = removed[i];
+        if (!r) continue;
+        var hk = r.tick + ':' + r.layer;
+        if (seenHole[hk]) continue;
+        seenHole[hk] = true;
+        unique.push(r);
+    }
+    function isRemoved(n) { return removed.indexOf(n) !== -1; }
+    // 位置索引: "tick:layer" -> [note]
+    var byPos = {};
+    for (i = 0; i < notes.length; i++) {
+        var n = notes[i];
+        var pk = n.tick + ':' + n.layer;
+        (byPos[pk] || (byPos[pk] = [])).push(n);
+    }
+    function colAt(tick, layer) { return byPos[tick + ':' + layer] || []; }
+    function hasAliveAt(tick, layer) {
+        var col = colAt(tick, layer);
+        for (var j = 0; j < col.length; j++) {
+            if (!isRemoved(col[j])) return true;
+        }
+        return false;
+    }
+    var moved = 0;
+    for (i = 0; i < unique.length; i++) {
+        var a = unique[i];
+        var ax = a.tick;
+        var holeLayer = a.layer;
+        var cur = holeLayer + 1;
+        while (true) {
+            // 该层同 tick 无存活音符 -> 原本就有空洞, 停止连锁
+            if (!hasAliveAt(ax, cur)) break;
+            var col = colAt(ax, cur);
+            // 选 key 最小的存活音符作为 B (待删除音符不参与移动)
+            var b = null;
+            for (k = 0; k < col.length; k++) {
+                if (isRemoved(col[k])) continue;
+                if (!b || col[k].key < b.key) b = col[k];
+            }
+            if (!b) break;
+            // 孤立判定: B 所在轨道内 tick±1, tick±2 的存活音符数
+            var count = (hasAliveAt(b.tick - 1, b.layer) ? 1 : 0)
+                      + (hasAliveAt(b.tick - 2, b.layer) ? 1 : 0)
+                      + (hasAliveAt(b.tick + 1, b.layer) ? 1 : 0)
+                      + (hasAliveAt(b.tick + 2, b.layer) ? 1 : 0);
+            if (count >= 2) break; // B 属于连续旋律, 不移动
+            // 移动 B: 轨道上移一层 (tick/key 不变), 空洞下移一层继续
+            var oldPos = b.tick + ':' + b.layer;
+            var arr = byPos[oldPos];
+            if (arr) {
+                var bi = arr.indexOf(b);
+                if (bi >= 0) arr.splice(bi, 1);
+                if (arr.length === 0) delete byPos[oldPos];
+            }
+            b.layer = holeLayer;
+            var newPos = b.tick + ':' + b.layer;
+            (byPos[newPos] || (byPos[newPos] = [])).push(b);
+            moved++;
+            holeLayer = cur;
+            cur = cur + 1;
+        }
+    }
+    return moved;
 };

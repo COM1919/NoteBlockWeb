@@ -40,10 +40,19 @@ var isAudioReady = false;
 
 // 活动音源节点列表 (用于 stopAll 立即停止所有声音)
 var _activeSources = [];
+// 自定义音色注册表: instrument 编号(>=20) -> { buffer, baseKey, gain }
+// 供 自定义音色系统 注册用户音频采样; 播放时按 baseKey 变速到目标 key
+var _customInstruments = {};
 
 // 是否启用音效增强 (混响 + 暖声)。关闭后回到最原始的直连。
 // 用户可在设置弹窗里切换。
 var audioEnhanceEnabled = true;
+
+// 实时播放整体风格 (整体风格效果预设, 见 audio_render.js):
+// 'dry' = 原声(无效果); 其它值 = 风格 ID, 通过 AudioRender.buildChain 装配效果链
+var liveStyle = 'dry';
+var _styleChainInput = null;   // 当前风格链的输入节点 (用于断开)
+var _styleChainOutput = null;  // 当前风格链的输出节点
 
 // 增强模式专用节点
 var _enhanceCompressor = null;
@@ -117,6 +126,9 @@ function initAudioEngine() {
 
         masterCompressor.connect(audioContext.destination);
 
+        // 归一化实时路由: 与默认增强模式(纯干声)一致
+        rebuildLiveRouting();
+
     } catch (e) {
         console.error('无法创建 AudioContext:', e);
         return;
@@ -156,39 +168,61 @@ function createReverbIR(durationSec, decay) {
  */
 function setAudioEnhance(enabled) {
     audioEnhanceEnabled = !!enabled;
+    rebuildLiveRouting();
+}
+
+function isAudioEnhanceEnabled() {
+    return audioEnhanceEnabled;
+}
+
+// 断开并清理当前风格链 (audio_render.js 装配的实时效果链)
+function disconnectStyleChain() {
+    if (_styleChainInput) { try { _styleChainInput.disconnect(); } catch(e) {} }
+    if (_styleChainOutput) { try { _styleChainOutput.disconnect(); } catch(e) {} }
+    _styleChainInput = null;
+    _styleChainOutput = null;
+}
+
+// 重建 masterGain -> 输出 的实时路由
+// 优先级: 整体风格链 > 原声(按增强开关: NBS 直连 / 混响压缩链)
+function rebuildLiveRouting() {
+    if (!masterGain || !audioContext) return;
+    try { masterGain.disconnect(); } catch(e) {}
+    disconnectStyleChain();
+    if (liveStyle !== 'dry' && window.AudioRender && AudioRender.buildChain) {
+        var chain = AudioRender.buildChain(audioContext, liveStyle, audioContext.destination);
+        _styleChainInput = chain.input;
+        _styleChainOutput = chain._output || null;
+        masterGain.connect(_styleChainInput);
+        return;
+    }
     if (audioEnhanceEnabled) {
         // NBS 风格：纯干声，无混响无压缩，直连输出
-        // 这是 NoteBlockStudio 的实际行为
-        if (masterGain) {
-            try { masterGain.disconnect(); } catch(e) {}
-            // 断开所有效果节点
-            if (dryGain) { try { dryGain.disconnect(); } catch(e) {} }
-            if (wetGain) { try { wetGain.disconnect(); } catch(e) {} }
-            if (convolverNode) { try { convolverNode.disconnect(); } catch(e) {} }
-            if (masterCompressor) { try { masterCompressor.disconnect(); } catch(e) {} }
-            if (_enhanceCompressor) { try { _enhanceCompressor.disconnect(); } catch(e) {} }
-            if (_enhanceWetGain) { try { _enhanceWetGain.disconnect(); } catch(e) {} }
-            if (_enhanceDryGain) { try { _enhanceDryGain.disconnect(); } catch(e) {} }
-            if (_enhanceReverb) { try { _enhanceReverb.disconnect(); } catch(e) {} }
-            // masterGain 直连 destination，完全匹配 NBS 的纯干声输出
-            masterGain.connect(audioContext.destination);
-        }
+        masterGain.connect(audioContext.destination);
     } else {
         // 原始模式：混响 + 压缩器效果链
-        if (masterGain) {
-            try { masterGain.disconnect(); } catch(e) {}
+        if (dryGain && masterCompressor && convolverNode && wetGain) {
             masterGain.connect(dryGain);
             dryGain.connect(masterCompressor);
             masterGain.connect(convolverNode);
             convolverNode.connect(wetGain);
             wetGain.connect(masterCompressor);
             masterCompressor.connect(audioContext.destination);
+        } else {
+            masterGain.connect(audioContext.destination);
         }
     }
 }
 
-function isAudioEnhanceEnabled() {
-    return audioEnhanceEnabled;
+// 切换实时播放整体风格 (与离线导出使用同一套效果链/预设表)
+function setLiveStyle(styleId) {
+    var valid = styleId && styleId !== 'dry' && window.AudioRender && window.AudioRender.STYLES[styleId];
+    liveStyle = valid ? styleId : 'dry';
+    rebuildLiveRouting();
+}
+
+function getLiveStyle() {
+    return liveStyle;
 }
 
 /**
@@ -280,9 +314,10 @@ function resumeAudioContext() {
  * @param {number} velocity - 力度/音量 (0-100)
  * @param {number} pan - 声像 (0-100, 50=居中)
  */
-function playMinecraftNote(instrument, key, velocity, pan) {
+function playMinecraftNote(instrument, key, velocity, pan, pitch) {
     if (velocity === undefined) velocity = 100;
     if (pan === undefined) pan = 50;
+    pitch = pitch || 0;
 
     // 懒加载 AudioContext
     if (!audioContext) {
@@ -293,16 +328,30 @@ function playMinecraftNote(instrument, key, velocity, pan) {
     // 浏览器自动播放策略：必须在用户交互后恢复 AudioContext
     resumeAudioContext();
 
+    // 自定义音色: instrument >= 20 时查用户注册的采样缓冲
+    if (instrument >= 20) {
+        var custom = _customInstruments[instrument];
+        if (custom && custom.buffer) {
+            // 变速比例 = 目标 key 相对基准 key 的半音比; 相对响度 custom.gain(0-100)
+            playBuffer(custom.buffer, key, velocity, pan, null, {
+                baseKey: (typeof custom.baseKey === 'number') ? custom.baseKey : 33,
+                gain: ((typeof custom.gain === 'number' ? custom.gain : 100) / 100) * 0.7
+            }, pitch);
+        }
+        // 未注册或缓冲未就绪: 静音 (缺失提示由上层负责)
+        return;
+    }
+
     var soundName = NBS_INSTRUMENT_TO_SOUND[instrument] || 'harp';
     var buffer = audioBuffers[soundName];
 
     // 如果没有预加载到音频，尝试即时加载
     if (!buffer) {
-        loadAndPlaySound(soundName, key, velocity, pan);
+        loadAndPlaySound(soundName, key, velocity, pan, pitch);
         return;
     }
 
-    playBuffer(buffer, key, velocity, pan, soundName);
+    playBuffer(buffer, key, velocity, pan, soundName, null, pitch);
 }
 
 /**
@@ -311,16 +360,23 @@ function playMinecraftNote(instrument, key, velocity, pan) {
  *   这完全匹配 NoteBlockStudio 的行为: 每个音符就是一个 OGG 样本按音高播放
  * - 原始模式 (audioEnhanceEnabled=false): 使用 ADSR 包络 + 混响 + 压缩
  */
-function playBuffer(buffer, key, velocity, pan, soundName) {
+function playBuffer(buffer, key, velocity, pan, soundName, customOpt, pitch) {
     if (!audioContext || !masterGain) return;
 
     // 速率 = Minecraft playsound pitch (基于 key)
-    var rate = getPlaybackRate(key);
+    // 自定义音色: 相对其基准音高的半音变速比
+    var rate = (customOpt && customOpt.baseKey !== undefined)
+        ? (getPlaybackRate(key) / getPlaybackRate(customOpt.baseKey))
+        : getPlaybackRate(key);
+    // NBS 音符微调 (pitch, 单位音分) 并入速率, 与离线渲染 audio_render.js 保持一致
+    rate *= Math.pow(2, (pitch || 0) / 1200);
 
-    // 乐器归一化音量（防止某乐器特别响）
-    var instrGain = (soundName && INSTRUMENT_GAIN[soundName] !== undefined)
-        ? INSTRUMENT_GAIN[soundName]
-        : 0.70;
+    // 乐器归一化音量（防止某乐器特别响）；自定义音色直接用其校准增益
+    var instrGain = (customOpt && customOpt.gain !== undefined)
+        ? customOpt.gain
+        : ((soundName && INSTRUMENT_GAIN[soundName] !== undefined)
+            ? INSTRUMENT_GAIN[soundName]
+            : 0.70);
 
     // Velocity is a true percentage so track volume applies linearly.
     var v = Math.max(0, Math.min(100, velocity === undefined ? 100 : velocity));
@@ -400,7 +456,7 @@ function playBuffer(buffer, key, velocity, pan, soundName) {
 /**
  * 即时加载并播放声音（备用方案）
  */
-function loadAndPlaySound(soundName, key, velocity, pan) {
+function loadAndPlaySound(soundName, key, velocity, pan, pitch) {
     if (!audioContext) return;
 
     var url = '/static/sounds/' + soundName + '.ogg';
@@ -415,7 +471,7 @@ function loadAndPlaySound(soundName, key, velocity, pan) {
         })
         .then(function(buffer) {
             audioBuffers[soundName] = buffer;
-            playBuffer(buffer, key, velocity, pan, soundName);
+            playBuffer(buffer, key, velocity, pan, soundName, null, pitch);
         })
         .catch(function(err) {
             console.warn('即时加载失败 [' + soundName + ']:', err.message);
@@ -471,7 +527,7 @@ function playNotes(notes) {
 
     for (var i = 0; i < notes.length; i++) {
         var n = notes[i];
-        playMinecraftNote(n.instrument, n.key, n.velocity, n.pan);
+        playMinecraftNote(n.instrument, n.key, n.velocity, n.pan, n.pitch);
     }
 }
 
@@ -501,26 +557,31 @@ function stopAllAudio() {
         try { _activeSources[i].disconnect(); } catch(e) {}
     }
     _activeSources = [];
-    // 2. 断开 masterGain 并重建干净的音频图
-    //    这确保所有正在处理的混响/回声被立即切断
-    if (masterGain) {
-        try { masterGain.disconnect(); } catch(e) {}
-    }
-    // 重建连接 (根据当前增强模式)
-    if (audioEnhanceEnabled) {
-        if (masterGain) {
-            masterGain.connect(audioContext.destination);
-        }
-    } else {
-        if (masterGain && dryGain && masterCompressor && convolverNode && wetGain) {
-            masterGain.connect(dryGain);
-            dryGain.connect(masterCompressor);
-            masterGain.connect(convolverNode);
-            convolverNode.connect(wetGain);
-            wetGain.connect(masterCompressor);
-            masterCompressor.connect(audioContext.destination);
-        }
-    }
+    // 2. 重建干净的实时路由 (按当前整体风格/增强模式)
+    rebuildLiveRouting();
+}
+
+/**
+ * 注册自定义音色到播放引擎
+ * @param {number} index - instrument 编号 (>=20)
+ * @param {Object} entry - { buffer: AudioBuffer, baseKey: number(0-87), gain: number(0-100) }
+ */
+function registerCustomInstrument(index, entry) {
+    _customInstruments[index] = entry || null;
+}
+
+/**
+ * 注销自定义音色
+ */
+function unregisterCustomInstrument(index) {
+    delete _customInstruments[index];
+}
+
+/**
+ * 清空全部自定义音色注册 (重载/清库时使用)
+ */
+function clearCustomInstruments() {
+    _customInstruments = {};
 }
 
 // 导出到全局
@@ -534,5 +595,13 @@ window.AudioEngine = {
     setEnhance: setAudioEnhance,
     isEnhanceEnabled: isAudioEnhanceEnabled,
     stopAll: stopAllAudio,
-    getContext: function() { return audioContext; }
+    getContext: function() { return audioContext; },
+    registerCustomInstrument: registerCustomInstrument,
+    unregisterCustomInstrument: unregisterCustomInstrument,
+    clearCustomInstruments: clearCustomInstruments,
+    // 实时播放整体风格 (预设见 audio_render.js; 'dry' = 原声)
+    setStyle: setLiveStyle,
+    getStyle: getLiveStyle,
+    // 供 offline 渲染复用已解码的默认音色缓冲
+    getSoundBuffer: function(name) { return audioBuffers[name] || null; }
 };

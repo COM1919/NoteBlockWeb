@@ -176,6 +176,9 @@
     // surface so the visible label, selected key and audio pitch stay aligned.
     var NBS_MIDI_OFFSET = 21;
     var PIANO_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    // 音调文字是否显示八度数字 (如 A4/C5), 默认开启, 可在设置中关闭
+    var octaveLabelsEnabled = true;
+    try { octaveLabelsEnabled = localStorage.getItem('show_octave_labels') !== '0'; } catch(e) {}
     function nbsKeyToMidiNote(key) {
         return Math.max(0, Math.min(87, Math.round(Number(key) || 0))) + NBS_MIDI_OFFSET;
     }
@@ -184,6 +187,10 @@
     }
     function getNbsKeyOctave(key) {
         return Math.floor(nbsKeyToMidiNote(key) / 12) - 1;
+    }
+    // 音调显示标签: 开启八度时返回 "A4", 关闭时返回 "A"
+    function getNbsKeyDisplayLabel(key) {
+        return getNbsKeyPitchLabel(key) + (octaveLabelsEnabled ? getNbsKeyOctave(key) : '');
     }
 
     function getInstrumentNames() {
@@ -403,8 +410,8 @@
         });
     }
 
-    // showAppConfirm(message, options) -> Promise<boolean>
-    // options: { title, icon, okText, cancelText }
+    // showAppConfirm(message, options) -> Promise<boolean> (无 checkbox) | Promise<{ok, checked}>
+    // options: { title, icon, okText, cancelText, checkbox: { label, checked } }
     function showAppConfirm(message, options) {
         options = options || {};
         return new Promise(function(resolve) {
@@ -414,13 +421,34 @@
             document.body.appendChild(overlay);
             _appDialogStack.push(overlay);
 
-            var result = false;
-            var close = function() { _closeAppDialog(overlay, resolve, result); };
+            var result = { ok: false, checked: !!(options.checkbox && options.checkbox.checked) };
+            var cb = null;
+            if (options.checkbox) {
+                var body = box.querySelector('.settings-body');
+                var wrap = document.createElement('label');
+                wrap.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--text-primary,#fff);cursor:pointer;user-select:none;';
+                cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = result.checked;
+                wrap.appendChild(cb);
+                var span = document.createElement('span');
+                span.textContent = i18nText(options.checkbox.label || '');
+                if (options.checkbox.title) span.title = i18nText(options.checkbox.title);
+                wrap.appendChild(span);
+                body.appendChild(wrap);
+            }
+            var close = function() {
+                _closeAppDialog(overlay, resolve, options.checkbox ? result : result.ok);
+            };
             box.querySelector('#app-dialog-x').addEventListener('click', close);
             var cancelBtn = _appDialogBtn(i18nText(options.cancelText || '取消'), false);
             cancelBtn.addEventListener('click', close);
             var okBtn = _appDialogBtn(i18nText(options.okText || '确定'), true);
-            okBtn.addEventListener('click', function() { result = true; close(); });
+            okBtn.addEventListener('click', function() {
+                result.ok = true;
+                if (cb) result.checked = cb.checked;
+                close();
+            });
             var actions = box.querySelector('.popup-actions');
             actions.appendChild(cancelBtn);
             actions.appendChild(okBtn);
@@ -472,9 +500,11 @@
     // 导出弹窗: 文件名(必填) + 折叠的作者/介绍输入
     function showExportDialog(defaultName, defaultAuthor, defaultDesc, options) {
         options = options || {};
+        // options.customInstruments: 作品使用到的自定义音色编号数组(>=20), 非空时在弹窗内警告并提供「作品包(zip)」选项
+        var customNos = (options.customInstruments && options.customInstruments.length) ? options.customInstruments.slice() : null;
         return new Promise(function(resolve) {
             var overlay = _appDialogOverlay();
-            var box = _appDialogBox(i18nText(options.title || '导出 NBS'), '', options.icon || 'fa-solid fa-file-export', { maxWidth: 420 });
+            var box = _appDialogBox(i18nText(options.title || '导出 NBS'), '', options.icon || 'fa-solid fa-file-export', { maxWidth: customNos ? 480 : 420 });
             var body = box.querySelector('.settings-body');
             // 清空默认 message 内容
             body.textContent = '';
@@ -544,6 +574,30 @@
             descInput.style.cssText = 'width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--ctrl-stroke-default,#444);border-radius:var(--radius-sm,6px);background:var(--ctrl-fill-default,#1c1c1c);color:var(--text-primary,#fff);box-sizing:border-box;resize:vertical;font-family:inherit;';
             collapseBody.appendChild(descInput);
 
+            // ---------- 自定义音色警告 + 作品包选项 ----------
+            var packageChk = null;
+            if (customNos && customNos.length) {
+                var warnWrap = document.createElement('div');
+                warnWrap.style.cssText = 'margin-top:12px;border:1px solid rgba(255,180,60,0.45);border-radius:var(--radius-sm,6px);padding:10px 12px;background:rgba(255,180,60,0.08);';
+                var warnTitle = document.createElement('div');
+                warnTitle.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--accent-orange,#ffb43c);margin-bottom:6px;';
+                warnTitle.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><span>本作品使用了 ' + customNos.length + ' 个自定义音色</span>';
+                warnWrap.appendChild(warnTitle);
+                var warnText = document.createElement('div');
+                warnText.style.cssText = 'font-size:12px;color:var(--text-secondary,#aaa);line-height:1.7;margin-bottom:8px;';
+                warnText.textContent = '标准 .nbs 只保存音色引用（不含音频），在其它设备/播放器上这些音色会静音。';
+                warnWrap.appendChild(warnText);
+                var packageLbl = document.createElement('label');
+                packageLbl.style.cssText = 'display:flex;align-items:flex-start;gap:6px;font-size:12px;color:var(--text-primary,#fff);cursor:pointer;user-select:none;line-height:1.6;';
+                packageChk = document.createElement('input');
+                packageChk.type = 'checkbox';
+                packageChk.style.cssText = 'accent-color:var(--accent-primary,#4aa3ff);width:14px;height:14px;margin-top:2px;flex-shrink:0;';
+                packageLbl.appendChild(packageChk);
+                packageLbl.appendChild(document.createTextNode('导出自定义音色作品包 (zip)：歌曲 + 使用到的音色音频一起打包，完整携带音色'));
+                warnWrap.appendChild(packageLbl);
+                body.appendChild(warnWrap);
+            }
+
             overlay.appendChild(box);
             document.body.appendChild(overlay);
             _appDialogStack.push(overlay);
@@ -564,7 +618,8 @@
                 result = {
                     name: name,
                     author: (authorInput.value || '').trim(),
-                    description: (descInput.value || '').trim()
+                    description: (descInput.value || '').trim(),
+                    packageZip: !!(packageChk && packageChk.checked)
                 };
                 close();
             };
@@ -581,6 +636,217 @@
             var actions = box.querySelector('.popup-actions');
             actions.appendChild(cancelBtn);
             actions.appendChild(okBtn);
+            overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
+            setTimeout(function() { nameInput.focus(); nameInput.select(); }, 50);
+        });
+    }
+
+    // showAudioExportDialog() -> 独立的音频导出弹窗 (MP3/WAV + 音效风格 + 渲染进度)
+    function showAudioExportDialog() {
+        return new Promise(function(resolve) {
+            var overlay = _appDialogOverlay();
+            var box = _appDialogBox('导出为音频', '', 'fa-solid fa-music', { maxWidth: 420 });
+            var body = box.querySelector('.settings-body');
+            body.textContent = '';
+
+            // 文件名输入
+            var nameLabel = document.createElement('label');
+            nameLabel.textContent = '文件名:';
+            nameLabel.style.cssText = 'display:block;font-size:13px;color:var(--text-primary,#fff);margin-bottom:6px;font-weight:500;';
+            body.appendChild(nameLabel);
+
+            var nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            var defaultName = (state.importedFileName || (state.song.name || state.song.song_name || 'song')).replace(/\.(nbs|mp3|wav)$/i, '');
+            nameInput.value = defaultName || 'song';
+            nameInput.placeholder = '请输入文件名';
+            nameInput.style.cssText = 'width:100%;padding:8px 10px;font-size:13px;border:1px solid var(--ctrl-stroke-default,#444);border-radius:var(--radius-sm,6px);background:var(--ctrl-fill-default,#1c1c1c);color:var(--text-primary,#fff);box-sizing:border-box;';
+            body.appendChild(nameInput);
+
+            var aeBody = document.createElement('div');
+            aeBody.style.cssText = 'margin-top:10px;';
+            body.appendChild(aeBody);
+
+            // 分段按钮样式
+            var SEG_OFF = 'padding:5px 12px;font-size:12px;border:1px solid var(--ctrl-stroke-default,#555);border-radius:var(--radius-sm,6px);background:var(--ctrl-fill-default,#1c1c1c);color:var(--text-secondary,#aaa);cursor:pointer;';
+            var SEG_ON  = 'padding:5px 12px;font-size:12px;border:1px solid var(--accent-primary,#4aa3ff);border-radius:var(--radius-sm,6px);background:var(--accent-primary,#4aa3ff);color:#fff;cursor:pointer;';
+            function setSegVisual(b, on) {
+                b.style.cssText = on ? SEG_ON : SEG_OFF;
+            }
+            function segPicker(container, items, initialIdx, onChange) {
+                var btns = [];
+                items.forEach(function(label, idx) {
+                    var b = document.createElement('button');
+                    b.type = 'button';
+                    b.textContent = label;
+                    b.style.cssText = SEG_OFF;
+                    b.addEventListener('click', function() {
+                        if (b.classList.contains('seg-on')) return;
+                        btns.forEach(function(o) { o.classList.remove('seg-on'); setSegVisual(o, false); });
+                        b.classList.add('seg-on');
+                        setSegVisual(b, true);
+                        if (onChange) onChange(idx);
+                    });
+                    container.appendChild(b);
+                    btns.push(b);
+                });
+                if (initialIdx >= 0 && btns[initialIdx]) {
+                    btns[initialIdx].classList.add('seg-on');
+                    setSegVisual(btns[initialIdx], true);
+                }
+                return btns;
+            }
+
+            // 格式: MP3 / WAV
+            var fmtRow = document.createElement('div');
+            fmtRow.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;';
+            fmtRow.innerHTML = '<span style="font-size:12px;color:var(--text-primary,#fff);min-width:38px;">格式</span>';
+            var fmtSeg = document.createElement('div');
+            fmtSeg.style.cssText = 'display:flex;gap:6px;';
+            fmtRow.appendChild(fmtSeg);
+            aeBody.appendChild(fmtRow);
+            var fmtMp3 = true;
+            var kbpsRow = document.createElement('div');
+            kbpsRow.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;';
+            kbpsRow.innerHTML = '<span style="font-size:12px;color:var(--text-primary,#fff);min-width:38px;">码率</span>';
+            var kbpsSeg = document.createElement('div');
+            kbpsSeg.style.cssText = 'display:flex;gap:6px;';
+            kbpsRow.appendChild(kbpsSeg);
+            aeBody.appendChild(kbpsRow);
+            segPicker(fmtSeg, ['MP3', 'WAV'], 0, function(idx) {
+                fmtMp3 = (idx === 0);
+                kbpsRow.style.display = fmtMp3 ? 'flex' : 'none';
+            });
+            var kbps = 192;
+            segPicker(kbpsSeg, ['128k', '192k', '320k'], 1, function(idx) { kbps = [128, 192, 320][idx]; });
+
+            // 音效风格
+            var styleRow = document.createElement('div');
+            styleRow.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;';
+            styleRow.innerHTML = '<span style="font-size:12px;color:var(--text-primary,#fff);min-width:38px;">风格</span>';
+            var styleSeg = document.createElement('div');
+            styleSeg.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
+            styleRow.appendChild(styleSeg);
+            aeBody.appendChild(styleRow);
+            var styleDescRow = document.createElement('div');
+            styleDescRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+            var styleDesc = document.createElement('div');
+            styleDesc.style.cssText = 'font-size:11px;color:var(--text-tertiary,#888);line-height:1.5;flex:1;';
+            styleDescRow.appendChild(styleDesc);
+            aeBody.appendChild(styleDescRow);
+
+            var styleOrder = (window.AudioRender && AudioRender.STYLE_ORDER) ? AudioRender.STYLE_ORDER : ['dry'];
+            var currentStyle = styleOrder[0];
+            styleDesc.textContent = AudioRender.STYLES[currentStyle].desc;
+            segPicker(styleSeg, styleOrder.map(function(id) { return AudioRender.STYLES[id].name; }), 0, function(idx) {
+                currentStyle = styleOrder[idx];
+                styleDesc.textContent = AudioRender.STYLES[currentStyle].desc;
+            });
+
+            // 独立试听按钮 (不影响主界面播放风格)
+            var previewBtn = document.createElement('button');
+            previewBtn.type = 'button';
+            previewBtn.style.cssText = 'padding:4px 10px;font-size:11px;border:1px solid var(--accent-secondary,#2f9e6e);border-radius:var(--radius-sm,6px);background:rgba(47,158,110,0.12);color:var(--accent-secondary,#2f9e6e);cursor:pointer;white-space:nowrap;';
+            previewBtn.innerHTML = '<i class="fa-solid fa-play" style="margin-right:4px;"></i>试听';
+            styleDescRow.appendChild(previewBtn);
+            var previewing = false;
+            var savedStyle = null;
+            var previewStopTimer = null;
+            function stopPreview() {
+                if (!previewing) return;
+                previewing = false;
+                if (previewStopTimer) { clearTimeout(previewStopTimer); previewStopTimer = null; }
+                // 停止当前播放循环并静音所有音源, 再恢复之前的实时风格
+                if (state.isPlaying) {
+                    stopPlaybackLoop();
+                    if (window.AudioEngine && AudioEngine.stopAll) AudioEngine.stopAll();
+                    setPlayButtonIcon(false);
+                    updateProgressUI();
+                    if (state.pianoRoll) {
+                        state.pianoRoll.isPlaying = false;
+                        state.pianoRoll.clearPlayHighlights();
+                    }
+                }
+                state.isPlaying = false;
+                if (savedStyle !== null && window.AudioEngine && AudioEngine.setStyle) {
+                    AudioEngine.setStyle(savedStyle);
+                }
+                savedStyle = null;
+                previewBtn.innerHTML = '<i class="fa-solid fa-play" style="margin-right:4px;"></i>试听';
+            }
+            previewBtn.addEventListener('click', function() {
+                if (previewing) { stopPreview(); return; }
+                previewing = true;
+                previewBtn.innerHTML = '<i class="fa-solid fa-stop" style="margin-right:4px;"></i>停止';
+                if (window.AudioEngine && AudioEngine.getStyle) savedStyle = AudioEngine.getStyle();
+                if (window.AudioEngine && AudioEngine.setStyle) AudioEngine.setStyle(currentStyle);
+                // 试听 = 用所选风格启动实时播放循环 (AudioEngine.stop 不存在, 直接走主播放链路)
+                if (state.isPlaying) stopPlaybackLoop();
+                if (window.AudioEngine && AudioEngine.init) AudioEngine.init();
+                state.isPlaying = true;
+                setPlayButtonIcon(true);
+                startPlaybackLoop();
+                previewStopTimer = setTimeout(stopPreview, 15000);
+            });
+
+            // 渲染进度
+            var aeProgWrap = document.createElement('div');
+            aeProgWrap.style.cssText = 'display:none;margin-bottom:8px;';
+            var aeProgLabel = document.createElement('div');
+            aeProgLabel.style.cssText = 'font-size:11px;color:var(--text-secondary,#aaa);margin-bottom:4px;';
+            aeProgLabel.textContent = '准备渲染…';
+            var aeProgTrack = document.createElement('div');
+            aeProgTrack.style.cssText = 'height:6px;border-radius:3px;background:var(--ctrl-fill-default,#1c1c1c);overflow:hidden;border:1px solid var(--ctrl-stroke-default,#444);';
+            var aeProgBar = document.createElement('div');
+            aeProgBar.style.cssText = 'height:100%;width:0;background:var(--accent-primary,#4aa3ff);transition:width 0.2s;';
+            aeProgTrack.appendChild(aeProgBar);
+            aeProgWrap.appendChild(aeProgLabel);
+            aeProgWrap.appendChild(aeProgTrack);
+            aeBody.appendChild(aeProgWrap);
+            function setAeProgress(label, pct) {
+                aeProgWrap.style.display = 'block';
+                if (label) aeProgLabel.textContent = label;
+                aeProgBar.style.width = Math.max(2, Math.min(100, pct)) + '%';
+            }
+            function hideAeProgress() { aeProgWrap.style.display = 'none'; }
+
+            // 底部按钮区: 渲染并导出 + 关闭
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+            _appDialogStack.push(overlay);
+            var close = function() { stopPreview(); _closeAppDialog(overlay, resolve, null); };
+            box.querySelector('#app-dialog-x').addEventListener('click', close);
+            var exportBtn = _appDialogBtn('渲染并导出', true);
+            exportBtn.innerHTML = '<i class="fa-solid fa-download" style="margin-right:5px;"></i>渲染并导出';
+            exportBtn.addEventListener('click', function() {
+                if (exportBtn.disabled) return;
+                var name = (nameInput.value || defaultName || 'song').trim();
+                name = name.replace(/\.(nbs|mp3|wav)$/i, '');
+                if (!name) name = 'song';
+                exportBtn.disabled = true;
+                setAeProgress('准备渲染…', 3);
+                renderSongToBlob({
+                    name: name,
+                    format: fmtMp3 ? 'mp3' : 'wav',
+                    kbps: kbps,
+                    styleId: currentStyle,
+                    onProgress: function(label, pct) { setAeProgress(label, pct); }
+                }).then(function(res) {
+                    hideAeProgress();
+                    exportBtn.disabled = false;
+                    AudioRender.downloadBlob(res.blob, res.filename);
+                    showAppAlert('音频已导出：' + res.filename, { title: '导出完成', icon: 'fa-solid fa-circle-check' });
+                }).catch(function(err) {
+                    hideAeProgress();
+                    exportBtn.disabled = false;
+                    showAppAlert('音频导出失败：' + (err && err.message ? err.message : '未知错误'), { title: '音频导出', icon: 'fa-solid fa-triangle-exclamation' });
+                });
+            });
+            var closeBtn = _appDialogBtn('关闭', false);
+            closeBtn.addEventListener('click', close);
+            var actions = box.querySelector('.popup-actions');
+            actions.appendChild(exportBtn);
+            actions.appendChild(closeBtn);
             overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
             setTimeout(function() { nameInput.focus(); nameInput.select(); }, 50);
         });
@@ -1082,6 +1348,22 @@
             volOpacityChk.addEventListener('change', function() {
                 if (state.pianoRoll) state.pianoRoll.setVolumeOpacityEnabled(this.checked);
                 try { localStorage.setItem('volume_opacity', this.checked ? '1' : '0'); } catch(e) {}
+            });
+        }
+
+        // 音调文字显示八度数字开关 (默认开启)
+        var showOctaveChk = $('settings-show-octave');
+        if (showOctaveChk) {
+            try {
+                var savedOct = localStorage.getItem('show_octave_labels');
+                showOctaveChk.checked = (savedOct === null || savedOct === '1');
+            } catch(e) { showOctaveChk.checked = true; }
+            octaveLabelsEnabled = showOctaveChk.checked;
+            applyOctaveLabelSetting(octaveLabelsEnabled, false);
+            showOctaveChk.addEventListener('change', function() {
+                octaveLabelsEnabled = this.checked;
+                try { localStorage.setItem('show_octave_labels', this.checked ? '1' : '0'); } catch(e) {}
+                applyOctaveLabelSetting(octaveLabelsEnabled, true);
             });
         }
 
@@ -1837,6 +2119,16 @@
         initCreativeAssist();
         initFindPanel();
 
+        // 自定义音色系统
+        initCustomInstrumentsUI();
+        if (window.CustomInstruments) {
+            CustomInstruments.init(function() {
+                // 启动后懒加载注册全部自定义音色缓冲 (供播放)
+                CustomInstruments.setReservedNames(getInstrumentNames());
+                // 等待首次交互音频初始化后再解码注册, 避免页面加载即建 AudioContext
+            });
+        }
+
         // 全局点击/触摸关闭上下文菜单 + 其他弹窗
         // 使用 capture 阶段拦截, 关闭菜单时阻止事件继续传播到 canvas (避免误放置音符)
         var suppressNextCanvasClick = false;
@@ -1932,6 +2224,24 @@
                 tempoPopup.classList.remove('active');
                 tempoPopup.style.display = 'none';
             }
+            // 自定义音色管理弹窗
+            var ciPopup = $('custom-instruments-popup');
+            if (ciPopup && ciPopup.classList.contains('active')
+                && !ciPopup.contains(e.target)
+                && e.target.id !== 'btn-custom-instruments'
+                && !(e.target.closest && e.target.closest('#btn-custom-instruments'))) {
+                closeCustomInstPopup();
+            }
+            // 自定义音色信息设置弹窗: 点击外部 = 取消导入
+            var ciInfoPopup = $('custom-inst-info-popup');
+            if (ciInfoPopup && ciInfoPopup.classList.contains('active') && !ciInfoPopup.contains(e.target)) {
+                ciCloseImportInfo(true);
+            }
+            // 音频修正窗口: 点击外部 = 取消导入
+            var ciFixPopup = $('custom-inst-fix-popup');
+            if (ciFixPopup && ciFixPopup.classList.contains('active') && !ciFixPopup.contains(e.target)) {
+                ciFixCloseWindow(true);
+            }
             // 文件菜单 (点击历史子菜单内不关闭文件菜单, 由子菜单项自行处理)
             var fileMenu = document.getElementById('file-menu');
             var historySub = document.getElementById('history-submenu');
@@ -1974,6 +2284,10 @@
             if (audioInit) return;
             audioInit = true;
             if (window.AudioEngine && AudioEngine.init) AudioEngine.init();
+            // 首次交互后懒加载注册自定义音色 (解码为 AudioBuffer 供播放)
+            if (window.CustomInstruments) {
+                CustomInstruments.registerAll();
+            }
             document.removeEventListener('click', onFirstInteract);
             document.removeEventListener('touchstart', onFirstInteract);
             document.removeEventListener('keydown', onFirstInteract);
@@ -4508,6 +4822,9 @@
         if (audioChk && window.AudioEngine && typeof AudioEngine.isEnhanceEnabled === 'function') {
             try { audioChk.checked = AudioEngine.isEnhanceEnabled(); } catch(e) {}
         }
+        // 同步音调文字八度数字开关
+        var octChk = $('settings-show-octave');
+        if (octChk) octChk.checked = octaveLabelsEnabled;
     }
 
     function closeSettingsDialog() {
@@ -4871,7 +5188,7 @@
                         var trackVolume = track && track.volume !== undefined ? Number(track.volume) : 100;
                         trackVolume = isFinite(trackVolume) ? Math.max(0, Math.min(100, trackVolume)) : 100;
                         var noteVelocity = n.velocity === undefined ? 100 : n.velocity;
-                        AudioEngine.playNote(n.instrument, n.key, noteVelocity * trackVolume / 100, n.pan || 50);
+                        AudioEngine.playNote(n.instrument, n.key, noteVelocity * trackVolume / 100, n.pan || 50, n.pitch);
                     }
                 }
 
@@ -5365,20 +5682,31 @@
         var names = getInstrumentNames();
         var colors = (window.NOTE_COLORS && window.NOTE_COLORS.length >= 20) ? window.NOTE_COLORS : ['#d4a96a','#8b5a2b','#c84b3c','#f0e68c','#dcdcdc','#6b8e23','#87ceeb','#fffacd','#fff0f5','#ffb6c1','#b0c4de','#daa520','#cd853f','#ffd700','#cd5c5c','#e6e6fa','#c46b3d','#8b6f47','#5c8b5c','#3d7a6b'];
 
+        // 自定义音色库
+        var citems = (window.CustomInstruments) ? CustomInstruments.list() : [];
+
         var sub = document.createElement('div');
         sub.id = 'instrument-submenu';
         sub.style.cssText = 'position:fixed;z-index:10000;'
             + 'background:rgba(22,33,62,0.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);'
-            + 'border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:6px 0;min-width:180px;'
-            + 'box-shadow:0 8px 32px rgba(0,0,0,0.5);color:#eaeaea;font-size:12px;max-height:300px;overflow-y:auto;';
+            + 'border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:4px 0;display:flex;'
+            + 'box-shadow:0 8px 32px rgba(0,0,0,0.5);color:#eaeaea;font-size:12px;max-height:340px;';
 
+        // 左列: 内置音色
+        var leftCol = document.createElement('div');
+        leftCol.style.cssText = 'flex:1;min-width:170px;max-height:330px;overflow-y:auto;';
+        // 右列: 自定义音色 (无自定义音色时整列隐藏)
+        var rightCol = document.createElement('div');
+        rightCol.style.cssText = 'flex:1;min-width:170px;max-height:330px;overflow-y:auto;border-left:1px solid rgba(255,255,255,0.12);';
+
+        // ---- 内置音色 ----
         for (var i = 0; i < names.length; i++) {
             var color = colors[i] || '#d4a96a';
             var item = document.createElement('div');
             item.className = 'ctx-item';
-            item.style.cssText = 'padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;';
-            item.innerHTML = '<span style="display:inline-block;width:24px;height:24px;flex-shrink:0;position:relative;border-radius:5px;overflow:hidden;background:' + color + ';">'
-                + '<img src="static/sprites/spr_instrumenticons/inst_' + i + '.png" style="position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;border-radius:5px;" /></span> ' + names[i];
+            item.style.cssText = 'padding:6px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;';
+            item.innerHTML = '<span style="display:inline-block;width:20px;height:20px;flex-shrink:0;position:relative;border-radius:4px;overflow:hidden;background:' + color + ';">'
+                + '<img src="static/sprites/spr_instrumenticons/inst_' + i + '.png" style="position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;border-radius:4px;" /></span> ' + names[i];
             item.dataset.instrument = i;
 
             item.addEventListener('mouseenter', function() { this.style.background = 'rgba(255,255,255,0.08)'; });
@@ -5387,20 +5715,58 @@
             item.addEventListener('touchstart', function(e) {
                 e.stopPropagation();
             }, { passive: true });
-            item.addEventListener('click', function(e) {
-                var inst = parseInt(this.dataset.instrument);
-                // 点击音色时播放预览音效（使用钢琴键盘选中的音调）
-                var selectedKey = getSelectedPianoKey();
-                if (selectedKey !== null && window.AudioEngine && AudioEngine.playNote) {
-                    AudioEngine.playNote(inst, selectedKey, 80);
-                }
-                changeInstrumentForNotes(noteIds, inst);
-                if ($('instrument-submenu')) $('instrument-submenu').remove();
-                hideContextMenu();
-                e.stopPropagation();
-            });
-            sub.appendChild(item);
+            item.addEventListener('click', (function(inst) {
+                return function(e) {
+                    // 点击音色时播放预览音效（使用钢琴键盘选中的音调）
+                    var selectedKey = getSelectedPianoKey();
+                    if (selectedKey !== null && window.AudioEngine && AudioEngine.playNote) {
+                        AudioEngine.playNote(inst, selectedKey, 80);
+                    }
+                    changeInstrumentForNotes(noteIds, inst);
+                    if ($('instrument-submenu')) $('instrument-submenu').remove();
+                    hideContextMenu();
+                    e.stopPropagation();
+                };
+            })(i));
+            leftCol.appendChild(item);
         }
+
+        // ---- 自定义音色 (右列, 纯色方块图标) ----
+        if (citems.length > 0) {
+            for (var ci = 0; ci < citems.length; ci++) {
+                (function(cinst) {
+                    var citem = cinst;
+                    var cColor = citem.color || '#4aa3ff';
+                    var cName = String(citem.name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                    var cItem = document.createElement('div');
+                    cItem.className = 'ctx-item';
+                    cItem.style.cssText = 'padding:6px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;';
+                    cItem.innerHTML = '<span style="display:inline-block;width:20px;height:20px;flex-shrink:0;border-radius:4px;background:' + cColor + ';box-shadow:inset 0 0 0 1px rgba(0,0,0,0.25);"></span> ' + cName;
+                    cItem.title = cName;
+                    cItem.addEventListener('mouseenter', function() { this.style.background = 'rgba(255,255,255,0.08)'; });
+                    cItem.addEventListener('mouseleave', function() { this.style.background = ''; });
+                    cItem.addEventListener('touchstart', function(e) { e.stopPropagation(); }, { passive: true });
+                    cItem.addEventListener('click', (function(inst) {
+                        return function(e) {
+                            var selectedKey = getSelectedPianoKey();
+                            if (selectedKey !== null && window.AudioEngine && AudioEngine.playNote) {
+                                AudioEngine.playNote(inst, selectedKey, 80);
+                            }
+                            changeInstrumentForNotes(noteIds, inst);
+                            if ($('instrument-submenu')) $('instrument-submenu').remove();
+                            hideContextMenu();
+                            e.stopPropagation();
+                        };
+                    })(citem.instrument));
+                    rightCol.appendChild(cItem);
+                })(citems[ci]);
+            }
+        } else {
+            rightCol.style.display = 'none';
+        }
+
+        sub.appendChild(leftCol);
+        sub.appendChild(rightCol);
 
         document.body.appendChild(sub);
         window.WebNBSPositionFlyout(sub, { left: x, right: x, top: y, bottom: y }, { placement: 'right-start' });
@@ -5538,6 +5904,729 @@
         });
     }
 
+    // ============ 自定义音色系统 UI ============
+    var CI_PRESET_COLORS = ['#ff6b6b','#ff9f43','#ffd93d','#6bcb77','#4aa3ff','#a55eea','#ff7ab8','#7fc8f8','#c3a6ff','#f8a5c2','#f7b731','#26de81','#45aaf2','#fd9644','#d1d8e0','#63cdda','#ff8c42','#b8e986','#778beb','#e17055'];
+    var _ciPending = null;   // 导入中 { blob, buffer }
+
+    function ciKeyLabel(k) {
+        try { return getNbsKeyPitchLabel(k) + getNbsKeyOctave(k); }
+        catch (e) { return String(k); }
+    }
+
+    function customInstPopupVisible() {
+        var p = $('custom-instruments-popup');
+        return p && p.classList.contains('active');
+    }
+
+    function openCustomInstPopup() {
+        var p = $('custom-instruments-popup');
+        if (!p) return;
+        p.classList.add('active');
+        p.style.display = 'flex';
+        renderCustomInstList();
+        var btn = $('btn-custom-instruments');
+        if (btn) btn.classList.add('active');
+    }
+
+    function closeCustomInstPopup() {
+        var p = $('custom-instruments-popup');
+        if (!p) return;
+        p.classList.remove('active');
+        p.style.display = 'none';
+        var btn = $('btn-custom-instruments');
+        if (btn) btn.classList.remove('active');
+    }
+
+    function toggleCustomInstPopup() {
+        if (customInstPopupVisible()) closeCustomInstPopup();
+        else openCustomInstPopup();
+    }
+
+    function ciEscape(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function ciPlayNoteAt(idx, key) {
+        if (!idx || !window.AudioEngine) return;
+        if (window.AudioEngine.playNote) AudioEngine.playNote(idx, key, 90, 50);
+    }
+
+    // 试听某个自定义音色 (先确保 buffer 已注册, 再按基准音高播放)
+    function ciPlayItem(id, offset) {
+        if (!window.CustomInstruments) return;
+        var item = CustomInstruments.getById(id);
+        if (!item) return;
+        CustomInstruments.ensureRegistered(id).then(function() {
+            var key = item.pitch + (offset || 0);
+            ciPlayNoteAt(item.instrument, key);
+        });
+    }
+
+    function renderCustomInstList() {
+        var listEl = $('custom-inst-list');
+        var emptyEl = $('custom-inst-empty');
+        if (!listEl) return;
+        var items = (window.CustomInstruments) ? CustomInstruments.list() : [];
+        if (items.length === 0) {
+            listEl.innerHTML = '';
+            if (emptyEl) emptyEl.style.display = 'block';
+            return;
+        }
+        if (emptyEl) emptyEl.style.display = 'none';
+
+        var html = '';
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            var sub = '乐器 #' + it.instrument
+                + (it.duration ? ' · ' + it.duration + 's' : '')
+                + (it.channels ? ' · ' + (it.channels === 2 ? '立体声' : '单声道') : '')
+                + ' · 基准 ' + ciKeyLabel(it.pitch);
+            html += '<div class="ci-item">'
+                + '<span class="ci-item-color" style="background:' + ciEscape(it.color || '#4aa3ff') + ';"></span>'
+                + '<div class="ci-item-meta">'
+                +   '<span class="ci-item-name" title="' + ciEscape(it.name) + '">' + ciEscape(it.name) + '</span>'
+                +   '<span class="ci-item-sub">' + ciEscape(sub) + '</span>'
+                + '</div>'
+                + '<div class="ci-item-btns">'
+                +   '<button class="ci-mini-btn" data-ci-act="play" data-ci-id="' + it.id + '" title="试听">▶</button>'
+                +   '<button class="ci-mini-btn" data-ci-act="rename" data-ci-id="' + it.id + '" title="重命名">✎</button>'
+                +   '<button class="ci-mini-btn" data-ci-act="recolor" data-ci-id="' + it.id + '" title="更换颜色">◉</button>'
+                +   '<button class="ci-mini-btn danger" data-ci-act="delete" data-ci-id="' + it.id + '" title="删除">✕</button>'
+                + '</div>'
+                + '</div>';
+        }
+        listEl.innerHTML = html;
+        // 刷新钢琴卷帘自定义音色颜色缓存 (底色/右下角方块)
+        if (state.pianoRoll && state.pianoRoll.refreshCustomInstrumentCache) {
+            state.pianoRoll.refreshCustomInstrumentCache();
+        }
+    }
+
+    function ciStartImport() {
+        var inp = $('ci-file-input');
+        if (!inp) return;
+        inp.value = '';
+        inp.click();
+    }
+
+    // 修正窗口播放控制器 (全局单实例)
+    var _ciFixPlay = null; // { stop():void, playing:bool }
+    var _ciFix = null;     // { detected:null|{key,hz,cents,conf}, baseKey:int, busy:bool }
+
+    function ciBeginImportFlow(file) {
+        var ctx = (window.AudioEngine && AudioEngine.getContext) ? AudioEngine.getContext() : null;
+        if (!ctx) {
+            var AC = window.AudioContext || window.webkitAudioContext;
+            ctx = AC ? new AC() : null;
+        }
+        if (!ctx) {
+            showAppAlert('无法创建音频上下文', {title: '导入音色'});
+            return;
+        }
+        _ciPending = null;
+        _ciFix = { detected: null, baseKey: 33, busy: false };
+        var p = $('custom-inst-fix-source');
+        if (p) {
+            var mb = (file.size / (1024 * 1024)).toFixed(2);
+            p.textContent = '来源文件: ' + file.name + ' (' + mb + ' MB)';
+        }
+        ctx.decodeAudioData ? null : null;
+        var abPromise = file.arrayBuffer();
+        abPromise.then(function(ab) {
+            return ctx.decodeAudioData(ab);
+        }).then(function(buf) {
+            _ciPending = { origBlob: file, origBuffer: buf, blob: null, buffer: null, baseKey: 33, originalName: file.name };
+            ciFixOpenWindow();
+        }).catch(function() {
+            showAppAlert('无法解码该音频文件，请尝试 mp3/wav/ogg 等格式', {title: '导入音色'});
+        });
+    }
+
+    // ---------- 修正窗口 ----------
+    function ciFixOpenWindow() {
+        var p = $('custom-inst-fix-popup');
+        if (!p || !_ciPending) return;
+        // 重置控件
+        var semi = $('ci-fix-semi'), cents = $('ci-fix-cents');
+        if (semi) semi.value = 0;
+        if (cents) cents.value = 0;
+        p.classList.add('active');
+        p.style.display = 'flex';
+        ciFixDrawWave();
+        ciFixRunDetect();
+    }
+
+    function ciFixCloseWindow(cancelAll) {
+        ciFixStopPlay();
+        var p = $('custom-inst-fix-popup');
+        if (p) { p.classList.remove('active'); p.style.display = 'none'; }
+        if (cancelAll) _ciPending = null;
+    }
+
+    function ciFixDrawWave() {
+        var cv = $('ci-fix-wave');
+        if (!cv || !_ciPending || !_ciPending.origBuffer) return;
+        if (window.WebNBSFixUtils) WebNBSFixUtils.drawWaveform(cv, _ciPending.origBuffer, '#4aa3ff');
+    }
+
+    function ciFixRunDetect() {
+        if (!_ciPending || !_ciPending.origBuffer || !window.WebNBSFixUtils) return;
+        if (_ciFix && _ciFix.busy) return;
+        _ciFix = _ciFix || {};
+        _ciFix.busy = true;
+        var detEl = $('ci-fix-detect');
+        if (detEl) { detEl.className = 'ci-fix-detect'; detEl.textContent = '正在检测音高…'; }
+        var nextBtn = $('custom-inst-fix-next');
+        if (nextBtn) nextBtn.disabled = true;
+        setTimeout(function() {
+            var res = WebNBSFixUtils.detectPitch(_ciPending.origBuffer);
+            _ciFix.busy = false;
+            _ciFix.detected = res;
+            if (res) {
+                _ciFix.baseKey = Math.max(0, Math.min(87, Math.round(res.key)));
+            } else {
+                _ciFix.baseKey = 33;
+            }
+            var semi = $('ci-fix-semi');
+            if (semi) semi.value = 0;
+            var cents2 = $('ci-fix-cents');
+            if (cents2) cents2.value = 0;
+            ciFixSyncUI(res);
+            if (nextBtn) nextBtn.disabled = false;
+        }, 40);
+    }
+
+    function ciFixCurrentDetectedKey() {
+        return (_ciFix && _ciFix.detected) ? _ciFix.detected.key : null;
+    }
+
+    // 半音(+cents)到总变速半音
+    function ciFixTotalSemis() {
+        var semi = parseInt($('ci-fix-semi') ? $('ci-fix-semi').value : 0) || 0;
+        var cents = parseInt($('ci-fix-cents') ? $('ci-fix-cents').value : 0) || 0;
+        var dk = ciFixCurrentDetectedKey();
+        if (dk !== null && dk !== undefined) {
+            var baseInt = Math.round(dk) + semi;
+            return (baseInt - dk) + cents / 100;
+        }
+        return semi + cents / 100;
+    }
+
+    function ciFixBaseKeyNow() {
+        var dk = ciFixCurrentDetectedKey();
+        var semi = parseInt($('ci-fix-semi') ? $('ci-fix-semi').value : 0) || 0;
+        if (dk !== null && dk !== undefined) return Math.max(0, Math.min(87, Math.round(dk) + semi));
+        return 33 + semi;
+    }
+
+    function ciFixFactor() {
+        var s = ciFixTotalSemis();
+        return Math.pow(2, s / 12);
+    }
+
+    function ciFixSyncUI(detectedOverride) {
+        var det = detectedOverride !== undefined ? detectedOverride : (_ciFix ? _ciFix.detected : null);
+        var detEl = $('ci-fix-detect');
+        var semiVal = $('ci-fix-semi-val'), centsVal = $('ci-fix-cents-val'), baseEl = $('ci-fix-base');
+        var semi = parseInt($('ci-fix-semi') ? $('ci-fix-semi').value : 0) || 0;
+        var cents = parseInt($('ci-fix-cents') ? $('ci-fix-cents').value : 0) || 0;
+        if (semiVal) semiVal.textContent = (semi > 0 ? '+' : '') + semi;
+        if (centsVal) centsVal.textContent = (cents > 0 ? '+' : '') + cents + '¢';
+        var U = window.WebNBSFixUtils;
+        if (baseEl) baseEl.textContent = U ? U.keyLabel(ciFixBaseKeyNow()) : String(ciFixBaseKeyNow());
+        if (detEl) {
+            if (det && det.key !== null && det.key !== undefined) {
+                var centsText = Math.round(det.cents) > 0 ? '+' + Math.round(det.cents) + '¢' : (Math.round(det.cents) < 0 ? Math.round(det.cents) + '¢' : '0¢');
+                detEl.className = 'ci-fix-detect';
+                detEl.textContent = '检测音高: ' + (U ? U.keyLabel(det.key) : '--') + ' · ' + det.hz.toFixed(1) + ' Hz (' + centsText + ')';
+            } else {
+                detEl.className = 'ci-fix-detect muted';
+                detEl.textContent = '未能检测到稳定音高（可能非单音或过短）。可手动用下方滑块设定，或换一段更清晰的单音采样。';
+            }
+        }
+        // 提示信息
+        var exp = $('ci-fix-explain');
+        if (exp) {
+            var factor = ciFixFactor();
+            exp.textContent = '当前修正倍率 ×' + factor.toFixed(4) + '。可点「试听」对比修正效果；满意后点下一步。';
+        }
+    }
+
+    function ciFixAuto() {
+        var dk = ciFixCurrentDetectedKey();
+        var semi = parseInt($('ci-fix-semi') ? $('ci-fix-semi').value : 0) || 0;
+        if (dk === null || dk === undefined) {
+            // 无检测: 把半音滑块归零
+            var s2 = $('ci-fix-semi');
+            if (s2) s2.value = 0;
+        } else {
+            var baseInt = Math.round(dk);
+            var cents = Math.round((dk - baseInt) * 100); // 归零检测偏差所需音分
+            var cEl = $('ci-fix-cents');
+            if (cEl) cEl.value = cents;
+        }
+        ciFixSyncUI();
+        ciFixAutoPreview();
+    }
+
+    // 自动试听修正结果 (每次滑块变化/自动调整后调用)
+    function ciFixAutoPreview() {
+        ciFixPlayToggle(true);
+    }
+
+    function ciFixPlayToggle(forcePlay) {
+        var wasPlaying = _ciFixPlay && _ciFixPlay.playing;
+        if (forcePlay && wasPlaying) return;
+        if (wasPlaying) {
+            ciFixStopPlay();
+            return;
+        }
+        ciFixStartPlay();
+    }
+
+    function ciFixStartPlay() {
+        if (!_ciPending || !_ciPending.origBuffer) return;
+        var ctx = (window.AudioEngine && AudioEngine.getContext) ? AudioEngine.getContext() : null;
+        if (!ctx) return;
+        if (ctx.state === 'suspended') { ctx.resume(); }
+        ciFixStopPlay();
+        var factor = ciFixFactor();
+        var src = ctx.createBufferSource();
+        src.buffer = _ciPending.origBuffer;
+        src.playbackRate.value = factor;
+        var g = ctx.createGain();
+        g.gain.value = 0.75;
+        var mon = { stop: function() {}, playing: false };
+        var monCanvas = $('ci-fix-monitor');
+        if (window.WebNBSFixUtils && monCanvas) {
+            var analyser = ctx.createAnalyser();
+            analyser.fftSize = 2048;
+            src.connect(analyser);
+            analyser.connect(g);
+            g.connect(ctx.destination);
+            mon = WebNBSFixUtils.startMonitor(monCanvas, analyser, ctx, '#4aa3ff');
+        } else {
+            src.connect(g);
+            g.connect(ctx.destination);
+        }
+        src.start();
+        var live = $('ci-fix-live');
+        var U = window.WebNBSFixUtils;
+        if (live) live.textContent = '播放修正后采样 · 倍率 ×' + factor.toFixed(4) + ' · 输出基准 ' + (U ? U.keyLabel(ciFixBaseKeyNow()) : '--');
+        var playBtn = $('ci-fix-play');
+        if (playBtn) playBtn.textContent = '■ 停止';
+        _ciFixPlay = {
+            playing: true,
+            stop: function() {
+                mon.stop();
+                try { src.stop(); } catch (e) {}
+                try { src.disconnect(); } catch (e2) {}
+                try { g.disconnect(); } catch (e3) {}
+                if (playBtn) playBtn.textContent = '▶ 试听';
+                if (live) live.textContent = '实时监视: 播放时显示波形与频率';
+            }
+        };
+        src.onended = function() {
+            if (_ciFixPlay) {
+                var pb = _ciFixPlay;
+                _ciFixPlay = null;
+                pb.stop();
+            }
+        };
+    }
+
+    function ciFixStopPlay() {
+        if (_ciFixPlay) {
+            var pb = _ciFixPlay;
+            _ciFixPlay = null;
+            try { pb.stop(); } catch (e) {}
+        }
+    }
+
+    // 下一步: 变速重渲染为 WAV -> 进入"设置音色信息"
+    function ciFixNext() {
+        if (!_ciPending || !_ciPending.origBuffer) return;
+        var nextBtn = $('custom-inst-fix-next');
+        if (nextBtn) nextBtn.disabled = true;
+        var factor = ciFixFactor();
+        var baseKey = ciFixBaseKeyNow();
+        var U = window.WebNBSFixUtils;
+        var renderP = (Math.abs(factor - 1) < 1e-6)
+            ? Promise.resolve(_ciPending.origBuffer)
+            : U.renderShift(_ciPending.origBuffer, factor);
+        renderP.then(function(newBuf) {
+            var blob = U.encodeWav16(newBuf);
+            _ciPending.blob = blob;
+            _ciPending.buffer = newBuf;
+            _ciPending.baseKey = baseKey;
+            ciFixCloseWindow(false);
+            ciOpenInfoAfterFix();
+        }).catch(function() {
+            showAppAlert('变速渲染失败，请重试', {title: '音频修正'});
+            if (nextBtn) nextBtn.disabled = false;
+        });
+    }
+
+    // 打开"设置音色信息"
+    function ciOpenInfoAfterFix() {
+        if (!_ciPending) return;
+        var file = _ciPending.origBlob || {};
+        var src = $('custom-inst-info-source');
+        var name = _ciPending.originalName || file.name || 'audio';
+        if (src) {
+            var mb = ((file.size || 0) / (1024 * 1024)).toFixed(2);
+            src.textContent = '来源文件: ' + name + ' (' + mb + ' MB) · 已按修正结果转换';
+        }
+        var nameEl = $('custom-inst-name');
+        if (nameEl) {
+            var base = name.replace(/\.[^.]+$/, '');
+            nameEl.value = (window.CustomInstruments) ? CustomInstruments.sanitizeName(base) : base;
+        }
+        var errEl = $('custom-inst-name-err');
+        if (errEl) errEl.style.display = 'none';
+        var U = window.WebNBSFixUtils;
+        var pitchHint = $('custom-inst-pitch-hint');
+        if (pitchHint) pitchHint.textContent = (_ciPending.baseKey || 33) + ' (' + (U ? U.keyLabel(_ciPending.baseKey || 33) : '') + ')';
+        ciRenderColorPicker(CI_PRESET_COLORS[4] || '#4aa3ff');
+        ciInitColorPickerEvents();
+        ciValidateImportName();
+        var p = $('custom-inst-info-popup');
+        if (p) {
+            p.classList.add('active');
+            p.style.display = 'flex';
+        }
+    }
+
+    function ciCloseImportInfo(cancelAll) {
+        var p = $('custom-inst-info-popup');
+        if (!p) return;
+        ciFixStopPlay();
+        p.classList.remove('active');
+        p.style.display = 'none';
+        var fx = $('custom-inst-fix-popup');
+        if (fx && fx.classList.contains('active')) { fx.classList.remove('active'); fx.style.display = 'none'; }
+        if (cancelAll !== false) _ciPending = null;
+    }
+
+    // info 弹窗"上一步" -> 回到修正窗口 (基于原始未修正音频)
+    function ciBackToFix() {
+        if (!_ciPending || !_ciPending.origBuffer) return;
+        var p = $('custom-inst-info-popup');
+        if (p) { p.classList.remove('active'); p.style.display = 'none'; }
+        var fx = $('custom-inst-fix-popup');
+        if (fx) {
+            fx.classList.add('active');
+            fx.style.display = 'flex';
+        }
+        ciFixDrawWave();
+        ciFixRunDetect();
+    }
+
+    // 当前选中的颜色 (RGB 调色盘)
+    var _ciSelectedColor = '#4aa3ff';
+
+    function ciRenderColorPicker(selected) {
+        _ciSelectedColor = selected || '#4aa3ff';
+        ciUpdateColorUI();
+        // 渲染预设色块
+        var presetsEl = $('ci-rgb-presets');
+        if (presetsEl) {
+            var html = '';
+            for (var i = 0; i < CI_PRESET_COLORS.length; i++) {
+                var c = CI_PRESET_COLORS[i];
+                html += '<button type="button" class="ci-rgb-preset" data-ci-color="' + c + '" style="background:' + c + ';" title="' + c + '"></button>';
+            }
+            presetsEl.innerHTML = html;
+        }
+    }
+
+    function ciHexToRgb(hex) {
+        var m = /^#([0-9a-f]{6})$/i.exec(hex || '');
+        if (!m) return null;
+        var n = parseInt(m[1], 16);
+        return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+    }
+
+    function ciRgbToHex(r, g, b) {
+        return '#' + [r, g, b].map(function(v) {
+            v = Math.max(0, Math.min(255, Math.round(v)));
+            return ('0' + v.toString(16)).slice(-2);
+        }).join('');
+    }
+
+    function ciUpdateColorUI() {
+        var rgb = ciHexToRgb(_ciSelectedColor) || { r: 74, g: 163, b: 255 };
+        var sr = $('ci-slider-r'), sg = $('ci-slider-g'), sb = $('ci-slider-b');
+        if (sr) sr.value = rgb.r;
+        if (sg) sg.value = rgb.g;
+        if (sb) sb.value = rgb.b;
+        var vr = $('ci-val-r'), vg = $('ci-val-g'), vb = $('ci-val-b');
+        if (vr) vr.textContent = rgb.r;
+        if (vg) vg.textContent = rgb.g;
+        if (vb) vb.textContent = rgb.b;
+        var preview = $('ci-rgb-preview');
+        if (preview) preview.style.background = _ciSelectedColor;
+        var hexInp = $('ci-hex-input');
+        if (hexInp && document.activeElement !== hexInp) hexInp.value = _ciSelectedColor;
+    }
+
+    function ciInitColorPickerEvents() {
+        var container = $('custom-inst-colors');
+        if (!container || container._ciBound) return;
+        container._ciBound = true;
+        container.addEventListener('input', function(e) {
+            var t = e.target;
+            if (t.id === 'ci-slider-r' || t.id === 'ci-slider-g' || t.id === 'ci-slider-b') {
+                var r = parseInt($('ci-slider-r').value, 10);
+                var g = parseInt($('ci-slider-g').value, 10);
+                var b = parseInt($('ci-slider-b').value, 10);
+                _ciSelectedColor = ciRgbToHex(r, g, b);
+                ciUpdateColorUI();
+            }
+        });
+        var hexInp = $('ci-hex-input');
+        if (hexInp) {
+            hexInp.addEventListener('input', function() {
+                var v = hexInp.value.trim();
+                if (/^#[0-9a-f]{6}$/i.test(v)) {
+                    _ciSelectedColor = v.toLowerCase();
+                    ciUpdateColorUI();
+                }
+            });
+            hexInp.addEventListener('blur', function() {
+                // 无效输入恢复到当前色
+                hexInp.value = _ciSelectedColor;
+            });
+        }
+        var presetsEl = $('ci-rgb-presets');
+        if (presetsEl) {
+            presetsEl.addEventListener('click', function(e) {
+                var sw = e.target.closest ? e.target.closest('.ci-rgb-preset') : null;
+                if (!sw) return;
+                _ciSelectedColor = sw.getAttribute('data-ci-color') || '#4aa3ff';
+                ciUpdateColorUI();
+            });
+        }
+    }
+
+    function ciValidateImportName() {
+        var nameEl = $('custom-inst-name');
+        var errEl = $('custom-inst-name-err');
+        var okBtn = $('custom-inst-info-ok');
+        var v = nameEl ? (nameEl.value || '').trim() : '';
+        var valid = !!v && (!window.CustomInstruments || CustomInstruments.isNameAvailable(v));
+        if (okBtn) okBtn.disabled = !valid;
+        if (errEl) {
+            if (!v) {
+                errEl.textContent = '请输入名称';
+                errEl.style.display = 'none';
+            } else if (!valid) {
+                errEl.textContent = '该名称已存在（不能与内置及已有自定义音色重复）';
+                errEl.style.display = 'block';
+            } else {
+                errEl.style.display = 'none';
+            }
+        }
+    }
+
+    // 试听修正后的候选音色 (key 为目标绝对 NBS key, 相对 baseKey 变速)
+    function ciPreviewImport(key) {
+        if (!_ciPending || !_ciPending.blob) return;
+        var ctx = (window.AudioEngine && AudioEngine.getContext) ? AudioEngine.getContext() : null;
+        if (!ctx) return;
+        var baseKey = (_ciPending && _ciPending.baseKey) ? _ciPending.baseKey : 33;
+        var done = function(buffer) {
+            var rate = Math.pow(2, (key - baseKey) / 12);
+            var src = ctx.createBufferSource();
+            src.buffer = buffer;
+            src.playbackRate.value = rate;
+            var g = ctx.createGain();
+            g.gain.value = 0.6;
+            src.connect(g);
+            g.connect(ctx.destination);
+            src.start();
+        };
+        if (_ciPending.buffer) {
+            done(_ciPending.buffer);
+        } else {
+            _ciPending.blob.arrayBuffer().then(function(ab) {
+                return ctx.decodeAudioData(ab);
+            }).then(function(buf) {
+                _ciPending.buffer = buf;
+                done(buf);
+            }).catch(function() {
+                showAppAlert('无法解码该音频文件，请尝试其它格式', {title: '导入音色'});
+            });
+        }
+    }
+
+    function ciConfirmImport() {
+        var nameEl = $('custom-inst-name');
+        if (!nameEl || !_ciPending) return;
+        var v = (nameEl.value || '').trim();
+        if (!v) return;
+        if (!CustomInstruments.isNameAvailable(v)) {
+            ciValidateImportName();
+            return;
+        }
+        var color = _ciSelectedColor || '#4aa3ff';
+        var blob = _ciPending.blob;
+        var baseKey = (_ciPending && typeof _ciPending.baseKey === 'number') ? _ciPending.baseKey : 33;
+        var baseName = (_ciPending && _ciPending.originalName) ? _ciPending.originalName : v;
+        ciCloseImportInfo();
+        CustomInstruments.add(blob, { name: v, color: color, pitch: baseKey, gain: 100, originalName: baseName }).then(function(item) {
+            renderCustomInstList();
+            CustomInstruments.ensureRegistered(item.id);
+            // 若当前使用默认乐器, 自动切到新音色便于立即体验
+            state.currentInstrument = item.instrument;
+            if (state.pianoRoll) state.pianoRoll.setInstrument(item.instrument);
+            updateInstrumentSelectorUI();
+            showAppAlert('已导入自定义音色「' + item.name + '」，可在乐器选择中选用', {title: '导入音色', icon: 'fa-solid fa-circle-check'});
+        }).catch(function() {
+            showAppAlert('保存失败，请重试', {title: '导入音色'});
+        });
+    }
+
+    // 管理列表操作代理
+    function onCustomInstListClick(e) {
+        var btn = e.target.closest ? e.target.closest('[data-ci-act]') : null;
+        if (!btn) return;
+        var act = btn.getAttribute('data-ci-act');
+        var id = btn.getAttribute('data-ci-id');
+        var item = (window.CustomInstruments) ? CustomInstruments.getById(id) : null;
+        if (!item) return;
+        if (act === 'play') {
+            ciPlayItem(id, 0);
+        } else if (act === 'rename') {
+            showAppPrompt('输入新的音色名称:', item.name, {title: '重命名', placeholder: '音色名称'}).then(function(newName) {
+                if (!newName) return;
+                newName = CustomInstruments.sanitizeName(newName);
+                if (!newName) return;
+                if (!CustomInstruments.isNameAvailable(newName)) {
+                    showAppAlert('该名称已存在，请换一个', {title: '重命名'});
+                    return;
+                }
+                CustomInstruments.update(id, { name: newName });
+                renderCustomInstList();
+                if (state.currentInstrument === item.instrument) updateInstrumentSelectorUI();
+            });
+        } else if (act === 'recolor') {
+            var colInp = document.createElement('input');
+            colInp.type = 'color';
+            colInp.value = item.color || '#4aa3ff';
+            colInp.onchange = function() {
+                var val = colInp.value;
+                CustomInstruments.update(id, { color: val });
+                renderCustomInstList();
+                if (state.currentInstrument === item.instrument) updateInstrumentSelectorUI();
+            };
+            colInp.click();
+        } else if (act === 'delete') {
+            showAppConfirm('确定删除自定义音色「' + item.name + '」吗？\n引用该音色的 NBS 文件中对应乐器将静音。', {title: '删除音色', icon: 'fa-solid fa-triangle-exclamation'}).then(function(ok) {
+                if (!ok) return;
+                CustomInstruments.remove(id).then(function() {
+                    renderCustomInstList();
+                    if (state.currentInstrument === item.instrument) {
+                        state.currentInstrument = 0;
+                        if (state.pianoRoll) state.pianoRoll.setInstrument(0);
+                        updateInstrumentSelectorUI();
+                    }
+                });
+            });
+        }
+    }
+
+    function initCustomInstrumentsUI() {
+        var btn = $('btn-custom-instruments');
+        if (btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                toggleCustomInstPopup();
+            });
+        }
+        var listEl = $('custom-inst-list');
+        if (listEl) listEl.addEventListener('click', onCustomInstListClick);
+        var imp = $('custom-inst-import');
+        if (imp) imp.addEventListener('click', ciStartImport);
+        var fileInp = $('ci-file-input');
+        if (fileInp) {
+            fileInp.addEventListener('change', function() {
+                var f = fileInp.files && fileInp.files[0];
+                if (!f) return;
+                ciBeginImportFlow(f);
+            });
+        }
+        // 音色备份: 导出 / 导入
+        var ciBackupExport = $('ci-backup-export');
+        if (ciBackupExport) ciBackupExport.addEventListener('click', exportInstrumentBackup);
+        var ciBackupImport = $('ci-backup-import');
+        var ciBackupFile = $('ci-backup-file-input');
+        if (ciBackupImport && ciBackupFile) {
+            ciBackupImport.addEventListener('click', function() { ciBackupFile.click(); });
+        }
+        if (ciBackupFile) {
+            ciBackupFile.addEventListener('change', function() {
+                var f = ciBackupFile.files && ciBackupFile.files[0];
+                if (!f) return;
+                handleZipFile(f);
+                ciBackupFile.value = '';
+            });
+        }
+        var c1 = $('custom-inst-close');
+        if (c1) c1.addEventListener('click', closeCustomInstPopup);
+
+        // 信息设置弹窗
+        var infoX = $('custom-inst-info-close');
+        if (infoX) infoX.addEventListener('click', function() { ciCloseImportInfo(true); });
+        var okBtn = $('custom-inst-info-ok');
+        if (okBtn) okBtn.addEventListener('click', ciConfirmImport);
+        var infoBack = $('custom-inst-info-back');
+        if (infoBack) infoBack.addEventListener('click', ciBackToFix);
+        var nameEl = $('custom-inst-name');
+        if (nameEl) {
+            nameEl.addEventListener('input', ciValidateImportName);
+            nameEl.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); if (!$('custom-inst-info-ok').disabled) ciConfirmImport(); }
+            });
+        }
+        var pv = $('custom-inst-preview'), pvL = $('custom-inst-preview-low'), pvH = $('custom-inst-preview-high');
+        function ciPreviewNow(offset) {
+            var baseKey = (_ciPending && typeof _ciPending.baseKey === 'number') ? _ciPending.baseKey : 33;
+            ciPreviewImport(baseKey + (offset || 0));
+        }
+        if (pv) pv.addEventListener('click', function() { ciPreviewNow(0); });
+        if (pvL) pvL.addEventListener('click', function() { ciPreviewNow(-7); });
+        if (pvH) pvH.addEventListener('click', function() { ciPreviewNow(7); });
+
+        // 修正窗口
+        var fixX = $('custom-inst-fix-close');
+        function ciCancelFix() { ciFixCloseWindow(true); }
+        if (fixX) fixX.addEventListener('click', ciCancelFix);
+        var fixNext = $('custom-inst-fix-next');
+        if (fixNext) fixNext.addEventListener('click', ciFixNext);
+        var fixAuto = $('ci-fix-auto');
+        if (fixAuto) fixAuto.addEventListener('click', ciFixAuto);
+        var fixRedetect = $('ci-fix-redetect');
+        if (fixRedetect) fixRedetect.addEventListener('click', function() {
+            ciFixStopPlay();
+            var semi = $('ci-fix-semi'); if (semi) semi.value = 0;
+            var cents = $('ci-fix-cents'); if (cents) cents.value = 0;
+            ciFixRunDetect();
+        });
+        var fixPlay = $('ci-fix-play');
+        if (fixPlay) fixPlay.addEventListener('click', function() { ciFixPlayToggle(false); });
+        // 滑块: 拖动后即时刷新 + 自动试听 (松手后)
+        var semiRange = $('ci-fix-semi'), centsRange = $('ci-fix-cents');
+        var fixAutoTimer = null;
+        function ciFixSliderChanged() {
+            ciFixSyncUI();
+            if (fixAutoTimer) clearTimeout(fixAutoTimer);
+            fixAutoTimer = setTimeout(function() { ciFixAutoPreview(); }, 400);
+        }
+        if (semiRange) semiRange.addEventListener('input', ciFixSliderChanged);
+        if (centsRange) centsRange.addEventListener('input', ciFixSliderChanged);
+    }
+
     // ============ 乐器选择器 ============
     function createInstrumentSelectorDOM() {
         var btn = $('btn-instrument-selector');
@@ -5597,12 +6686,16 @@
             var btns = win.querySelectorAll('button');
             for (var b = 0; b < btns.length; b++) {
                 var bIdx = parseInt(btns[b].getAttribute('data-idx'));
+                var cColor = btns[b].getAttribute('data-custom-color');
                 if (bIdx === state.currentInstrument) {
-                    btns[b].style.background = 'var(--ctrl-fill-pressed)';
+                    // 自定义音色选中时保留其纯色图标, 仅用边框/亮度标记选中态
+                    btns[b].style.background = cColor || 'var(--ctrl-fill-pressed)';
                     btns[b].style.borderColor = 'var(--accent)';
+                    btns[b].style.filter = 'brightness(1.12)';
                 } else {
-                    btns[b].style.background = 'var(--ctrl-fill-default)';
-                    btns[b].style.borderColor = 'var(--ctrl-stroke-default)';
+                    btns[b].style.background = cColor || 'var(--ctrl-fill-default)';
+                    btns[b].style.borderColor = cColor ? 'rgba(255,255,255,0.28)' : 'var(--ctrl-stroke-default)';
+                    btns[b].style.filter = '';
                 }
             }
         }
@@ -5635,6 +6728,44 @@
                 });
                 win.appendChild(btn);
             })(i);
+        }
+
+        // 自定义音色区段
+        var customs = (window.CustomInstruments) ? CustomInstruments.list() : [];
+        if (customs.length > 0) {
+            var sep = document.createElement('div');
+            sep.style.cssText = 'grid-column:1/-1;height:1px;background:rgba(255,255,255,0.12);margin:2px 0;';
+            win.appendChild(sep);
+            for (var c = 0; c < customs.length; c++) {
+                (function(citem) {
+                    var cBtn = document.createElement('button');
+                    cBtn.setAttribute('data-idx', citem.instrument);
+                    cBtn.setAttribute('data-custom-color', citem.color || '#4aa3ff');
+                    cBtn.style.cssText = 'width:36px;height:36px;padding:2px;background:' + citem.color + ';border:1px solid ' + (state.currentInstrument === citem.instrument ? 'var(--accent)' : 'rgba(255,255,255,0.35)') + ';border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background 0.12s,border-color 0.12s;box-sizing:border-box;';
+                    cBtn.title = citem.name;
+                    cBtn.addEventListener('mouseenter', function() {
+                        cBtn.style.filter = 'brightness(1.18)';
+                        cBtn.style.borderColor = 'var(--accent)';
+                    });
+                    cBtn.addEventListener('mouseleave', function() {
+                        cBtn.style.filter = '';
+                        if (state.currentInstrument !== citem.instrument) {
+                            cBtn.style.borderColor = 'rgba(255,255,255,0.35)';
+                        } else {
+                            cBtn.style.borderColor = 'var(--accent)';
+                        }
+                    });
+                    cBtn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        state.currentInstrument = citem.instrument;
+                        if (state.pianoRoll) state.pianoRoll.setInstrument(citem.instrument);
+                        updateInstrumentSelectorUI();
+                        updateButtonHighlight();
+                        markDirty();
+                    });
+                    win.appendChild(cBtn);
+                })(customs[c]);
+            }
         }
 
         document.body.appendChild(win);
@@ -5690,6 +6821,21 @@
             html += '<span>' + names[i] + '</span>';
             html += '</div>';
         }
+
+        // 自定义音色区段
+        var citems = (window.CustomInstruments) ? CustomInstruments.list() : [];
+        if (citems.length > 0) {
+            html += '<div style="height:1px;background:rgba(255,255,255,0.1);margin:6px 12px;"></div>';
+            for (var ci = 0; ci < citems.length; ci++) {
+                var c = citems[ci];
+                var cSel = (c.instrument === state.currentInstrument) ? ' ctx-selected' : '';
+                var escName = String(c.name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                html += '<div class="ctx-item inst-popup-item' + cSel + '" data-instrument="' + c.instrument + '" style="padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;">';
+                html += '<span style="display:inline-block;width:24px;height:24px;flex-shrink:0;border-radius:3px;background:' + (c.color || '#4aa3ff') + ';box-shadow:inset 0 0 0 1px rgba(0,0,0,0.2);"></span>';
+                html += '<span>' + escName + '</span>';
+                html += '</div>';
+            }
+        }
         popup.innerHTML = html;
 
         var items = popup.querySelectorAll('.inst-popup-item');
@@ -5711,15 +6857,31 @@
     function updateInstrumentSelectorUI() {
         var names = getInstrumentNames();
         var colors = (window.NOTE_COLORS && window.NOTE_COLORS.length >= 20) ? window.NOTE_COLORS : ['#d4a96a','#8b5a2b','#c84b3c','#f0e68c','#dcdcdc','#6b8e23','#87ceeb','#fffacd','#fff0f5','#ffb6c1','#b0c4de','#daa520','#cd853f','#ffd700','#cd5c5c','#e6e6fa','#c46b3d','#8b6f47','#5c8b5c','#3d7a6b'];
-        var instIdx = state.currentInstrument % 20;
         var dot = $('inst-color-dot');
         var name = $('inst-name-text');
+        var instIdx = state.currentInstrument;
+
+        // 自定义音色 (instrument >= 20): 纯色圆角块 + 自定义名
+        if (instIdx >= 20) {
+            var citem = (window.CustomInstruments) ? CustomInstruments.getByInstrument(instIdx) : null;
+            if (citem) {
+                if (dot) {
+                    dot.innerHTML = '';
+                    dot.classList.remove('instrument-icon-fallback');
+                    dot.style.background = citem.color || '#4aa3ff';
+                }
+                if (name) name.textContent = citem.name;
+                return;
+            }
+        }
+
+        var norm = instIdx % 20;
         if (dot) {
-            var color = colors[instIdx] || '#d4a96a';
+            var color = colors[norm] || '#d4a96a';
             dot.textContent = '';
             dot.classList.remove('instrument-icon-fallback');
             var icon = document.createElement('img');
-            icon.src = '/static/sprites/spr_instrumenticons/inst_' + instIdx + '.png';
+            icon.src = '/static/sprites/spr_instrumenticons/inst_' + norm + '.png';
             icon.alt = '';
             icon.setAttribute('aria-hidden', 'true');
             icon.onerror = function() {
@@ -5729,7 +6891,7 @@
             dot.appendChild(icon);
             dot.style.background = color;
         }
-        if (name) name.textContent = names[instIdx] || i18nText('竖琴');
+        if (name) name.textContent = names[norm] || i18nText('竖琴');
     }
 
     // ============ 轨道面板 ============
@@ -6887,15 +8049,16 @@
         }
         var seen = {};
         var kept = [];
-        var removed = 0;
+        var removed = [];
+        var removedCount = 0;
         for (var i = 0; i < notes.length; i++) {
             var n = notes[i];
             var key = n.tick + ':' + n.instrument + ':' + n.key;
-            if (seen[key]) { removed++; continue; }
+            if (seen[key]) { removedCount++; removed.push(n); continue; }
             seen[key] = true;
             kept.push(n);
         }
-        if (removed === 0) {
+        if (removedCount === 0) {
             // 诊断: 统计"看似重复"但属性不同的情况, 帮助定位原因
             var sameTickKey = 0;   // 同 tick 同 key, 但音色不同
             var sameTickInst = 0;  // 同 tick 同 instrument, 但音调不同
@@ -6917,14 +8080,20 @@
             showAppAlert(msg, {title: '消除重复音符'});
             return;
         }
-        showAppConfirm('将删除 ' + removed + ' 个重复音符（同一时间、音色与音调完全相同的音符只保留一个，忽略音量差异），是否继续？', {title: '消除重复音符', icon: 'fa-solid fa-copy'}).then(function(ok) {
-            if (!ok) return;
+        showAppConfirm('将删除 ' + removedCount + ' 个重复音符，是否继续？', {title: '消除重复音符', icon: 'fa-solid fa-copy', checkbox: {label: '重排序音符', title: '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞', checked: true}}).then(function(res) {
+            if (!res || !res.ok) return;
+            pushUndo(); // 在修改前记录快照, 保证可撤销
+            if (res.checked && typeof window.dedupeReorderNotes === 'function') {
+                window.dedupeReorderNotes(kept, removed);
+            }
             state.pianoRoll.setNotes(kept);
             state.notes = kept;
+            buildNoteIndex(state.notes);
+            updateProgressUI();
+            updateNoteCount();
             state.pianoRoll.render();
             if (typeof renderTrackPanel === 'function') renderTrackPanel();
-            if (typeof state.pushHistory === 'function') state.pushHistory();
-            showAppAlert('已删除 ' + removed + ' 个重复音符', {title: '消除重复音符'});
+            showAppAlert('已删除 ' + removedCount + ' 个重复音符', {title: '消除重复音符'});
         });
     }
 
@@ -6957,6 +8126,8 @@
         showAppConfirm('将删除 ' + removedCount + ' 个空轨 (从 ' + layers.length + ' 减到 ' + nonEmptyLayers.length + ')，是否继续？', {title: '清除空轨', icon: 'fa-solid fa-broom'}).then(function(ok) {
             if (!ok) return;
 
+            pushUndo(); // 在修改前记录快照, 保证可撤销
+
             // 重新映射所有音符的 layer 索引 (压缩到新序号)
             var layerMap = {};
             for (var nl = 0; nl < nonEmptyLayers.length; nl++) {
@@ -6977,11 +8148,13 @@
             state.pianoRoll.setNotes(notes);
             state.pianoRoll.trackCount = newLayers.length;
             state.notes = notes;
+            buildNoteIndex(state.notes);
+            updateProgressUI();
+            updateNoteCount();
             state.pianoRoll.render();
 
             // 更新轨道面板
             if (typeof renderTrackPanel === 'function') renderTrackPanel();
-            if (typeof state.pushHistory === 'function') state.pushHistory();
         });
     }
 
@@ -7813,11 +8986,11 @@
                 + (isOutOfRange
                     ? 'background:#f0d0d0;color:#a33;border:1px solid #d0a0a0;'
                     : 'background:linear-gradient(to bottom,#fcfcfc,#e6e6e6);color:#333;border:1px solid #bbb;');
-            var label = getNbsKeyPitchLabel(key);
+            var label = getNbsKeyDisplayLabel(key);
             keyEl.dataset.pitchLabel = label;
             keyEl.dataset.keyLabel = getKeyboardLabelForNbsKey(key);
             keyEl.textContent = label;
-            keyEl.title = label + octave + (isOutOfRange ? ' (超出范围)' : '');
+            keyEl.title = label + (isOutOfRange ? ' (超出范围)' : '');
             attachPianoKeyEvent(keyboard, keyEl, key);
             innerEl.appendChild(keyEl);
         }
@@ -7846,11 +9019,11 @@
                 + (isOutOfRange2
                     ? 'background:#4a1a1a;color:#e88;border:1px solid #6a2a2a;'
                     : 'background:linear-gradient(to bottom,#3a3a3a,#1a1a1a);color:#ccc;border:1px solid #111;');
-            var label2 = getNbsKeyPitchLabel(key2);
+            var label2 = getNbsKeyDisplayLabel(key2);
             keyEl2.dataset.pitchLabel = label2;
             keyEl2.dataset.keyLabel = getKeyboardLabelForNbsKey(key2);
             keyEl2.textContent = label2;
-            keyEl2.title = label2 + octave2 + (isOutOfRange2 ? ' (超出范围)' : '');
+            keyEl2.title = label2 + (isOutOfRange2 ? ' (超出范围)' : '');
             attachPianoKeyEvent(keyboard, keyEl2, key2);
             innerEl.appendChild(keyEl2);
         }
@@ -8063,6 +9236,23 @@
         }
     }
 
+    // 应用"音调文字显示八度数字"设置: 刷新底部钢琴键盘标签与钢琴卷帘音符标签
+    function applyOctaveLabelSetting(enabled, rerender) {
+        var kb = $('piano-keyboard');
+        if (kb) {
+            var keys = kb.querySelectorAll('.piano-key');
+            for (var li = 0; li < keys.length; li++) {
+                var lk = parseInt(keys[li].dataset.key);
+                if (!isNaN(lk)) keys[li].dataset.pitchLabel = getNbsKeyDisplayLabel(lk);
+            }
+            updatePianoKeyboardHighlight();
+        }
+        if (state.pianoRoll && state.pianoRoll.setOctaveLabelSetting) {
+            state.pianoRoll.setOctaveLabelSetting(enabled);
+            if (rerender) state.pianoRoll.render();
+        }
+    }
+
     // ============ 文件操作 ============
     // 上传进度弹窗管理
     var _uploadProgressTimer = null;
@@ -8198,6 +9388,12 @@
 
         // 检查文件扩展名，MIDI 文件显示导入弹窗
         var fileName = file.name.toLowerCase();
+        // zip 作品包 / 音色备份 → 走 zip 解析流程
+        if (fileName.endsWith('.zip')) {
+            e.target.value = '';
+            handleZipFile(file);
+            return;
+        }
         if (fileName.endsWith('.mid') || fileName.endsWith('.midi')) {
             state._midiFile = file;
             showMidiPopup();
@@ -8236,57 +9432,67 @@
         }).then(function(data) {
             hideUploadProgress();
             if (!data || !data.song) throw new Error('解析返回空数据');
-
-            state.song = data.song;
-            state.notes = data.song.notes || [];
-            // 保存导入文件名（去掉扩展名）
-            state.importedFileName = file.name.replace(/\.[^.]+$/, '');
-            // NBS 文件没有 MIDI 映射，清除残留的 MIDI 音轨状态
-            state.layerChannelMap = {};
-            _midiTrackStates = {};
-            state._channelTracks = {};
-
-            var loadedTempo = parseFloat(data.song.tempo);
-            if (!isFinite(loadedTempo) || loadedTempo <= 0) loadedTempo = 10;
-            if (loadedTempo > 655) loadedTempo = 655;
-            state.tempo = loadedTempo;
-
-            $setValue('tempo-slider', state.tempo);
-            $('tempo-value').value = state.tempo;
-            $setValue('fls-tempo-input', Math.round(state.tempo));
-            $setValue('settings-tempo-slider', Math.max(5, Math.min(655, state.tempo)));
-            $setValue('settings-tempo-input', state.tempo);
-            $setText('settings-tempo-value', (state.tempo).toFixed(1));
-
-            buildNoteIndex(state.notes);
-            state.undoStack = [];
-            state.redoStack = [];
-            updateUndoRedoButtons();
-
-            if (state.flsEnabled && state.flsModel) {
-                state.flsModel = new FLS.Model();
-                state.flsModel.loadFromFlatNotes(state.notes, state.tempo);
-                state.flsPlaylist = null;
-                state.flsTrackPanel = null;
-                state.flsPianoRoll = null;
-                enterFLSModeFromLoaded();
-            } else if (state.pianoRoll) {
-                state.pianoRoll._setupCanvas();
-                state.pianoRoll.setNotes(state.notes);
-            }
-
-            updateSongInfo();
-            checkOctaveRange(state.notes);
-            // 切换文件时重置轨道状态, 再根据 NBS 文件中的 lock 字段初始化
-            state.tracks = [];
-            updateTrackPanelUI();
-            handleStop();
-            markDirty();
-            e.target.value = '';
+            // 缺失自定义音色处理: 可选择替换后继续加载, 或稍后导入取消本次加载
+            return resolveMissingCustomInstruments(data.song).then(function(proceed) {
+                if (!proceed) { e.target.value = ''; return; }
+                applyLoadedSongData(data, file, e.target);
+            });
         }).catch(function(err) {
             hideUploadProgress();
             showAppAlert('加载失败: ' + formatError(err, '无法加载文件'), {title: '加载失败', icon: 'fa-solid fa-triangle-exclamation'});
         });
+    }
+
+    // 应用解析出的 NBS 歌曲数据到编辑器 (resolveMissingCustomInstruments 通过后调用)
+    function applyLoadedSongData(data, file, inputEl) {
+        if (!data || !data.song) return;
+        var song = data.song;
+        state.song = song;
+        state.notes = song.notes || [];
+        // 保存导入文件名（去掉扩展名）
+        state.importedFileName = file.name.replace(/\.[^.]+$/, '');
+        // NBS 文件没有 MIDI 映射，清除残留的 MIDI 音轨状态
+        state.layerChannelMap = {};
+        _midiTrackStates = {};
+        state._channelTracks = {};
+
+        var loadedTempo = parseFloat(song.tempo);
+        if (!isFinite(loadedTempo) || loadedTempo <= 0) loadedTempo = 10;
+        if (loadedTempo > 655) loadedTempo = 655;
+        state.tempo = loadedTempo;
+
+        $setValue('tempo-slider', state.tempo);
+        $('tempo-value').value = state.tempo;
+        $setValue('fls-tempo-input', Math.round(state.tempo));
+        $setValue('settings-tempo-slider', Math.max(5, Math.min(655, state.tempo)));
+        $setValue('settings-tempo-input', state.tempo);
+        $setText('settings-tempo-value', (state.tempo).toFixed(1));
+
+        buildNoteIndex(state.notes);
+        state.undoStack = [];
+        state.redoStack = [];
+        updateUndoRedoButtons();
+
+        if (state.flsEnabled && state.flsModel) {
+            state.flsModel = new FLS.Model();
+            state.flsModel.loadFromFlatNotes(state.notes, state.tempo);
+            state.flsPlaylist = null;
+            state.flsTrackPanel = null;
+            state.flsPianoRoll = null;
+            enterFLSModeFromLoaded();
+        } else if (state.pianoRoll) {
+            state.pianoRoll._setupCanvas();
+            state.pianoRoll.setNotes(state.notes);
+        }
+
+        updateSongInfo();
+        checkOctaveRange(state.notes);
+        // 切换文件时重置轨道状态, 再根据 NBS 文件中的 lock 字段初始化
+        state.tracks = [];
+        updateTrackPanelUI();
+        handleStop();
+        markDirty();
+        inputEl.value = '';
     }
 
     function handleSave() {
@@ -9876,6 +11082,14 @@
         updateSustainTracksUI();
         updateSnapGridInfo();
 
+        // 去重/重排序依赖关系: 未勾选"消除重复音符"时禁用"重排序音符"
+        var _dupChkBinder = $('midi-dedupe-notes');
+        if (_dupChkBinder && !_dupChkBinder.dataset.reorderBinder) {
+            _dupChkBinder.dataset.reorderBinder = '1';
+            _dupChkBinder.addEventListener('change', updateMidiDedupeReorderUI);
+        }
+        updateMidiDedupeReorderUI();
+
         // 关键修复: 通道行构建完成后, 必须重新应用当前音域处理模式
         // 否则 updateChannelOctaveForMode 不会被执行, 通道行会停留在默认值,
         // 导致导入时八度偏移错误 (间歇性BUG的根因)
@@ -10380,6 +11594,17 @@
         btn.style.display = isSustain ? 'inline-flex' : 'none';
         count.style.display = isSustain ? 'inline' : 'none';
         count.textContent = '已选择 ' + _sustainTrackIndices.length + ' 个轨道';
+    }
+
+    // MIDI 导入: "重排序音符"依赖"消除重复音符", 未勾选去重时自动禁用
+    function updateMidiDedupeReorderUI() {
+        var dupChk = $('midi-dedupe-notes');
+        var reChk = $('midi-dedupe-reorder');
+        if (!dupChk || !reChk || !reChk.closest) return;
+        var enabled = dupChk.checked;
+        reChk.disabled = !enabled;
+        var wrap = reChk.closest('label');
+        if (wrap) wrap.style.opacity = enabled ? '1' : '0.45';
     }
 
     // 转义 HTML 文本，避免弹窗中轨道名称出现注入
@@ -13081,6 +14306,7 @@ function buildTimbreFittingRows(info) {
             precision: $('midi-precision') ? parseInt($('midi-precision').value) : 1,
             keep_note_length: $('midi-keep-note-length') ? $('midi-keep-note-length').value : 'none',
             dedupe_notes: $('midi-dedupe-notes') ? $('midi-dedupe-notes').checked : false,
+            dedupe_reorder: ($('midi-dedupe-notes') && $('midi-dedupe-notes').checked && $('midi-dedupe-reorder')) ? $('midi-dedupe-reorder').checked : false,
             sustain_tracks: _sustainTrackIndices.slice(),
             snap_enabled: $('midi-snap-enabled') ? $('midi-snap-enabled').checked : false,
             snap_beat: $('midi-snap-beat') ? parseInt($('midi-snap-beat').value) : 4,
@@ -13156,6 +14382,7 @@ function buildTimbreFittingRows(info) {
                     precision: settings.precision,
                     keep_note_length: settings.keep_note_length,
                     dedupe_notes: settings.dedupe_notes,
+                    dedupe_reorder: settings.dedupe_reorder,
                     sustain_track_indices: (settings.sustain_tracks || []).slice(),
                     snap_enabled: settings.snap_enabled,
                     snap_beat: settings.snap_beat,
@@ -13199,6 +14426,7 @@ function buildTimbreFittingRows(info) {
                 if (saved.precision !== undefined && $('midi-precision')) $('midi-precision').value = saved.precision;
                 if (saved.keep_note_length !== undefined && $('midi-keep-note-length')) $('midi-keep-note-length').value = saved.keep_note_length;
                 if (saved.dedupe_notes !== undefined && $('midi-dedupe-notes')) $('midi-dedupe-notes').checked = saved.dedupe_notes;
+                if (saved.dedupe_reorder !== undefined && $('midi-dedupe-reorder')) $('midi-dedupe-reorder').checked = saved.dedupe_reorder;
                 if (Array.isArray(saved.sustain_track_indices)) {
                     _sustainTrackIndices = saved.sustain_track_indices.slice();
                 }
@@ -13568,12 +14796,19 @@ function buildTimbreFittingRows(info) {
         item1.addEventListener('click', function() { hideFileMenu(); saveFileToLocalStorage(); });
         menu.appendChild(item1);
 
-        // 导出
+        // 导出 NBS
         var item2 = document.createElement('div');
         item2.className = 'file-menu-item';
         item2.innerHTML = '<i class="fa-solid fa-file-export"></i><span>' + t('导出 NBS') + '</span>';
         item2.addEventListener('click', function() { hideFileMenu(); exportNBS(); });
         menu.appendChild(item2);
+
+        // 导出为音频 (MP3/WAV + 音效风格)
+        var itemAudio = document.createElement('div');
+        itemAudio.className = 'file-menu-item';
+        itemAudio.innerHTML = '<i class="fa-solid fa-music"></i><span>' + t('导出为音频') + '</span>';
+        itemAudio.addEventListener('click', function() { hideFileMenu(); showAudioExportDialog(); });
+        menu.appendChild(itemAudio);
         
         // 分隔线
         var divider = document.createElement('div');
@@ -13935,13 +15170,203 @@ function buildTimbreFittingRows(info) {
         if (state.flsEnabled && state.flsModel) syncNotesFromFLS(true);
         if (!state.song || !state.notes) { showAppAlert('没有可导出的歌曲', {title: '导出', icon: 'fa-solid fa-triangle-exclamation'}); return; }
 
+        // 收集作品使用到的自定义音色 (instrument >= 20)
+        var usedNos = [];
+        var seenNo = {};
+        for (var ci = 0; ci < state.notes.length; ci++) {
+            var no = state.notes[ci].instrument;
+            if (no >= 20 && !seenNo[no]) { seenNo[no] = true; usedNos.push(no); }
+        }
+        usedNos.sort(function(a, b) { return a - b; });
+
         // 弹窗获取文件名 / 作者 / 介绍
+        // 使用自定义音色时, 弹窗内会警告并提供「作品包(zip)」选项统一下发处理
         var defaultName = state.importedFileName || (state.song.name || state.song.song_name || 'Untitled');
         var defaultAuthor = state.song.author || state.song.original_author || '';
         var defaultDesc = state.song.description || '';
-        showExportDialog(defaultName, defaultAuthor, defaultDesc).then(function(input) {
+        var dialogOpts = usedNos.length ? { customInstruments: usedNos } : {};
+        showExportDialog(defaultName, defaultAuthor, defaultDesc, dialogOpts).then(function(input) {
             if (!input) return; // 用户取消
-            _performExport(input);
+            if (input.packageZip) {
+                _performZipExport(input, usedNos);
+            } else {
+                _performExport(input);
+            }
+        });
+    }
+
+    // ============ 作品包 zip (M5) / 音色备份 ============
+    function _ciIsZipAvailable() {
+        return typeof window.JSZip !== 'undefined';
+    }
+
+    function dlBlob(blob, filename) {
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function() {
+            if (a.parentNode) a.parentNode.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 5000);
+    }
+
+    // 从 Blob type / 源文件名推断音频扩展名 (zip 内文件名)
+    function guessAudioExt(blob, originalName) {
+        var mime = (blob && blob.type) ? blob.type.toLowerCase() : '';
+        var ext = '';
+        if (mime.indexOf('mpeg') >= 0 || mime.indexOf('/mp3') >= 0) ext = '.mp3';
+        else if (mime.indexOf('wav') >= 0 || mime.indexOf('wave') >= 0) ext = '.wav';
+        else if (mime.indexOf('ogg') >= 0) ext = '.ogg';
+        else if (mime.indexOf('flac') >= 0) ext = '.flac';
+        if (!ext && originalName) {
+            var m = /\.([a-z0-9]{2,4})$/i.exec(originalName || '');
+            if (m) ext = '.' + m[1].toLowerCase();
+        }
+        return ext || '.bin';
+    }
+
+    // 组装导出用的歌曲数据 (NBS 与作品包共用): 含 v6 自定义乐器槽位表
+    function buildExportSongData(input) {
+        // 收集作品使用的自定义音色 (instrument >= 20), 构建 v6 槽位表
+        // 槽位 i 对应 instrument = 20+i, 保证 NoteBlockStudio 序号对齐
+        var maxCustomNo = -1;
+        for (var nc = 0; nc < state.notes.length; nc++) {
+            var instNo = state.notes[nc].instrument;
+            if (instNo >= 20 && instNo > maxCustomNo) maxCustomNo = instNo;
+        }
+        var customInstruments = [];
+        if (maxCustomNo >= 20) {
+            var slotCount = maxCustomNo - 20 + 1;
+            var lib = (window.CustomInstruments) ? CustomInstruments.list() : [];
+            var byNo = {};
+            for (var li = 0; li < lib.length; li++) byNo[lib[li].instrument] = lib[li];
+            for (var s = 0; s < slotCount; s++) {
+                var instNumber = 20 + s;
+                var def = byNo[instNumber] || null;
+                customInstruments.push(def ? {
+                    instrument: instNumber,
+                    name: def.name,
+                    file: def.file,
+                    sound: def.file,
+                    pitch: def.pitch,
+                    pressKey: 45
+                } : null);
+            }
+        }
+
+        var song = {
+            name: input.name,
+            song_name: input.name,
+            author: input.author,
+            original_author: input.author,
+            description: input.description,
+            tempo: state.tempo,
+            length: state.maxTick + 4,
+            time_signature: (state.song && state.song.time_signature) || 4,
+            auto_save: (state.song && state.song.auto_save) || false,
+            auto_save_minutes: (state.song && state.song.auto_save_minutes) || 0,
+            loop: (state.song && state.song.loop) || 0,
+            max_loop_count: (state.song && state.song.max_loop_count) || 0,
+            loop_start: (state.song && state.song.loop_start) || 0,
+            notes: deepCloneNotes(state.notes),
+            layers: JSON.parse(JSON.stringify((state.song && state.song.layers) || [])),
+            customInstruments: customInstruments
+        };
+
+        // 补全 layers
+        if (!song.layers || song.layers.length === 0) {
+            var maxLayer = 0;
+            for (var i = 0; i < state.notes.length; i++) {
+                if (state.notes[i].layer > maxLayer) maxLayer = state.notes[i].layer;
+            }
+            song.layers = [];
+            for (var l = 0; l <= maxLayer; l++) {
+                song.layers.push({ name: 'Layer ' + (l + 1), volume: 100, stereo: 100, lock: 0 });
+            }
+        }
+
+        // 保存时根据当前轨道状态写入 lock 字段
+        // pynbs 1.0.0-beta.0 仅支持 bool 类型的 lock, 因此只持久化静音(1), 不持久化独奏
+        for (var li2 = 0; li2 < song.layers.length; li2++) {
+            if (song.layers[li2].lock === undefined) song.layers[li2].lock = 0;
+            var t2 = findTrackByLayer(li2);
+            if (t2) {
+                song.layers[li2].lock = t2.muted ? 1 : 0;
+            }
+        }
+        return song;
+    }
+
+    // 收集歌曲用到的自定义音色解码缓冲: {instrumentNo: {buffer, baseKey, gain}}
+    function collectCustomBuffers(notes) {
+        var need = {};
+        for (var i = 0; i < notes.length; i++) {
+            if (notes[i].instrument >= 20) need[notes[i].instrument] = true;
+        }
+        var libByNo = {};
+        (window.CustomInstruments ? CustomInstruments.list() : []).forEach(function(it) {
+            libByNo[it.instrument] = it;
+        });
+        var tasks = Object.keys(need).map(Number).map(function(no) {
+            var it = libByNo[no];
+            if (!it) return Promise.resolve(null);
+            return CustomInstruments.getBlob(it.id).then(function(blob) {
+                if (!blob) return null;
+                var dctx = (window.AudioEngine && AudioEngine.getContext) ? AudioEngine.getContext() : null;
+                if (!dctx) { try { dctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { dctx = null; } }
+                if (!dctx) return null;
+                return blob.arrayBuffer().then(function(ab) { return dctx.decodeAudioData(ab); }).then(function(buf) {
+                    return [no, {
+                        buffer: buf,
+                        baseKey: (typeof it.pitch === 'number') ? it.pitch : 33,
+                        gain: (typeof it.gain === 'number') ? it.gain : 100
+                    }];
+                });
+            }).catch(function() { return null; });
+        });
+        return Promise.all(tasks).then(function(arr) {
+            var map = {};
+            arr.forEach(function(e) { if (e) map[e[0]] = e[1]; });
+            return map;
+        });
+    }
+
+    // 离线渲染整首歌并编码为 MP3/WAV; 返回 Promise<{blob, filename}>
+    // opts: { name, format: 'mp3'|'wav', kbps, styleId, onProgress(label, percent) }
+    function renderSongToBlob(opts) {
+        var filename = (opts.name || 'song').trim().replace(/\.(nbs|mp3|wav)$/i, '') || 'song';
+        var song = buildExportSongData({
+            name: filename,
+            author: (state.song && (state.song.author || state.song.original_author)) || '',
+            description: (state.song && state.song.description) || ''
+        });
+        var styleId = (window.AudioRender && AudioRender.STYLES[opts.styleId]) ? opts.styleId : 'dry';
+        return collectCustomBuffers(song.notes || []).then(function(customMap) {
+            if (opts.onProgress) opts.onProgress('渲染中…', 10);
+            return AudioRender.renderSong({
+                notes: song.notes || [],
+                tempo: state.tempo,
+                layers: song.layers || [],
+                style: styleId,
+                customInstruments: customMap,
+                useJsMix: true, // 高速 JS 预混路径 (音符密集时提升 5~10 倍, 效果链等价)
+                onProgress: function(p, label) {
+                    if (opts.onProgress) opts.onProgress(label || '', Math.max(10, p));
+                }
+            });
+        }).then(function(buffer) {
+            if (opts.format === 'wav') {
+                var wavBlob = AudioRender.encodeWav(buffer);
+                return { blob: wavBlob, filename: filename + '.wav' };
+            }
+            if (!window.lamejs) return Promise.reject(new Error('MP3 编码库未加载'));
+            if (opts.onProgress) opts.onProgress('编码 MP3…', 0);
+            return AudioRender.encodeMp3(buffer, opts.kbps || 192).then(function(blob) {
+                return { blob: blob, filename: filename + '.mp3' };
+            });
         });
     }
 
@@ -13949,47 +15374,7 @@ function buildTimbreFittingRows(info) {
         if (_isExporting) return;
         _isExporting = true;
         try {
-            // 深拷贝 song 数据, 避免直接修改 state.song 导致状态不一致
-            var song = {
-                name: input.name,
-                song_name: input.name,
-                author: input.author,
-                original_author: input.author,
-                description: input.description,
-                tempo: state.tempo,
-                length: state.maxTick + 4,
-                time_signature: (state.song && state.song.time_signature) || 4,
-                auto_save: (state.song && state.song.auto_save) || false,
-                auto_save_minutes: (state.song && state.song.auto_save_minutes) || 0,
-                loop: (state.song && state.song.loop) || 0,
-                max_loop_count: (state.song && state.song.max_loop_count) || 0,
-                loop_start: (state.song && state.song.loop_start) || 0,
-                notes: deepCloneNotes(state.notes),
-                layers: JSON.parse(JSON.stringify((state.song && state.song.layers) || []))
-            };
-
-            // 补全 layers
-            if (!song.layers || song.layers.length === 0) {
-                var maxLayer = 0;
-                for (var i = 0; i < state.notes.length; i++) {
-                    if (state.notes[i].layer > maxLayer) maxLayer = state.notes[i].layer;
-                }
-                song.layers = [];
-                for (var l = 0; l <= maxLayer; l++) {
-                    song.layers.push({ name: 'Layer ' + (l + 1), volume: 100, stereo: 100, lock: 0 });
-                }
-            }
-
-            // 保存时根据当前轨道状态写入 lock 字段
-            // pynbs 1.0.0-beta.0 仅支持 bool 类型的 lock, 因此只持久化静音(1), 不持久化独奏
-            for (var li2 = 0; li2 < song.layers.length; li2++) {
-                if (song.layers[li2].lock === undefined) song.layers[li2].lock = 0;
-                var t2 = findTrackByLayer(li2);
-                if (t2) {
-                    song.layers[li2].lock = t2.muted ? 1 : 0;
-                }
-            }
-
+            var song = buildExportSongData(input);
             var exportName = input.name + '.nbs';
             showUploadProgress(exportName, '导出 NBS');
             API.saveSong(song, function(loaded, total, speed, percent, eta, phase) {
@@ -14020,6 +15405,442 @@ function buildTimbreFittingRows(info) {
             _isExporting = false;
         }
     }
+
+    // ---- 作品包导出: zip = song.nbs + 使用到的自定义音色音频 + metadata.json (由导出弹窗的「作品包(zip)」选项触发) ----
+    function _performZipExport(input, usedNos) {
+        if (_isExporting) return;
+        if (!_ciIsZipAvailable()) {
+            showAppAlert('ZIP 打包库未加载，暂时无法导出作品包。请刷新页面重试。', {title: '作品包', icon: 'fa-solid fa-triangle-exclamation'});
+            return;
+        }
+        _isExporting = true;
+        showUploadProgress(input.name + '.zip', '打包作品包…');
+        try {
+            var song = buildExportSongData(input);
+            NBSClient.saveNBS(song).then(function(nbsBlob) {
+                var zip = new JSZip();
+                zip.file('song.nbs', nbsBlob);
+                var metaInstruments = [];
+                var tasks = [];
+                for (var k = 0; k < usedNos.length; k++) {
+                    var no = usedNos[k];
+                    var item = CustomInstruments.getByInstrument(no);
+                    if (!item) continue;
+                    (function(item, no) {
+                        tasks.push(CustomInstruments.getBlob(item.id).then(function(blob) {
+                            if (!blob) return;
+                            var ext = guessAudioExt(blob, item.originalName);
+                            var fileName = (item.name || ('instrument_' + no)) + ext;
+                            if (zip.file(fileName)) fileName = no + '_' + fileName; // 防御同名
+                            zip.file(fileName, blob);
+                            metaInstruments.push({
+                                name: item.name,
+                                file: fileName,
+                                hash: item.hash ? ('sha256:' + item.hash) : '',
+                                pitch: item.pitch,
+                                color: item.color || '#4aa3ff',
+                                slot: no - 20
+                            });
+                        }));
+                    })(item, no);
+                }
+                Promise.all(tasks).then(function() {
+                    var meta = { type: 'noteblock-web-song-pack', formatVersion: 1, song: 'song.nbs', instruments: metaInstruments };
+                    zip.file('metadata.json', JSON.stringify(meta, null, 2));
+                    return zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
+                }).then(function(blob) {
+                    hideUploadProgress();
+                    dlBlob(blob, input.name + '.zip');
+                    showAppAlert('作品包已导出，包含 ' + metaInstruments.length + ' 个自定义音色音频。\n把 zip 分享给他人，导入后即可完整还原音色与歌曲。', { title: '导出完成', icon: 'fa-solid fa-circle-check' });
+                }).catch(function(err) {
+                    hideUploadProgress();
+                    showAppAlert('作品包导出失败: ' + (err && err.message ? err.message : '未知错误'), {title: '导出失败', icon: 'fa-solid fa-triangle-exclamation'});
+                });
+            }).catch(function(err) {
+                hideUploadProgress();
+                showAppAlert('NBS 打包失败: ' + (err && err.message ? err.message : '未知错误'), {title: '导出失败', icon: 'fa-solid fa-triangle-exclamation'});
+            });
+        } finally {
+            _isExporting = false;
+        }
+    }
+
+    // ---- 音色备份导出 (全部自定义音色 + 元数据) ----
+    function exportInstrumentBackup() {
+        var list = (window.CustomInstruments) ? CustomInstruments.list() : [];
+        if (list.length === 0) {
+            showAppAlert('当前没有自定义音色可备份。', {title: '音色备份', icon: 'fa-solid fa-circle-info'});
+            return;
+        }
+        if (!_ciIsZipAvailable()) {
+            showAppAlert('ZIP 打包库未加载，暂时无法导出备份。请刷新页面重试。', {title: '音色备份', icon: 'fa-solid fa-triangle-exclamation'});
+            return;
+        }
+        var zip = new JSZip();
+        var metaInstruments = [];
+        var tasks = [];
+        list.forEach(function(item) {
+            tasks.push(CustomInstruments.getBlob(item.id).then(function(blob) {
+                if (!blob) return;
+                var ext = guessAudioExt(blob, item.originalName);
+                var fileName = (item.name || ('instrument_' + item.instrument)) + ext;
+                if (zip.file(fileName)) fileName = item.instrument + '_' + fileName;
+                zip.file(fileName, blob);
+                metaInstruments.push({
+                    name: item.name,
+                    file: fileName,
+                    hash: item.hash ? ('sha256:' + item.hash) : '',
+                    pitch: item.pitch,
+                    color: item.color || '#4aa3ff',
+                    instrument: item.instrument
+                });
+            }));
+        });
+        Promise.all(tasks).then(function() {
+            zip.file('metadata.json', JSON.stringify({ type: 'noteblock-web-instrument-backup', formatVersion: 1, instruments: metaInstruments }, null, 2));
+            return zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
+        }).then(function(blob) {
+            dlBlob(blob, 'custom-instruments-backup.zip');
+            showAppAlert('已导出 ' + metaInstruments.length + ' 个音色的备份。浏览器数据丢失后可随时导入恢复。', {title: '备份完成', icon: 'fa-solid fa-circle-check'});
+        }).catch(function(err) {
+            showAppAlert('备份导出失败: ' + (err && err.message ? err.message : '未知错误'), {title: '备份失败', icon: 'fa-solid fa-triangle-exclamation'});
+        });
+    }
+
+    // ---- 单个音色导入 (处理 同名同hash跳过 / 同名异hash询问) ----
+    function ciAskRenameOrReplace(name) {
+        return new Promise(function(resolve) {
+            var overlay = _appDialogOverlay();
+            var box = _appDialogBox('同名音色冲突', '已存在同名音色「' + name + '」，但音频内容不同。\n\n请选择处理方式：', 'fa-solid fa-circle-question', { maxWidth: 430 });
+            var body = box.querySelector('.settings-body');
+            var tip = document.createElement('div');
+            tip.style.cssText = 'font-size:12px;color:var(--text-tertiary,#888);margin-bottom:4px;';
+            tip.textContent = '「替换」会用新音频覆盖本地同名音色；「重命名」则作为新音色导入。';
+            body.appendChild(tip);
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+            _appDialogStack.push(overlay);
+            var done = function(res) { _closeAppDialog(overlay, resolve, res); };
+            box.querySelector('#app-dialog-x').addEventListener('click', function() { done(null); });
+            var btnRename = _appDialogBtn('重命名导入', false);
+            btnRename.addEventListener('click', function() { done('rename'); });
+            var btnReplace = _appDialogBtn('替换现有音色', true);
+            btnReplace.addEventListener('click', function() { done('replace'); });
+            var actions = box.querySelector('.popup-actions');
+            actions.appendChild(btnRename);
+            actions.appendChild(btnReplace);
+            overlay.addEventListener('click', function(e) { if (e.target === overlay) done(null); });
+            setTimeout(function() { btnRename.focus(); }, 50);
+        });
+    }
+
+    function ciAddImportItem(inst, blob, nameOverride) {
+        var finalName = CustomInstruments.sanitizeName(nameOverride || inst.name);
+        if (!finalName) {
+            var cnt = CustomInstruments.list().length;
+            finalName = '导入音色 ' + (cnt + 1);
+        }
+        if (CustomInstruments.getByName(finalName)) {
+            finalName = finalName + ' (2)';
+        }
+        return CustomInstruments.add(blob, {
+            name: finalName,
+            color: /^#[0-9a-fA-F]{6}$/.test(inst.color || '') ? inst.color : '#4aa3ff',
+            pitch: typeof inst.pitch === 'number' ? inst.pitch : 33,
+            originalName: inst.file || ''
+        }).then(function(item) {
+            return item.instrument;
+        });
+    }
+
+    // 导入 zip 中的单个音色; 返回库内 instrument 编号或 null(跳过/取消)
+    function ciImportOneInstrument(inst, zipFile) {
+        var fileObj = zipFile.file(inst.file);
+        if (!fileObj) return Promise.resolve(null);
+        return fileObj.async('blob').then(function(blob) {
+            var metaHash = (inst.hash || '').replace(/^sha256:/i, '').toLowerCase();
+            return CustomInstruments.hashBlob(blob).then(function(myHash) {
+                myHash = (myHash || '').toLowerCase();
+                var hasHashes = !!(metaHash && myHash);
+                var sameName = CustomInstruments.getByName(inst.name);
+                if (hasHashes && metaHash === myHash) {
+                    // 同名且 hash 相同 -> 视为已存在, 不重复导入
+                    return sameName ? sameName.instrument : ciAddImportItem(inst, blob);
+                }
+                if (sameName && hasHashes && metaHash !== myHash) {
+                    // 同名但 hash 不同 -> 询问 重命名/替换
+                    return ciAskRenameOrReplace(inst.name).then(function(choice) {
+                        if (choice === 'replace') {
+                            return CustomInstruments.remove(sameName.id).then(function() {
+                                return ciAddImportItem(inst, blob);
+                            });
+                        }
+                        if (choice === 'rename') {
+                            return showAppPrompt('请输入一个新的名称：', inst.name + ' (导入)', {
+                                title: '重命名导入',
+                                placeholder: '新名称',
+                                okText: '导入',
+                                cancelText: '取消'
+                            }).then(function(newName) {
+                                if (!newName || !newName.trim()) return null;
+                                return ciAddImportItem(inst, blob, newName.trim());
+                            });
+                        }
+                        return null; // 用户取消该音色
+                    });
+                }
+                if (sameName) {
+                    // 无 hash 可比(旧包), 但仍同名 -> 询问避免误覆盖
+                    return ciAskRenameOrReplace(inst.name).then(function(choice) {
+                        if (choice === 'replace') {
+                            return CustomInstruments.remove(sameName.id).then(function() {
+                                return ciAddImportItem(inst, blob);
+                            });
+                        }
+                        if (choice === 'rename') {
+                            return showAppPrompt('请输入一个新的名称：', inst.name + ' (导入)', {
+                                title: '重命名导入',
+                                placeholder: '新名称',
+                                okText: '导入',
+                                cancelText: '取消'
+                            }).then(function(newName) {
+                                if (!newName || !newName.trim()) return null;
+                                return ciAddImportItem(inst, blob, newName.trim());
+                            });
+                        }
+                        return null;
+                    });
+                }
+                // 新名称直接导入
+                return ciAddImportItem(inst, blob);
+            });
+        });
+    }
+
+    // 逐个导入 zip 内音色列表; 返回 [{slot, libInstrument}]
+    function ciImportPackInstruments(meta, zipFile) {
+        var entries = meta.instruments || [];
+        var seq = Promise.resolve();
+        var results = [];
+        entries.forEach(function(inst) {
+            seq = seq.then(function() {
+                return ciImportOneInstrument(inst, zipFile).then(function(libInstrument) {
+                    if (libInstrument !== null && libInstrument !== undefined) {
+                        var slot = (typeof inst.slot === 'number') ? inst.slot
+                            : (typeof inst.instrument === 'number' ? inst.instrument - 20 : 0);
+                        results.push({ slot: slot, libInstrument: libInstrument });
+                    }
+                });
+            });
+        });
+        return seq.then(function() { return results; });
+    }
+
+    // ---- zip 导入入口 (作品包 / 音色备份) ----
+    function handleZipFile(file) {
+        if (!_ciIsZipAvailable()) {
+            showAppAlert('ZIP 解析库未加载，无法导入 zip 文件。请刷新页面重试。', {title: '导入', icon: 'fa-solid fa-triangle-exclamation'});
+            return;
+        }
+        showUploadProgress(file.name, '解析压缩包…');
+        JSZip.loadAsync(file).then(function(zipFile) {
+            var metaFile = zipFile.file('metadata.json');
+            if (!metaFile) throw new Error('缺少 metadata.json，不是有效的作品包/备份文件');
+            return metaFile.async('string').then(function(text) {
+                var meta;
+                try { meta = JSON.parse(text); } catch (e) { throw new Error('metadata.json 解析失败'); }
+                if (!meta || !meta.type) throw new Error('无法识别的压缩包类型');
+                return { kind: meta.type, zipFile: zipFile, meta: meta };
+            });
+        }).then(function(ctx) {
+            hideUploadProgress();
+            if (ctx.kind === 'noteblock-web-instrument-backup') {
+                return ciImportPackInstruments(ctx.meta, ctx.zipFile).then(function(mapped) {
+                    renderCustomInstList();
+                    showAppAlert('音色备份导入完成（' + mapped.length + ' 项）。', {title: '导入备份', icon: 'fa-solid fa-circle-check'});
+                    return mapped;
+                });
+            }
+            if (ctx.kind === 'noteblock-web-song-pack') {
+                var nbsName = ctx.meta.song || 'song.nbs';
+                var nbsFile = ctx.zipFile.file(nbsName);
+                if (!nbsFile) throw new Error('压缩包缺少 ' + nbsName);
+                return ciImportPackInstruments(ctx.meta, ctx.zipFile).then(function(mapped) {
+                    return nbsFile.async('arraybuffer').then(function(ab) {
+                        var song = NBSClient._parseNBS(ab);
+                        var remap = {};
+                        for (var m = 0; m < mapped.length; m++) {
+                            remap[20 + mapped[m].slot] = mapped[m].libInstrument;
+                        }
+                        var changed = false;
+                        song.notes = (song.notes || []).map(function(n) {
+                            if (n.instrument >= 20 && remap[n.instrument] !== undefined) {
+                                changed = true;
+                                var c = Object.assign({}, n);
+                                c.instrument = remap[n.instrument];
+                                return c;
+                            }
+                            return n;
+                        });
+                        song.customInstruments = [];
+                        applyParsedSong(song, nbsName);
+                        renderCustomInstList();
+                        showAppAlert(changed
+                            ? '作品包导入完成，自定义音色已装载并重映射。'
+                            : '作品包导入完成，歌曲已载入。', {title: '导入作品包', icon: 'fa-solid fa-circle-check'});
+                    });
+                });
+            }
+            showAppAlert('无法识别的压缩包类型: ' + ctx.kind, {title: '导入失败', icon: 'fa-solid fa-triangle-exclamation'});
+            return Promise.resolve();
+        }).catch(function(err) {
+            hideUploadProgress();
+            showAppAlert('导入失败: ' + (err && err.message ? err.message : '未知错误'), {title: '导入失败', icon: 'fa-solid fa-triangle-exclamation'});
+        });
+    }
+    // ============ M5b: NBS 加载时缺失自定义音色处理 ============
+    // 检查歌曲引用的自定义音色(slot >= 20)在本地音色库是否存在;
+    // 缺失时弹出弹窗让用户选择: 替换为现有音色 / 跳过(静音) / 稍后导入(取消本次加载)。
+    // 返回 Promise<boolean>: true=继续加载(音色可能已被重映射), false=取消加载
+    function resolveMissingCustomInstruments(song) {
+        if (!song) return Promise.resolve(true);
+        if (!window.CustomInstruments) return Promise.resolve(true);
+
+        // 收集歌曲实际使用到的自定义音色槽位
+        var used = {};
+        var notes = song.notes || [];
+        for (var i = 0; i < notes.length; i++) {
+            var no = notes[i].instrument;
+            if (no >= 20) used[no] = true;
+        }
+        var missingNos = Object.keys(used).map(Number).sort(function(a, b) { return a - b; })
+            .filter(function(no) { return !CustomInstruments.getByInstrument(no); });
+        if (missingNos.length === 0) return Promise.resolve(true);
+
+        // v6 自定义乐器表: instrument 编号 -> 定义 (用于显示名称)
+        var defByName = {};
+        var defs = song.customInstruments || [];
+        for (var di = 0; di < defs.length; di++) {
+            var d = defs[di];
+            if (d && (d.instrument || d.slot) !== undefined) {
+                var dIdx = (defs[di].instrument === undefined) ? (20 + di) : defs[di].instrument;
+                if (dIdx >= 20) defByName[dIdx] = defs[di];
+            }
+        }
+        // 本地音色库 (按名称排序, 作为可选项)
+        var lib = CustomInstruments.list();
+        lib.sort(function(a, b) { return (a.name < b.name ? -1 : (a.name > b.name ? 1 : 0)); });
+        // 默认 NBS 音色列表 (值 = nbs:编号)
+        var nbsNames = INSTRUMENT_NAMES.slice(0, 20);
+
+        return new Promise(function(resolve) {
+            var overlay = _appDialogOverlay();
+            var box = _appDialogBox('缺少自定义音色', '', 'fa-solid fa-triangle-exclamation', { maxWidth: 540 });
+            var body = box.querySelector('.settings-body');
+            body.textContent = '';
+
+            var intro = document.createElement('div');
+            intro.style.cssText = 'font-size:13px;color:var(--text-secondary,#aaa);line-height:1.7;margin-bottom:4px;';
+            intro.innerHTML = '这首歌使用了 <b>' + missingNos.length + '</b> 个自定义音色，但本地音色库中找不到对应的音频。'
+                + '<br>请为每个缺失音色选择替代方案后继续加载；或点「稍后导入」取消加载，先完成音色导入。';
+            body.appendChild(intro);
+
+            var rows = [];
+            missingNos.forEach(function(no) {
+                var def = defByName[no] || null;
+                var defName = def ? (def.name || '') : '';
+                var title = document.createElement('div');
+                title.style.cssText = 'display:flex;align-items:center;gap:8px;margin:12px 0 4px;font-size:12px;color:var(--text-secondary,#aaa);';
+                title.innerHTML = '<span style="font-weight:500;">' + escapeHtml(defName || ('自定义音色 #' + (no - 19))) + '</span>'
+                    + '<span style="color:var(--text-tertiary,#888);font-size:11px;">(槽位 ' + (no - 20) + ')</span>';
+                body.appendChild(title);
+
+                var sel = document.createElement('select');
+                sel.style.cssText = 'width:100%;padding:7px 8px;font-size:13px;border:1px solid var(--ctrl-stroke-default,#444);border-radius:var(--radius-sm,6px);background:var(--ctrl-fill-default,#1c1c1c);color:var(--text-primary,#fff);box-sizing:border-box;';
+
+                var ph = document.createElement('option');
+                ph.value = '';
+                ph.textContent = '— 请选择替换音色 —';
+                sel.appendChild(ph);
+
+                // 可自动匹配: 同名音色的库内音色放在最前面
+                var matched = defName ? lib.filter(function(it) { return it.name === defName; }) : [];
+                matched.concat(lib.filter(function(it) { return it.name !== defName; })).forEach(function(item) {
+                    var o = document.createElement('option');
+                    o.value = 'custom:' + item.instrument;
+                    o.textContent = item.name + ' (自定义音色)';
+                    sel.appendChild(o);
+                });
+
+                for (var ni = 0; ni < nbsNames.length; ni++) {
+                    var o2 = document.createElement('option');
+                    o2.value = 'nbs:' + ni;
+                    o2.textContent = nbsNames[ni];
+                    sel.appendChild(o2);
+                }
+
+                var oSkip = document.createElement('option');
+                oSkip.value = 'skip';
+                oSkip.textContent = '跳过（该音色静音）';
+                sel.appendChild(oSkip);
+
+                sel.addEventListener('change', function() { updateOkState(); });
+                body.appendChild(sel);
+                rows.push({ no: no, sel: sel });
+            });
+
+            // 底部提示: 替换后的映射关系说明
+            var tip = document.createElement('div');
+            tip.style.cssText = 'font-size:12px;color:var(--text-tertiary,#888);margin-top:10px;line-height:1.6;';
+            tip.textContent = '「替换」会把歌曲中该音色的音符改用到所选音色；「跳过」则让这些音符静音（仍保留在歌曲中）。';
+            body.appendChild(tip);
+
+            var okBtn = _appDialogBtn('替换并加载', true);
+            okBtn.disabled = true;
+            var cancelBtn = _appDialogBtn('稍后导入', false);
+            var updateOkState = function() {
+                var allChosen = rows.every(function(r) { return r.sel.value !== ''; });
+                okBtn.disabled = !allChosen;
+            };
+
+            var done = function(res) { _closeAppDialog(overlay, resolve, res); };
+            box.querySelector('#app-dialog-x').addEventListener('click', function() { done(false); });
+            cancelBtn.addEventListener('click', function() { done(false); });
+            okBtn.addEventListener('click', function() {
+                // 应用替换映射
+                var remap = {};
+                rows.forEach(function(r) {
+                    var v = r.sel.value;
+                    if (v === 'skip') { remap[r.no] = null; }
+                    else if (v.indexOf('custom:') === 0) { remap[r.no] = parseInt(v.slice(7), 10); }
+                    else if (v.indexOf('nbs:') === 0) { remap[r.no] = parseInt(v.slice(4), 10); }
+                });
+                var changed = false;
+                song.notes = (song.notes || []).map(function(n) {
+                    if (n.instrument >= 20 && remap[n.instrument] !== undefined) {
+                        changed = true;
+                        var c = Object.assign({}, n);
+                        c.instrument = remap[n.instrument];
+                        return c;
+                    }
+                    return n;
+                });
+                // 槽位已重映射, v6 自定义乐器表不再适用
+                if (changed) song.customInstruments = [];
+                done(true);
+            });
+            var actions = box.querySelector('.popup-actions');
+            actions.appendChild(cancelBtn);
+            actions.appendChild(okBtn);
+            overlay.addEventListener('click', function(e) { if (e.target === overlay) done(false); });
+        });
+    }
+
+    // 把解析出的歌曲(如 zip 作品包内的 song.nbs)直接载入编辑器
+    function applyParsedSong(song, fileName) {
+        applyLoadedSongData({ song: song }, { name: fileName || 'song.nbs' }, { value: '' });
+    }
+
     var STORAGE_KEY = 'noteblockweb_data';
     var _dirty = false;
     var _saveTimer = null;
