@@ -3,7 +3,7 @@
 import io, re, os
 
 ROOT = r'd:\软件开发项目\NoteBlockWeb\src\static\js'
-RESULT = r'd:\软件开发项目\NoteBlockWeb\_scan_i18n_check_result.txt'
+RESULT = r'd:\软件开发项目\NoteBlockWeb\test\_scan_i18n_check_result.txt'
 
 # 文件缓存
 cache = {}

@@ -379,13 +379,37 @@ _NBSReader.prototype.readString = function () {
     if (this.pos + len > this.length) throw new Error('NBS: 字符串超出文件范围');
     var bytes = new Uint8Array(this.view.buffer, this.pos, len);
     this.pos += len;
-    // 优先 UTF-8 解码, 失败回退 cp1252 (复刻 Python _read_string_utf8)
+    return _decodeNBSBytes(bytes);
+};
+
+// 解码 NBS 字符串字节: UTF-8 -> windows-1252 -> 逐字节兜底
+// 覆盖无 TextDecoder (老 WebView) 或 windows-1252 标签不可用时不抛异常,
+// 否则部分设备会因异常导致整个 NBS 无法打开。
+function _decodeNBSBytes(bytes) {
+    // 无 TextDecoder 环境: 纯 ASCII 直接按原样返回, 否则逐字节 latin1 兜底
+    if (typeof TextDecoder === 'undefined') {
+        return _latin1Decode(bytes);
+    }
     try {
+        // 优先 UTF-8, fatal 让非法序列落入回退
         return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     } catch (e) {
-        return new TextDecoder('windows-1252').decode(bytes);
+        try {
+            // 回退 cp1252 (复刻 Python _read_string_utf8)
+            return new TextDecoder('windows-1252').decode(bytes);
+        } catch (e2) {
+            // 极端兜底: 逐字节解码, 保证任何设备都能打开
+            return _latin1Decode(bytes);
+        }
     }
-};
+}
+
+// 逐字节 latin1 解码 (不依赖 TextDecoder 的编码标签支持)
+function _latin1Decode(bytes) {
+    var s = '', i = 0;
+    for (; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return s;
+}
 
 // ====================================================================
 // NBS 二进制写入器 (小端序)
@@ -2601,3 +2625,300 @@ window.dedupeReorderNotes = function (notes, removed) {
     }
     return moved;
 };
+
+// ====================================================================
+// 歌曲压缩 (有损压缩) 核心
+// 通过删除音符降低总音符数。质量比例越低删得越多 (质量 X% ≈ 保留约 X% 的音符)。
+// 两种算法模型:
+//   heuristic       务实启发式: 轻量规则打分 (根音/三音/五音、八度重复、时值、节拍、力度、音色类别)
+//   perceptual      感知引擎:   感知打分 (角色/节拍/时值/力度/掩蔽/打击乐密度)
+// 两模型"删多少"完全一致 (同一 budget), 差异仅在"删哪一些"。
+// 质量 99% 时两模型都只执行完全去重 (即原「消除重复音符」逻辑)。
+// 每删除一批音符后立即调用 dedupeReorderNotes 填补空洞 (整体拥有, 非去重独有)。
+// ====================================================================
+window.compressSongCore = (function () {
+    // 内置乐器分类 (0 基, 对应 INSTRUMENT_KEYS)
+    var PERCUSSION = { 2: 1, 3: 1, 4: 1 };   // 大鼓2 / 小鼓3 / 击打声4
+    var BASS_LIKE = { 1: 1, 12: 1 };         // 低音提琴1 / 迪吉里杜管12
+
+    function mod12(k) { return ((k % 12) + 12) % 12; }
+    function isPerc(n) { return !!PERCUSSION[n.instrument]; }
+    function isBass(n) { return !!BASS_LIKE[n.instrument]; }
+
+    // 判断是否为短音: 同一条轨道(layer)上, 下一条音符起点距当前音符 ≤3 tick
+    function makeIsShort(notes) {
+        var short = {};
+        var byLayer = {};
+        for (var i = 0; i < notes.length; i++) {
+            var n = notes[i];
+            (byLayer[n.layer] = byLayer[n.layer] || []).push(n);
+        }
+        for (var L in byLayer) {
+            var arr = byLayer[L].slice().sort(function (a, b) { return a.tick - b.tick; });
+            for (var j = 0; j < arr.length; j++) {
+                var cur = arr[j];
+                var nx = j + 1 < arr.length ? arr[j + 1] : null;
+                short[L + ':' + cur.tick] = nx ? (nx.tick - cur.tick <= 3) : false;
+            }
+        }
+        return function (n) { return n && !!short[n.layer + ':' + n.tick]; };
+    }
+
+    // 按 (tick:instrument) 分组, 仅旋律类; 返回 {key: [notes]}
+    function groupPitchByTickInst(notes) {
+        var g = {};
+        for (var i = 0; i < notes.length; i++) {
+            var n = notes[i];
+            if (isPerc(n)) continue;
+            var gk = n.tick + ':' + n.instrument;
+            (g[gk] = g[gk] || []).push(n);
+        }
+        return g;
+    }
+
+    // ---- 轨道集合 (选轨: 减轻处理 / 不被处理) ----
+    function toLayerSet(arr) {
+        if (!arr || !arr.length) return null;
+        var s = {};
+        for (var i = 0; i < arr.length; i++) s[arr[i]] = 1;
+        return s;
+    }
+
+    // ---- 二分查找 (打击乐密度窗口计数用) ----
+    function lowerBound(arr, v) {
+        var lo = 0, hi = arr.length;
+        while (lo < hi) { var mid = (lo + hi) >> 1; if (arr[mid] < v) lo = mid + 1; else hi = mid; }
+        return lo;
+    }
+    function upperBound(arr, v) {
+        var lo = 0, hi = arr.length;
+        while (lo < hi) { var mid = (lo + hi) >> 1; if (arr[mid] <= v) lo = mid + 1; else hi = mid; }
+        return lo;
+    }
+
+    // ---- 组内元信息: 根音(最低音) / 最高音 / 成员列表 ----
+    function buildGroupMeta(notes) {
+        var g = groupPitchByTickInst(notes);
+        var meta = {};
+        for (var gk in g) {
+            var arr = g[gk];
+            var root = arr[0], hi = arr[0];
+            for (var j = 1; j < arr.length; j++) {
+                if (arr[j].key < root.key) root = arr[j];
+                if (arr[j].key > hi.key) hi = arr[j];
+            }
+            meta[gk] = { arr: arr, root: root, hi: hi };
+        }
+        return meta;
+    }
+
+    // ---- 务实启发式: 轻量规则打分 (单遍 O(n) + 排序 O(n log n)), 分数越高越重要 ----
+    function rankHeuristic(notes, ctx) {
+        var tpb = (ctx && ctx.ticksPerBeat) || 30;
+        if (tpb < 1) tpb = 30;
+        var isShort = makeIsShort(notes);
+        var meta = buildGroupMeta(notes);
+        var half = Math.floor(tpb / 2);
+
+        var scored = [];
+        for (var i = 0; i < notes.length; i++) {
+            var n = notes[i], s;
+            var beatPos = n.tick % tpb;
+            if (isPerc(n)) {
+                // 大鼓最保, 强拍军鼓次之, 其余打击乐最低
+                s = (n.instrument === 2) ? 0.98
+                  : (n.instrument === 3 ? (beatPos === 0 ? 0.90 : 0.55) : 0.38);
+                s += 0.15 * ((n.velocity || 100) / 100);
+            } else {
+                s = 0.35;
+                var m = meta[n.tick + ':' + n.instrument];
+                if (m) {
+                    if (m.root === n) s += 0.45;                        // 根音
+                    else {
+                        var d = mod12(n.key - m.root.key);
+                        if (d === 3 || d === 4) s += 0.22;              // 三音
+                        else if (d === 7) s -= 0.10;                    // 五音
+                        else if (d === 0) s -= 0.25;                    // 八度重复
+                    }
+                    if (m.hi === n && !isShort(n) && m.root !== n) s += 0.25; // 旋律锚点
+                }
+                if (isBass(n)) s += 0.25;
+                if (isShort(n)) s -= 0.12; else s += 0.10;
+                if (beatPos === 0) s += 0.12; else if (beatPos !== half) s -= 0.05;
+                s += 0.18 * ((n.velocity || 100) / 100);
+            }
+            scored.push({ n: n, s: s });
+        }
+        scored.sort(function (a, b) { return a.s - b.s; });
+        return scored.map(function (x) { return x.n; });
+    }
+
+    // ---- 感知引擎: 角色/节拍/时值/力度/掩蔽/密度 综合打分, 分数越高越重要 ----
+    function rankPerceptual(notes, ctx) {
+        var tpb = (ctx && ctx.ticksPerBeat) || 30;
+        if (tpb < 1) tpb = 30;
+        var isShort = makeIsShort(notes);
+        var meta = buildGroupMeta(notes);
+        var half = Math.floor(tpb / 2);
+
+        // 打击乐 tick 预排序, 密度窗口用二分计数 (避免逐音扫描全表)
+        var percTicks = [];
+        for (var p = 0; p < notes.length; p++) if (isPerc(notes[p])) percTicks.push(notes[p].tick);
+        percTicks.sort(function (a, b) { return a - b; });
+        var win = Math.max(4, tpb / 8);
+
+        var scored = [];
+        for (var i = 0; i < notes.length; i++) {
+            var n = notes[i], s;
+            var beatPos = n.tick % tpb;
+            if (isPerc(n)) {
+                var dens = Math.min(1, (upperBound(percTicks, n.tick + win) - lowerBound(percTicks, n.tick - win)) / 8);
+                var base = (n.instrument === 2) ? 1.00                     // 底鼓: 最高优先
+                         : (n.instrument === 3 ? (beatPos === 0 ? 0.95 : 0.62) : 0.45);
+                s = base * 0.75 + 0.25 * ((n.velocity || 100) / 100) - 0.15 * dens;
+            } else {
+                var m = meta[n.tick + ':' + n.instrument];
+                var role = 0.25;
+                if (m) {
+                    if (m.root === n) role = 1.00;
+                    else {
+                        var d = mod12(n.key - m.root.key);
+                        if (d === 3 || d === 4) role = 0.85;         // 三音
+                        else if (d === 10 || d === 11) role = 0.80;  // 七音
+                        else if (d === 7) role = 0.45;               // 五音
+                        else if (d === 0) role = 0.12;               // 八度/同度重复
+                    }
+                    if (m.hi === n && !isShort(n) && m.root !== n) role = 0.95; // 旋律锚点
+                }
+                var beat = (beatPos === 0) ? 1.00 : (beatPos === half ? 0.60 : 0.30);
+                var dur = isShort(n) ? 0.20 : 0.80;
+                var vel = (n.velocity || 100) / 100;
+                var mask = 0, dup = 0;
+                if (m) {
+                    for (var j = 0; j < m.arr.length; j++) {
+                        var o = m.arr[j];
+                        if (o === n) continue;
+                        if (Math.abs(mod12(o.key) - mod12(n.key)) <= 1 && (o.velocity || 100) > (n.velocity || 100)) mask = 0.6;
+                        if (mod12(o.key) === mod12(n.key)) dup = 1;
+                    }
+                }
+                s = 0.35 * role + 0.20 * beat + 0.15 * dur + 0.15 * vel - 0.10 * mask - 0.05 * dup;
+                if (isBass(n)) s += 0.12;
+            }
+            scored.push({ n: n, s: s });
+        }
+        scored.sort(function (a, b) { return a.s - b.s; });
+        return scored.map(function (x) { return x.n; });
+    }
+
+    // ---- 主入口 ----
+    // 统一管线: ①完全去重 ②按分数从低到高删除配额内的音符 (99% 档跳过②)。
+    // 轨道分组: 不处理(完全不动) / 正常 / 减轻处理(删除强度减半)。
+    // 两种模型的"删除数量"完全一致, 仅"删哪一些"不同。
+    function compressSongCore(notes, quality, model, ctx) {
+        ctx = ctx || {};
+        var q = quality;
+        var doReorder = (ctx.reorder !== false);
+        var excludeSet = toLayerSet(ctx.excludeLayers);
+        var lightenSet = toLayerSet(ctx.lightenLayers);
+        var kept = notes.slice();                 // 存活列表 (对象引用)
+        var removed = [];
+        var moved = 0;
+
+        // 轨道分组: 0=不处理 1=正常 2=减轻
+        function bucket(n) {
+            if (excludeSet && excludeSet[n.layer]) return 0;
+            if (lightenSet && lightenSet[n.layer]) return 2;
+            return 1;
+        }
+
+        function flushBatch(batch) {
+            if (!batch || batch.length === 0) return;
+            var del = new Set(batch);
+            kept = kept.filter(function (x) { return !del.has(x); });
+            if (doReorder) {
+                moved += window.dedupeReorderNotes(kept, batch);
+            }
+            for (var j = 0; j < batch.length; j++) removed.push(batch[j]);
+        }
+
+        // 阶段 1: 完全去重 (仅 正常/减轻 轨道; 不处理轨道原样保留, 不参与去重)
+        var seen = {}, dedupeBatch = [];
+        for (var i = 0; i < kept.length; i++) {
+            var n = kept[i];
+            if (bucket(n) === 0) continue;
+            var k = n.tick + ':' + n.instrument + ':' + n.key;
+            if (seen[k]) { dedupeBatch.push(n); continue; }
+            seen[k] = true;
+        }
+        flushBatch(dedupeBatch);
+
+        // 阶段 2: 有损删除 (按轨道分组各自计算配额; 减轻组强度减半; 99% 档不执行)
+        if (q < 0.99) {
+            var cnt = { 1: 0, 2: 0 }, pool = [];
+            for (var p = 0; p < kept.length; p++) {
+                var b = bucket(kept[p]);
+                if (b === 0) continue;
+                cnt[b]++;
+                pool.push(kept[p]);
+            }
+            var budget = {
+                1: Math.round(cnt[1] * (1 - q)),
+                2: Math.round(cnt[2] * (1 - q) * 0.5)
+            };
+            if (pool.length > 0 && (budget[1] > 0 || budget[2] > 0)) {
+                // 全局统一打分排序, 再按各组配额取用 -> 每组都删自己最低分的成员
+                var order = (model === 'perceptual') ? rankPerceptual(pool, ctx) : rankHeuristic(pool, ctx);
+                var batch2 = [];
+                for (var m = 0; m < order.length; m++) {
+                    var b2 = bucket(order[m]);
+                    if (b2 && budget[b2] > 0) { batch2.push(order[m]); budget[b2]--; }
+                    if (budget[1] <= 0 && budget[2] <= 0) break;
+                }
+                if (batch2.length > kept.length - 1) batch2 = batch2.slice(0, kept.length - 1); // 至少保留 1 个音符
+                flushBatch(batch2);
+            }
+        }
+
+        return {
+            kept: kept,
+            removed: removed,
+            moved: moved
+        };
+    }
+
+    // 实时预估 (弹窗用): 与 compressSongCore 使用同一配额公式, 但只算数量不排序, O(n)。
+    // 由于两种模型删除数量相同, 该预估与所选模型无关。
+    // opts: { excludeLayers: [], lightenLayers: [] }
+    window.compressSongEstimate = function (notes, quality, opts) {
+        notes = notes || [];
+        var excludeSet = toLayerSet(opts && opts.excludeLayers);
+        var lightenSet = toLayerSet(opts && opts.lightenLayers);
+        var total = notes.length;
+        var seen = {}, dup = { 1: 0, 2: 0 }, cnt = { 1: 0, 2: 0 };
+        for (var i = 0; i < total; i++) {
+            var n = notes[i], b;
+            if (excludeSet && excludeSet[n.layer]) continue;      // 不处理
+            b = (lightenSet && lightenSet[n.layer]) ? 2 : 1;
+            cnt[b]++;
+            var k = n.tick + ':' + n.instrument + ':' + n.key;
+            if (seen[k]) { dup[b]++; continue; }
+            seen[k] = true;
+        }
+        var deleted = dup[1] + dup[2];
+        if (quality < 0.99) {
+            deleted += Math.round((cnt[1] - dup[1]) * (1 - quality));
+            deleted += Math.round((cnt[2] - dup[2]) * (1 - quality) * 0.5);
+        }
+        if (deleted > total - 1) deleted = Math.max(0, total - 1);
+        return {
+            total: total,
+            dupes: dup[1] + dup[2],
+            deleted: deleted,
+            kept: total - deleted
+        };
+    };
+
+    return compressSongCore;
+
+})();

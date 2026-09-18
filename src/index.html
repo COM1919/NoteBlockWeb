@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260905b">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260913g">
 </head>
 <body>
 
@@ -74,9 +74,9 @@
 
     <!-- ========== 功能菜单 ========== -->
     <div class="functions-menu" id="functions-menu" style="display:none;">
-        <div class="functions-menu-item" data-action="dedupe-notes" title="删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞">
-            <i class="fa-solid fa-copy"></i>
-            <span>消除重复音符</span>
+        <div class="functions-menu-item" data-action="compress-song" title="通过有损删除音符降低总音符数。质量越高失真越小；99% 等同完全去重。可切换算法模型，删除后自动补洞">
+            <i class="fa-solid fa-compress"></i>
+            <span>歌曲压缩</span>
         </div>
         <div class="functions-menu-item" data-action="sustain-fill">
             <i class="fa-solid fa-fill-drip"></i>
@@ -388,11 +388,16 @@
             <!-- 橡皮工具: 清除配置 -->
             <div class="assist-section" id="assist-section-eraser" style="display:none;">
                 <div class="assist-tabs">
-                    <button class="assist-tab active" data-assist-tab="area">区域清除</button>
+                    <button class="assist-tab active" data-assist-tab="single">单独擦除</button>
+                    <button class="assist-tab" data-assist-tab="area">区域清除</button>
                     <button class="assist-tab" data-assist-tab="chain">连续清除</button>
                 </div>
+                <!-- 单独擦除 -->
+                <div class="assist-tab-body" id="assist-tab-single">
+                    <div class="assist-row"><label>点击或拖动以删除单个音符</label></div>
+                </div>
                 <!-- 区域清除 -->
-                <div class="assist-tab-body" id="assist-tab-area">
+                <div class="assist-tab-body" id="assist-tab-area" style="display:none;">
                     <div class="assist-row">
                         <label>清除半径 R</label>
                         <input class="assist-number" type="number" id="assist-area-radius" min="0" max="32" step="1">
@@ -417,12 +422,59 @@
                     </div>
                 </div>
             </div>
-            <!-- 选择/演奏工具: 空状态 -->
-            <div class="assist-section" id="assist-section-empty" style="display:none;">
-                <div class="assist-empty">该工具暂无创作辅助功能</div>
+            <!-- 选择工具: 辅助功能 -->
+            <div class="assist-section" id="assist-section-select" style="display:none;">
+                <!-- 延音填充 -->
+                <div class="assist-func-block">
+                    <div class="assist-func-title"><i class="fa-solid fa-fill-drip"></i> 延音填充</div>
+                    <div class="assist-row">
+                        <label>间隔</label>
+                        <input class="assist-number" type="number" id="assist-sustain-interval" min="0" max="16" step="1" value="0">
+                    </div>
+                    <button class="assist-apply-btn" id="assist-apply-sustain-fill" type="button">应用</button>
+                </div>
+                <!-- 清除延音 -->
+                <div class="assist-func-block">
+                    <div class="assist-func-title"><i class="fa-solid fa-eraser"></i> 清除延音</div>
+                    <div class="assist-row">
+                        <label>留空</label>
+                        <input class="assist-number" type="number" id="assist-clear-sustain-gap" min="0" max="16" step="1" value="2">
+                    </div>
+                    <button class="assist-apply-btn" id="assist-apply-clear-sustain" type="button">应用</button>
+                </div>
+                <!-- 音调偏移 -->
+                <div class="assist-func-block">
+                    <div class="assist-func-title"><i class="fa-solid fa-music"></i> 音调偏移</div>
+                    <div class="assist-row">
+                        <label>方式</label>
+                        <select class="assist-select" id="assist-pitch-shift-mode">
+                            <option value="semitones">按音调</option>
+                            <option value="octaves">按八度</option>
+                        </select>
+                    </div>
+                    <div class="assist-row">
+                        <label>偏移量</label>
+                        <input class="assist-number" type="number" id="assist-pitch-shift-value" min="-87" max="87" step="1" value="1">
+                    </div>
+                    <button class="assist-apply-btn" id="assist-apply-pitch-shift" type="button">应用</button>
+                </div>
+                <!-- 上下起伏 -->
+                <div class="assist-func-block">
+                    <div class="assist-func-title"><i class="fa-solid fa-arrows-up-down"></i> 上下起伏</div>
+                    <div class="assist-row">
+                        <label>规律</label>
+                        <input class="assist-text" type="text" id="assist-arpeggio-pattern" value="1|2|1|3">
+                    </div>
+                    <button class="assist-apply-btn" id="assist-apply-arpeggio" type="button">应用</button>
+                </div>
+                <!-- 查找音符 -->
                 <button class="assist-find-btn" id="assist-find-btn" type="button">
                     <i class="fa-solid fa-magnifying-glass" style="margin-right:6px;"></i>查找音符
                 </button>
+            </div>
+            <!-- 演奏工具: 空状态 -->
+            <div class="assist-section" id="assist-section-empty" style="display:none;">
+                <div class="assist-empty">该工具暂无创作辅助功能</div>
             </div>
         </div>
     </div>
@@ -551,7 +603,17 @@
                     </div>
                     <div class="settings-row">
                         <label class="settings-label">
-                            <input type="checkbox" id="settings-show-octave"> 音调文字显示八度数字 (如 A4, C5)
+                            <input type="checkbox" id="settings-show-octave"> 音调文字显示八度数字
+                        </label>
+                    </div>
+                    <div class="settings-row">
+                        <label class="settings-label">
+                            <input type="checkbox" id="settings-show-note-clicks"> 音符上显示音符盒点击次数
+                        </label>
+                    </div>
+                    <div class="settings-row">
+                        <label class="settings-label">
+                            <input type="checkbox" id="settings-show-note-block"> 音符上显示方块名
                         </label>
                     </div>
                     <div class="settings-row" style="display:flex;align-items:center;gap:8px;">
@@ -937,10 +999,10 @@
     <div class="popup" id="midi-popup" style="display:none;">
         <div class="popup-content midi-import-dialog" style="display:flex;flex-direction:column;">
             <!-- 标题 -->
-            <div class="midi-import-header">
+            <div class="settings-header">
                 <i class="fa-solid fa-file-import"></i>
-                <h3>MIDI 导入</h3>
-                <button class="midi-close-btn" id="midi-close-btn">&times;</button>
+                <h4>MIDI 导入</h4>
+                <button class="settings-close-btn" id="midi-close-btn" title="关闭">&times;</button>
             </div>
 
             <!-- 文件信息 -->
@@ -1183,9 +1245,9 @@
             </div>
 
             <!-- 底部按钮 -->
-            <div class="midi-import-footer">
-                <button class="midi-btn midi-btn-cancel" id="midi-cancel-btn">取消</button>
-                <button class="midi-btn midi-btn-import" id="midi-import-btn">导入</button>
+            <div class="popup-actions">
+                <button class="popup-btn popup-btn-cancel" id="midi-cancel-btn">取消</button>
+                <button class="popup-btn popup-btn-primary" id="midi-import-btn">导入</button>
             </div>
         </div>
     </div>
@@ -1320,17 +1382,17 @@
     }
 </script>
 <!-- nbs_client.js 必须在 api_client.js 之前加载 (api_client.js 引用 NBSClient 全局对象) -->
-<script src="/static/js/nbs_client.js?v=20260912a"></script>
+<script src="/static/js/nbs_client.js?v=20260913h"></script>
 <script src="/static/js/api_client.js?v=20260905a"></script>
-<script src="/static/js/custom_dropdown.js?v=20260728d"></script>
-<script src="/static/js/i18n.js?v=20260912b"></script>
+<script src="/static/js/custom_dropdown.js?v=20260913f"></script>
+<script src="/static/js/i18n.js?v=20260913m"></script>
 <script src="/static/js/audio_engine.js?v=20260906e"></script>
 <script src="/static/js/custom_instruments.js?v=20260905a"></script>
 <script src="/static/js/audio_fix_utils.js?v=20260905a"></script>
 <script src="/static/js/sf3_player.js?v=20260808a"></script>
 <script src="/static/js/spessa_player.js?v=20260808a"></script>
 <script src="/static/js/soundfont_loader.js?v=20260808b"></script>
-<script src="/static/js/piano_roll.js?v=20260912a"></script>
+<script src="/static/js/piano_roll.js?v=20260913n"></script>
 <script src="/static/js/fls_core.js?v=20260728a"></script>
 <script src="/static/js/fls_track_panel.js?v=20260718m"></script>
 <script src="/static/js/fls_playlist.js?v=20260728e"></script>
@@ -1342,7 +1404,7 @@
 <!-- 离线渲染引擎: audio_render.js 必须在 main.js 之前加载 -->
 <script src="/static/js/render_jsmix.js?v=20260906e"></script>
 <script src="/static/js/audio_render.js?v=20260906f"></script>
-<script src="/static/js/main.js?v=20260912b"></script>
+<script src="/static/js/main.js?v=20260913j"></script>
 
 </body>
 </html>

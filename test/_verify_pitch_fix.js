@@ -9,7 +9,7 @@ if (!global.window.localStorage) global.window.localStorage = { getItem: functio
 
 var fs = require('fs');
 // 间接 eval 在全局作用域执行, 使脚本顶层的 var NBSClient 成为全局变量 (与浏览器行为一致)
-(0, eval)(fs.readFileSync(require('path').join(__dirname, 'src/static/js/nbs_client.js'), 'utf8'));
+(0, eval)(fs.readFileSync(require('path').join(__dirname, '..', 'src/static/js/nbs_client.js'), 'utf8'));
 
 // ---- 构造最小 MIDI (format 0, 1 track, PPQ=480) ----
 // 事件: tempo 120BPM (500000us) + C4 (MIDI 60) note-on/note-off

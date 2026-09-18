@@ -11,7 +11,7 @@
 import re, io, os
 
 SRC = r'd:\软件开发项目\NoteBlockWeb\src\static\js\i18n.js'
-REPORT = r'd:\软件开发项目\NoteBlockWeb\_scan_i18n_report3.txt'
+REPORT = r'd:\软件开发项目\NoteBlockWeb\test\_scan_i18n_report3.txt'
 ROOT = r'd:\软件开发项目\NoteBlockWeb\src\static\js'
 
 js = io.open(SRC, encoding='utf-8').read()
@@ -98,5 +98,5 @@ for srcfile, lineno, txt in entries:
     stats[cat] = stats.get(cat, 0) + 1
     out.append('%-12s %s:%s -> %s' % (cat, srcfile, lineno or '-', txt))
 
-io.open(r'd:\软件开发项目\NoteBlockWeb\_scan_i18n_check_result.txt', 'w', encoding='utf-8').write('\n'.join(out))
+io.open(r'd:\软件开发项目\NoteBlockWeb\test\_scan_i18n_check_result.txt', 'w', encoding='utf-8').write('\n'.join(out))
 print(' | '.join('%s=%d' % (k, v) for k, v in sorted(stats.items())), '| total=%d' % len(entries))

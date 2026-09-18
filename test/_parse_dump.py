@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import re, io
-html = io.open(r'd:\软件开发项目\NoteBlockWeb\_render_test_dump.html', encoding='utf-8').read()
+html = io.open(r'd:\软件开发项目\NoteBlockWeb\test\_render_test_dump.html', encoding='utf-8').read()
 m = re.search(r'<div id="result">(.*?)</div>', html, re.S)
 if m:
     txt = m.group(1)

@@ -1,0 +1,76 @@
+# WebNBS 配置文件
+# 修改后需重启服务生效
+
+# 服务器监听配置
+server:
+  # 监听 IP
+  # - 0.0.0.0 : 公开服务, 接受任意IP访问 (公网模式)
+  # - 127.0.0.1 : 仅本机访问 (本地开发模式)
+  host: 0.0.0.0
+  # 监听端口
+  port: 8000
+
+# 公开模式配置
+# - true  : 公开为站点, 任何人可访问
+# - false : 本地/受控模式, 仅受信任用户访问
+public: true
+
+# 隐私政策 (首次访问时强制同意)
+privacy:
+  # 是否启用隐私弹窗
+  enabled: true
+  # 隐私政策内容 (简短一句话)
+  message: "本服务仅在当前会话中临时处理您选择的 MIDI 或 NBS 文件。文件内容不会被永久保存，也不会收集个人隐私信息。"
+
+# 版本更新提示：修改版本号或内容后，客户端会在下次访问时显示更新日志
+release:
+  version: "2.4.9"
+  notes: |
+    本次更新
+    - 新增 Español、Русский、Deutsch、Français、日本語和한국어界面语言；Português (Brasil) 已继续保留。
+    - 修复底部乐器选择器在桌面端图标缺失、文字被挤为竖排的问题。
+    - 将四种最新铜号角乐器统一为 Minecraft Wiki 官方名称。
+    - 新增简体中文、English (United States)、Português (Brasil) 和 Bahasa Indonesia 界面语言。
+    - 全局补充工具栏、菜单、提示和动态控件的多语言文本。
+    - 修复移动端横屏仍显示桌面工具栏的问题。
+    - 所有主要右键菜单、功能菜单、文件菜单、轨道菜单、音量浮层和片段菜单均会根据实际可用空间自动翻转、限高并提供内部滚动。
+    - 底部 88 键钢琴键盘改为按真实键盘宽度居中。
+    - 统一右键和浮层菜单为更接近 Windows 11 WinUI 的半透明 Mica/Acrylic 视觉。
+
+# 高级配置 (可选)
+advanced:
+  # 临时文件保留时间 (秒), 超时自动清理
+  temp_cleanup_seconds: 3600
+  # MIDI/NBS 文件最大大小 (MB)
+  max_upload_size_mb: 50
+
+# MIDI 音色库配置 (SF3/SF2 格式)
+# 配置下载链接后, 由客户端在设置中选择下载策略 (播放时询问 / 自动后台下载 / 不使用)。
+# 已下载的音色库会缓存在浏览器 (IndexedDB), 再次访问直接复用。
+# 未配置或下载失败时, 自动回退到浏览器内置合成器 (质量较低, 无法准确拟合)。
+# 引擎: 使用 SpessaSynth 合成器 (WorkletSynthesizer), 音质与性能优于旧解析器。
+soundfont:
+  # SF3/SF2 音色文件下载链接 (支持 http/https 直链, 客户端直连下载, 不占用服务器带宽)
+  # 文件格式: .sf3 (推荐, Vorbis 压缩, 体积小质量好) 或 .sf2 (未压缩 PCM)
+  url: ""
+  # 音色库名称 (仅用于下载提示显示, 如 "GeneralUser GS")
+  name: ""
+
+# SEO 搜索引擎优化配置
+# 这些值会作为 <meta> 标签写入首页 <head>, 供百度/Google/Bing 等搜索引擎
+# 与 QQ/微信等社交平台分享卡片读取。留空即使用默认值 (下方已标注默认)。
+# 修改后需重启服务生效。
+seo:
+  # 站点公开地址 (用于生成分享卡片的绝对链接, 如 https://example.com/)
+  # 留空则分享卡片使用相对地址 (部分平台可能需要绝对地址才能显示图片)
+  site_url: ""
+  # SEO 标题 (浏览器标签 + 搜索结果标题 + 分享卡片标题)
+  # 默认: NoteBlockWeb - 在线 Minecraft 音符盒 (NBS) 编曲编辑器
+  title: ""
+  # SEO 描述 (搜索结果摘要 + 分享卡片描述), 建议 60~120 个字符
+  # 默认: 免费在线 Minecraft 音符盒 (Note Block / NBS) 编曲工具：支持 NBS 导入导出、MIDI 导入、钢琴卷帘编辑、音色拟合与音频渲染，无需安装即可在浏览器中使用。
+  description: ""
+  # 搜索引擎关键词 (逗号分隔)。注意: 现在的搜索引擎已不依赖 keywords 决定排名,
+  # 主要作用是对 HTML 进行语义标注。
+  # 默认: Minecraft, 音符盒, Note Block, NBS, 编曲, 编辑器, 音乐制作, MIDI, 在线工具, Music, Editor, Note block music
+  keywords: ""

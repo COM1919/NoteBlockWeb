@@ -106,7 +106,8 @@
     }
 
     function bindTooltip(el) {
-        var text = el.getAttribute('title');
+        // 兼容两种来源: 尚未转换的 title, 或已被转换过的 data-tip
+        var text = el.getAttribute('title') || el.getAttribute('data-tip');
         if (!text) return;
         el.removeAttribute('title');
         el.setAttribute('data-tip', text);
@@ -160,6 +161,14 @@
         trigger.className = 'cdd-trigger';
         trigger.innerHTML = '<span class="cdd-label"></span><span class="cdd-arrow"></span>';
         wrap.appendChild(trigger);
+
+        // 原 select 会被隐藏, 其悬浮提示需转移到用户实际看到的触发器上
+        var tipText = select.getAttribute('data-tip') || select.getAttribute('title');
+        if (tipText) {
+            if (select.dataset.i18nDataTip) trigger.dataset.i18nDataTip = select.dataset.i18nDataTip;
+            trigger.setAttribute('title', tipText);
+            bindTooltip(trigger);
+        }
 
         var labelEl = trigger.querySelector('.cdd-label');
 

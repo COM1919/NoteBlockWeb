@@ -3,7 +3,7 @@
 'use strict';
 global.window = globalThis;
 var fs = require('fs');
-(0, eval)(fs.readFileSync(require('path').join(__dirname, 'src/static/js/nbs_client.js'), 'utf8'));
+(0, eval)(fs.readFileSync(require('path').join(__dirname, '..', 'src/static/js/nbs_client.js'), 'utf8'));
 
 var reorder = window.dedupeReorderNotes;
 var pass = 0, fail = 0;

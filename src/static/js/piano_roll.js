@@ -58,6 +58,27 @@
         return PITCH_LABELS[(pitchKey + 9) % 12] + (octaveLabelEnabled ? (Math.floor((pitchKey + 21) / 12) - 1) : '');
     }
 
+    // 音符上额外显示: 点击次数 / 方块名 是两个独立开关 (主界面设置, 默认关闭)
+    var noteClicksEnabled = false;
+    var noteBlockEnabled = false;
+    try {
+        noteClicksEnabled = localStorage.getItem('noteblock.show_note_clicks') === '1';
+        noteBlockEnabled = localStorage.getItem('noteblock.show_note_block') === '1';
+    } catch (e) {}
+
+    // Minecraft 音符盒标准方块 (对应 NBS instrument 0~19, 中文方块名)
+    var NOTE_BLOCK_NAMES = [
+        '羊毛', '橡木', '石头', '沙石', '玻璃', '沙子', '黏土', '金块', '冰块', '青金石',
+        '石英块', '灵魂沙', '南瓜', '绿宝石', '干草块', '萤石', '铜管', '铜管', '铜管', '铜管'
+    ];
+
+    // 音符盒点击次数: 从最低音 F#3 (NBS key 33) 基准, 每次右键升半音, 共 24 档 (0~24)
+    var NOTE_BLOCK_BASE_KEY = 33;
+    function noteBlockClicks(pitchKey) {
+        if (typeof pitchKey !== 'number' || !isFinite(pitchKey)) return 0;
+        return ((pitchKey - NOTE_BLOCK_BASE_KEY) % 24 + 24) % 24;
+    }
+
     // 键盘钢琴映射: NBS key → 键盘按键名 (反向映射)
     var KEY_LABELS = {
         36:'Z',37:'S',38:'X',39:'D',40:'C',41:'V',42:'G',43:'B',44:'H',45:'N',46:'J',47:'M',
@@ -192,6 +213,11 @@
         this.performanceSelectedLayers = [];
         this._highlightLayer = -1;
 
+        // 通用选轨模式 (歌曲压缩等复用): 为真时点击音轨行切换选中; 选中列表独立于演奏模式
+        this._trackSelectMode = null;          // null | 'compression'
+        this.compressionSelectedLayers = [];
+        this.onTrackSelectChanged = null;      // 选中变化回调 (layers)
+
         // 键盘钢琴键标签显示
         this._showKeyLabels = false;
 
@@ -322,6 +348,16 @@
 
     PianoRoll.prototype.getPerformanceLayers = function() {
         return this.performanceSelectedLayers.slice();
+    };
+
+    // ---- 通用选轨模式 (歌曲压缩: 减轻处理 / 不被处理的轨道) ----
+    PianoRoll.prototype.getCompressionLayers = function() {
+        return this.compressionSelectedLayers.slice();
+    };
+
+    PianoRoll.prototype.setCompressionLayers = function(layers) {
+        this.compressionSelectedLayers = (layers || []).slice();
+        this.render();
     };
 
     PianoRoll.prototype.setPerformanceLayers = function(layers) {
@@ -1597,23 +1633,22 @@
             return;
         }
 
-        // 演奏模式: 点击选择音轨行
-        if (this.currentTool === 'performance' && e.button === 0) {
+        // 选轨模式: 点击选择音轨行 (演奏模式 / 歌曲压缩的通用选轨)
+        if ((this.currentTool === 'performance' || this._trackSelectMode) && e.button === 0) {
             var perfLayer = this._screenToLayer(y);
             if (perfLayer >= 0 && perfLayer < this.trackCount) {
-                // Toggle selection of this layer
-                var idx = this.performanceSelectedLayers.indexOf(perfLayer);
+                var selList = this._trackSelectMode ? this.compressionSelectedLayers : this.performanceSelectedLayers;
+                var idx = selList.indexOf(perfLayer);
                 if (idx >= 0) {
-                    this.performanceSelectedLayers.splice(idx, 1);
+                    selList.splice(idx, 1);
                 } else {
-                    this.performanceSelectedLayers.push(perfLayer);
+                    selList.push(perfLayer);
                 }
-                this._highlightLayer = this.performanceSelectedLayers.length > 0
-                    ? this.performanceSelectedLayers[this.performanceSelectedLayers.length - 1]
-                    : -1;
+                this._highlightLayer = selList.length > 0 ? selList[selList.length - 1] : -1;
                 this.render();
-                // Notify main.js of selection change
-                if (this.onPerformanceLayersChanged) {
+                if (this._trackSelectMode) {
+                    if (this.onTrackSelectChanged) this.onTrackSelectChanged(selList.slice());
+                } else if (this.onPerformanceLayersChanged) {
                     this.onPerformanceLayersChanged(this.performanceSelectedLayers);
                 }
             }
@@ -2161,20 +2196,22 @@
                 }
             }
 
-            // 演奏模式: 点击选择音轨行
-            if (this.currentTool === 'performance') {
+            // 选轨模式: 点击选择音轨行 (演奏模式 / 歌曲压缩的通用选轨)
+            if (this.currentTool === 'performance' || this._trackSelectMode) {
                 var perfLayer = this._screenToLayer(y);
                 if (perfLayer >= 0 && perfLayer < this.trackCount) {
-                    var idx = this.performanceSelectedLayers.indexOf(perfLayer);
+                    var selList = this._trackSelectMode ? this.compressionSelectedLayers : this.performanceSelectedLayers;
+                    var idx = selList.indexOf(perfLayer);
                     if (idx >= 0) {
-                        this.performanceSelectedLayers.splice(idx, 1);
+                        selList.splice(idx, 1);
                     } else {
-                        this.performanceSelectedLayers.push(perfLayer);
+                        selList.push(perfLayer);
                     }
-                    this._highlightLayer = this.performanceSelectedLayers.length > 0
-                        ? this.performanceSelectedLayers[this.performanceSelectedLayers.length - 1] : -1;
+                    this._highlightLayer = selList.length > 0 ? selList[selList.length - 1] : -1;
                     this.render();
-                    if (this.onPerformanceLayersChanged) {
+                    if (this._trackSelectMode) {
+                        if (this.onTrackSelectChanged) this.onTrackSelectChanged(selList.slice());
+                    } else if (this.onPerformanceLayersChanged) {
                         this.onPerformanceLayersChanged(this.performanceSelectedLayers);
                     }
                 }
@@ -3071,7 +3108,14 @@
     PianoRoll.prototype._eraseAt = function(x, y) {
         if (x < this._currentPanelWidth || y < this._cfg.timelineHeight) return;
         var ecfg = this._getEraserConfig();
-        var mode = ecfg && ecfg.mode === 'chain' ? 'chain' : 'area';
+        var mode = ecfg ? ecfg.mode : 'single';
+        if (mode === 'single') {
+            var hit = this._getNoteAt(x, y);
+            if (!hit) return;
+            this.removeNotesByIds([hit.id]);
+            if (this.onNotesChanged) this.onNotesChanged([]);
+            return;
+        }
         if (mode === 'chain') {
             var hit = this._getNoteAt(x, y);
             if (!hit) return;
@@ -3917,10 +3961,12 @@
 
         // ======== 动态层 (直接绘制到主 canvas) ========
 
-        // 演奏模式: 高亮选中的音轨行
-        if (this.currentTool === 'performance') {
-            for (var li = 0; li < this.performanceSelectedLayers.length; li++) {
-                var selLayer = this.performanceSelectedLayers[li];
+        // 选轨模式: 高亮选中的音轨行 (演奏模式 / 通用选轨)
+        var _selListForCanvas = this._trackSelectMode ? this.compressionSelectedLayers
+            : (this.currentTool === 'performance' ? this.performanceSelectedLayers : null);
+        if (_selListForCanvas) {
+            for (var li = 0; li < _selListForCanvas.length; li++) {
+                var selLayer = _selListForCanvas[li];
                 var layerY = this._cfg.timelineHeight + selLayer * cellH - this.scrollY;
                 if (layerY + cellH > this._cfg.timelineHeight && layerY < h) {
                     ctx.fillStyle = 'rgba(76, 194, 255, 0.08)';
@@ -4323,8 +4369,10 @@
             }
             ctx.fillRect(0, y, pw, cellH);
 
-            // 演奏模式: 高亮选中的音轨
-            if (this.currentTool === 'performance' && this.performanceSelectedLayers.indexOf(layer) >= 0) {
+            // 选轨模式: 高亮选中的音轨 (演奏模式 / 通用选轨)
+            var _selListForPanel = this._trackSelectMode ? this.compressionSelectedLayers
+                : (this.currentTool === 'performance' ? this.performanceSelectedLayers : null);
+            if (_selListForPanel && _selListForPanel.indexOf(layer) >= 0) {
                 ctx.fillStyle = 'rgba(76, 194, 255, 0.15)';
                 ctx.fillRect(0, y, pw, cellH);
                 // 左侧高亮条
@@ -5026,6 +5074,30 @@
             ctx.fillText(pitchLabel, bx + 2, by + 2);
         }
 
+        // 方块名 (音符底部) — 独立开关
+        if (noteBlockEnabled && bw > 18) {
+            var blkName = NOTE_BLOCK_NAMES[note.instrument] || '';
+            if (blkName) {
+                var blkSize = Math.max(7, Math.min(bw * 0.28, 10));
+                ctx.font = blkSize + 'px "Segoe UI", sans-serif';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'bottom';
+                ctx.fillStyle = 'rgba(255,255,255,0.92)';
+                ctx.fillText(blkName, bx + 2, by + bh - 2);
+            }
+        }
+
+        // 点击次数 (音符右上角) — 独立开关
+        if (noteClicksEnabled && bw > 16) {
+            var clickText = '' + noteBlockClicks(pitchKeyNum);
+            var clkSize = Math.max(7, Math.min(bw * 0.28, 10));
+            ctx.font = clkSize + 'px "Segoe UI", sans-serif';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = 'rgba(255,255,255,0.92)';
+            ctx.fillText(clickText, bx + bw - 2, by + 2);
+        }
+
         // 播放高亮：白色叠加，快速淡入淡出
         if (highlightAlpha > 0) {
             ctx.save();
@@ -5086,6 +5158,14 @@
     // 切换音调标签八度数字显示 (主界面设置项同步)
     PianoRoll.prototype.setOctaveLabelSetting = function(enabled) {
         octaveLabelEnabled = !!enabled;
+    };
+
+    // 切换音符上额外信息显示 (点击次数 / 方块名, 两个独立开关, 主界面设置项同步)
+    PianoRoll.prototype.setNoteExtraEnabled = function(clicksEnabled, blockEnabled) {
+        noteClicksEnabled = !!clicksEnabled;
+        noteBlockEnabled = !!blockEnabled;
+        this._fullRedrawNeeded = true;
+        this.render();
     };
 
     // 导出

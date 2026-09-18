@@ -360,17 +360,25 @@
         return ov;
     }
 
+    // 统一弹窗骨架, 与「缩放精度」弹窗同构:
+    //   .popup-content > .settings-header(图标 + 标题 + 关闭) > .settings-body > .popup-actions
+    // 不再写内联外观样式, 一律交给 style.css 驱动, 保证所有弹窗视觉一致。
     function _appDialogBox(title, message, icon, options) {
         options = options || {};
         var box = document.createElement('div');
         box.className = 'app-dialog-box popup-content';
-        box.style.cssText = 'max-width:' + (options.maxWidth || 400) + 'px;width:100%;background:var(--bg-secondary, #2a2a2a);border:1px solid var(--ctrl-stroke-default, #444);border-radius:var(--radius-md, 10px);box-shadow:0 8px 32px rgba(0,0,0,0.6);animation:scaleIn 0.18s ease;overflow:hidden;';
+        box.style.cssText = 'width:100%;max-width:' + (options.maxWidth || 400) + 'px;';
         box.innerHTML =
-            '<div class="settings-header" style="display:flex;align-items:center;justify-content:flex-end;padding:4px 8px;border-bottom:1px solid var(--ctrl-stroke-default,#444);">'
-            + '<button class="settings-close-btn" id="app-dialog-x" style="background:none;border:none;color:var(--text-secondary,#aaa);font-size:20px;cursor:pointer;padding:0 6px;line-height:1;">&times;</button>'
+            '<div class="settings-header">'
+            + '<i class="' + (icon || 'fa-solid fa-circle-info') + '"></i>'
+            + '<h4></h4>'
+            + '<button class="settings-close-btn" id="app-dialog-x" title="关闭">&times;</button>'
             + '</div>'
-            + '<div class="settings-body" style="padding:16px;font-size:13px;color:var(--text-primary,#fff);line-height:1.6;white-space:pre-line;">' + message + '</div>'
-            + '<div class="popup-actions" style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--ctrl-stroke-default,#444);justify-content:flex-end;"></div>';
+            + '<div class="settings-body" style="white-space:pre-line;"></div>'
+            + '<div class="popup-actions"></div>';
+        box.querySelector('.settings-header h4').textContent = title || '';
+        // message 允许包含简单 HTML (如 <b>), 保持既有行为
+        box.querySelector('.settings-body').innerHTML = message || '';
         return box;
     }
 
@@ -378,7 +386,6 @@
         var b = document.createElement('button');
         b.className = 'popup-btn ' + (primary ? 'popup-btn-primary' : 'popup-btn-cancel');
         b.textContent = text;
-        b.style.cssText = 'min-width:72px;padding:6px 14px;font-size:13px;border-radius:var(--radius-sm,6px);cursor:pointer;border:1px solid var(--ctrl-stroke-default,#444);background:' + (primary ? 'var(--accent,#4c9aff)' : 'var(--ctrl-fill-default,#3a3a3a)') + ';color:' + (primary ? '#fff' : 'var(--text-primary,#fff)') + ';';
         return b;
     }
 
@@ -1366,6 +1373,34 @@
                 applyOctaveLabelSetting(octaveLabelsEnabled, true);
             });
         }
+
+        // 音符上显示 点击次数 / 方块名 (两个独立开关, 默认关闭)
+        var showNoteClicksChk = $('settings-show-note-clicks');
+        var showNoteBlockChk = $('settings-show-note-block');
+
+        function syncNoteExtraState() {
+            if (state.pianoRoll) {
+                state.pianoRoll.setNoteExtraEnabled(
+                    showNoteClicksChk ? showNoteClicksChk.checked : false,
+                    showNoteBlockChk ? showNoteBlockChk.checked : false
+                );
+            }
+        }
+        if (showNoteClicksChk) {
+            try { showNoteClicksChk.checked = localStorage.getItem('noteblock.show_note_clicks') === '1'; } catch(e) {}
+            showNoteClicksChk.addEventListener('change', function() {
+                try { localStorage.setItem('noteblock.show_note_clicks', this.checked ? '1' : '0'); } catch(e) {}
+                syncNoteExtraState();
+            });
+        }
+        if (showNoteBlockChk) {
+            try { showNoteBlockChk.checked = localStorage.getItem('noteblock.show_note_block') === '1'; } catch(e) {}
+            showNoteBlockChk.addEventListener('change', function() {
+                try { localStorage.setItem('noteblock.show_note_block', this.checked ? '1' : '0'); } catch(e) {}
+                syncNoteExtraState();
+            });
+        }
+        syncNoteExtraState();
 
         // ============ 个性化: 网页背景图片层 (重构版) ============
         var bgLayer = $('page-bg');
@@ -2599,7 +2634,7 @@
                 sustain: { preview: true, length: 5, overlap: 'overwrite', gap: 0, fade: false, minVel: 10, ease: 'linear' }
             },
             eraser: {
-                mode: 'area',
+                mode: 'single',
                 area: { radius: 3, shape: 'circle' },
                 chain: { sim: { instrument: false, key: false, velocity: false }, limit: 64 }
             }
@@ -2624,7 +2659,7 @@
             }
             if (saved && saved.eraser) {
                 var e = cfg.eraser;
-                if (saved.eraser.mode === 'area' || saved.eraser.mode === 'chain') e.mode = saved.eraser.mode;
+                if (saved.eraser.mode === 'single' || saved.eraser.mode === 'area' || saved.eraser.mode === 'chain') e.mode = saved.eraser.mode;
                 if (saved.eraser.area) {
                     if (typeof saved.eraser.area.radius === 'number') e.area.radius = clampNum(saved.eraser.area.radius, 0, 32, 3);
                     if (saved.eraser.area.shape === 'circle' || saved.eraser.area.shape === 'square') e.area.shape = saved.eraser.area.shape;
@@ -2667,10 +2702,12 @@
         var tool = state.pianoRoll ? state.pianoRoll.currentTool : 'default';
         var brushSec = $('assist-section-brush');
         var eraserSec = $('assist-section-eraser');
+        var selectSec = $('assist-section-select');
         var emptySec = $('assist-section-empty');
         if (brushSec) brushSec.style.display = (tool === 'brush' || tool === 'default') ? '' : 'none';
         if (eraserSec) eraserSec.style.display = tool === 'eraser' ? '' : 'none';
-        if (emptySec) emptySec.style.display = (tool === 'select' || tool === 'performance') ? '' : 'none';
+        if (selectSec) selectSec.style.display = tool === 'select' ? '' : 'none';
+        if (emptySec) emptySec.style.display = (tool === 'performance') ? '' : 'none';
     }
 
     function positionAssistPanel() {
@@ -2783,7 +2820,7 @@
         setAssistToggle('assist-sustain-preview', b.sustain.preview);
         setAssistToggle('assist-sustain-fade', b.sustain.fade);
         syncAssistTabBodies('assist-section-brush', b.mode === 'sustain' ? 'sustain' : 'normal');
-        syncAssistTabBodies('assist-section-eraser', e.mode === 'chain' ? 'chain' : 'area');
+        syncAssistTabBodies('assist-section-eraser', e.mode === 'chain' ? 'chain' : (e.mode === 'area' ? 'area' : 'single'));
         var owBtn = document.querySelector('#assist-overwrite-seg .assist-seg-btn[data-assist-overwrite="' + b.sustain.overlap + '"]');
         setAssistSegActive('assist-overwrite-seg', owBtn);
         var easeBtn = document.querySelector('#assist-ease-seg .assist-seg-btn[data-assist-ease="' + b.sustain.ease + '"]');
@@ -2864,7 +2901,7 @@
                 closeAssistPanel();
             });
         }
-        // 空状态中的查找按钮
+        // 查找按钮 (选择工具悬浮窗内)
         var findBtn = $('assist-find-btn');
         if (findBtn) {
             findBtn.addEventListener('click', function(e) {
@@ -2872,6 +2909,71 @@
                 closeAssistPanel();
                 if (findPanelVisible()) closeFindPanel();
                 else openFindPanel();
+            });
+        }
+
+        // 选择工具: 延音填充
+        var sfBtn = $('assist-apply-sustain-fill');
+        if (sfBtn) {
+            sfBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var selected = state.pianoRoll ? state.pianoRoll.getSelectedNotes() : [];
+                if (!selected || selected.length < 2) {
+                    showSustainFillAlert('请先在钢琴卷帘上选择至少 2 个音符再使用延音填充。', '延音填充');
+                    return;
+                }
+                var interval = parseInt($('assist-sustain-interval').value);
+                if (isNaN(interval) || interval < 0) interval = 0;
+                if (interval > 16) interval = 16;
+                applySustainFill(interval);
+            });
+        }
+
+        // 选择工具: 清除延音
+        var csBtn = $('assist-apply-clear-sustain');
+        if (csBtn) {
+            csBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var selected = state.pianoRoll ? state.pianoRoll.getSelectedNotes() : [];
+                if (!selected || selected.length === 0) {
+                    showSustainFillAlert('请先在钢琴卷帘上选择至少 1 个音符再使用清除延音。', '清除延音');
+                    return;
+                }
+                var gap = parseInt($('assist-clear-sustain-gap').value);
+                if (isNaN(gap) || gap < 0) gap = 0;
+                if (gap > 16) gap = 16;
+                applyClearSustain(gap);
+            });
+        }
+
+        // 选择工具: 音调偏移
+        var psBtn = $('assist-apply-pitch-shift');
+        if (psBtn) {
+            psBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var selected = state.pianoRoll ? state.pianoRoll.getSelectedNotes() : [];
+                if (!selected || selected.length === 0) {
+                    showSustainFillAlert('请先选择要偏移的音符', '音调偏移');
+                    return;
+                }
+                var mode = $('assist-pitch-shift-mode').value;
+                var value = parseInt($('assist-pitch-shift-value').value) || 0;
+                applyPitchShift(mode, value);
+            });
+        }
+
+        // 选择工具: 上下起伏
+        var arBtn = $('assist-apply-arpeggio');
+        if (arBtn) {
+            arBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var selected = state.pianoRoll ? state.pianoRoll.getSelectedNotes() : [];
+                if (!selected || selected.length === 0) {
+                    showSustainFillAlert('请先在钢琴卷帘上选择至少 1 个音符再使用上下起伏。', '上下起伏');
+                    return;
+                }
+                var pattern = $('assist-arpeggio-pattern').value;
+                applyArpeggioTracks(pattern);
             });
         }
 
@@ -2886,7 +2988,9 @@
                 if (section.id === 'assist-section-brush') {
                     assistConfig.brush.mode = name === 'sustain' ? 'sustain' : 'normal';
                 } else if (section.id === 'assist-section-eraser') {
-                    assistConfig.eraser.mode = name === 'chain' ? 'chain' : 'area';
+                    if (name === 'chain') assistConfig.eraser.mode = 'chain';
+                    else if (name === 'area') assistConfig.eraser.mode = 'area';
+                    else assistConfig.eraser.mode = 'single';
                 }
                 saveAssistConfig();
                 syncAssistPanelUI();
@@ -3162,6 +3266,11 @@
             id = findState.results[findState.index];
         }
         state.pianoRoll.setFindHighlight(id);
+        // 查找命中时, 把选择替换为仅当前命中音符 (而非叠加在原有全选之上),
+        // 让用户能直观看到"单独选中了查找到的那个音符"
+        if (id !== null) {
+            state.pianoRoll.selectNotes([id]);
+        }
         if (id !== null) scrollToNote(id);
     }
 
@@ -7665,8 +7774,10 @@
                 item.addEventListener('click', function() {
                     var action = item.getAttribute('data-action');
                     menu.style.display = 'none';
-                    if (action === 'dedupe-notes') {
-                        dedupeCurrentNotes();
+                    if (action === 'compress-song') {
+                        showCompressSongDialog().then(function (r) {
+                            if (r) doCompressSong(r.quality, r.model, r.reorder, r.lighten, r.exclude);
+                        });
                     } else if (action === 'scale-precision') {
                         showScalePrecisionDialog();
                     } else if (action === 'remove-empty-tracks') {
@@ -7699,6 +7810,32 @@
                 menu.style.display = 'none';
             }
         });
+    }
+
+    function applyPitchShift(mode, value) {
+        var selectedNotes = state.pianoRoll ? state.pianoRoll.getSelectedNotes() : [];
+        if (selectedNotes.length === 0) return false;
+        var delta = mode === 'octaves' ? value * 12 : value;
+
+        pushUndo();
+        for (var i = 0; i < selectedNotes.length; i++) {
+            var note = selectedNotes[i];
+            var newKey = Math.max(0, Math.min(87, note.key + delta));
+            note.key = newKey;
+            for (var j = 0; j < state.notes.length; j++) {
+                if (state.notes[j].id === note.id) {
+                    state.notes[j].key = newKey;
+                    break;
+                }
+            }
+        }
+        if (state.pianoRoll) {
+            state.pianoRoll._fullRedrawNeeded = true;
+            state.pianoRoll.render();
+        }
+        buildNoteIndex(state.notes);
+        markDirty();
+        return true;
     }
 
     function showPitchShiftDialog() {
@@ -7753,27 +7890,7 @@
         wrapper.querySelector('#pitch-shift-ok-btn').addEventListener('click', function() {
             var mode = wrapper.querySelector('#pitch-shift-mode').value;
             var value = parseInt(wrapper.querySelector('#pitch-shift-value').value) || 0;
-            var delta = mode === 'octaves' ? value * 12 : value;
-
-            pushUndo();
-            for (var i = 0; i < selectedNotes.length; i++) {
-                var note = selectedNotes[i];
-                var newKey = Math.max(0, Math.min(87, note.key + delta));
-                note.key = newKey;
-                // Update in state.notes
-                for (var j = 0; j < state.notes.length; j++) {
-                    if (state.notes[j].id === note.id) {
-                        state.notes[j].key = newKey;
-                        break;
-                    }
-                }
-            }
-            if (state.pianoRoll) {
-                state.pianoRoll._fullRedrawNeeded = true;
-                state.pianoRoll.render();
-            }
-            buildNoteIndex(state.notes);
-            markDirty();
+            applyPitchShift(mode, value);
             close();
         });
         wrapper.addEventListener('click', function(e) { if (e.target === wrapper) close(); });
@@ -8038,63 +8155,300 @@
     }
 
     // 清除空轨: 删除所有没有任何音符的 layer
-    // ============ 消除重复音符 ============
-    // 对当前项目所有音符去重: 同一 tick 下 音色(instrument) + 音调(key) 完全相同的音符只保留一个
-    function dedupeCurrentNotes() {
+    // ============ 歌曲压缩 (有损压缩) ============
+    // 用滑块选择质量 (仅 1/10/20/40/60/80/99 七档), 99% 等于原「消除重复音符」(完全去重)。
+    // 可通过「算法模型」选择器在 务实启发式 / 感知引擎 之间切换。
+    // 每删除一批音符后都填补空洞; 整次压缩为单个可撤销步骤。
+    var COMPRESS_PCT = [1, 10, 20, 40, 60, 80, 99];
+    var COMPRESS_Q = [0.01, 0.1, 0.2, 0.4, 0.6, 0.8, 0.99];
+    var COMPRESS_WARN_BELOW = 20; // 质量低于该值(%)时显示黄色警示
+
+    function compressResolveTicksPerBeat() {
+        var spb = state.song && state.song.ticks_per_beat;
+        if (spb && spb > 1) return spb;
+        if (state.tempo && state.tempo > 0) return Math.max(4, Math.round(state.tempo * 1.5));
+        return 30;
+    }
+
+    function showCompressSongDialog() {
+        return new Promise(function (resolve) {
+            // 跨"选轨往返"保留的配置
+            var cfg = {
+                qualityIdx: (function () {
+                    var i = COMPRESS_PCT.indexOf(parseInt(localStorage.getItem('nbs_compress_quality'), 10));
+                    return i < 0 ? COMPRESS_PCT.length - 1 : i;
+                })(),
+                model: (function () {
+                    var m = localStorage.getItem('nbs_compress_model');
+                    return (m === 'perceptual') ? 'perceptual' : 'heuristic';
+                })(),
+                reorder: localStorage.getItem('nbs_compress_reorder') !== '0',
+                lighten: [],   // 减轻处理的轨道 (layer 数组)
+                exclude: []    // 不被处理的轨道 (layer 数组)
+            };
+            var overlay = null;
+            var panel = null;
+
+            function layerName(layer) {
+                var tr = (typeof findTrackByLayer === 'function') ? findTrackByLayer(layer) : null;
+                return (tr && tr.name) ? tr.name : ('Layer ' + (layer + 1));
+            }
+            function namesOf(arr) {
+                if (!arr || arr.length === 0) return i18nText('未选择任何轨道');
+                var names = [];
+                for (var i = 0; i < arr.length; i++) names.push(layerName(arr[i]));
+                return names.join('、');
+            }
+
+            function destroyDialog() {
+                if (!overlay) return;
+                var idx = _appDialogStack.indexOf(overlay);
+                if (idx >= 0) _appDialogStack.splice(idx, 1);
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                overlay = null;
+            }
+
+            function finish(value) {
+                destroyDialog();
+                if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+                panel = null;
+                resolve(value);
+            }
+
+            // ===== 选轨: 隐藏弹窗 -> 画布中点击音轨行多选 -> 悬浮窗确定/取消 -> 重开弹窗 =====
+            function openTrackPicker(kind) {
+                destroyDialog();
+                var pr = state.pianoRoll;
+                if (!pr || typeof pr.setCompressionLayers !== 'function') { openDialog(); return; }
+                var entry = (kind === 'lighten' ? cfg.lighten : cfg.exclude).slice();
+
+                panel = document.createElement('div');
+                panel.className = 'popup-content';
+                panel.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:8%;z-index:100002;'
+                    + 'width:min(520px,92vw);max-height:46vh;display:flex;flex-direction:column;';
+                panel.innerHTML =
+                    '<div class="settings-header">'
+                    + '<i class="fa-solid fa-layer-group"></i>'
+                    + '<h4>' + (kind === 'lighten' ? i18nText('选择减轻处理的轨道') : i18nText('选择不被处理的轨道')) + '</h4>'
+                    + '</div>'
+                    + '<div class="settings-body">'
+                    + '<p style="margin:0;font-size:12px;color:var(--text-secondary);">'
+                    + i18nText('在画布中点击音轨行进行选择/取消，可多选。') + '</p>'
+                    + '<div class="cs-pick-list" style="font-size:12px;color:var(--text-primary);line-height:1.6;word-break:break-all;"></div>'
+                    + '</div>'
+                    + '<div class="popup-actions">'
+                    + '<button class="popup-btn popup-btn-cancel" data-cs="cancel">' + i18nText('取消') + '</button>'
+                    + '<button class="popup-btn popup-btn-primary" data-cs="ok">' + i18nText('确定') + '</button>'
+                    + '</div>';
+                var listEl = panel.querySelector('.cs-pick-list');
+                function renderList(layers) {
+                    listEl.textContent = (layers.length ? namesOf(layers) : i18nText('未选择任何轨道'))
+                        + '  (' + layers.length + ')';
+                }
+
+                pr._trackSelectMode = 'compression';
+                var prevCb = pr.onTrackSelectChanged;
+                pr.onTrackSelectChanged = function (layers) { renderList(layers); };
+                pr.setCompressionLayers(entry);      // 高亮回显
+                renderList(entry);
+
+                function closePicker(apply) {
+                    if (apply) {
+                        var picked = pr.getCompressionLayers();
+                        if (kind === 'lighten') cfg.lighten = picked; else cfg.exclude = picked;
+                    }
+                    pr.onTrackSelectChanged = prevCb || null;
+                    pr._trackSelectMode = null;
+                    pr.setCompressionLayers([]);     // 清除高亮
+                    if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+                    panel = null;
+                    openDialog();                    // 重新显示压缩弹窗
+                }
+                panel.querySelector('[data-cs="ok"]').addEventListener('click', function () { closePicker(true); });
+                panel.querySelector('[data-cs="cancel"]').addEventListener('click', function () { closePicker(false); });
+                document.body.appendChild(panel);
+            }
+
+            function openDialog() {
+                overlay = _appDialogOverlay();
+                var box = _appDialogBox(i18nText('歌曲压缩'), '', 'fa-solid fa-compress', { maxWidth: 460 });
+                var body = box.querySelector('.settings-body');
+                body.style.whiteSpace = 'normal';
+
+                // 质量滑块
+                var qWrap = document.createElement('div');
+                qWrap.style.cssText = 'margin-bottom:16px;';
+                var qLabel = document.createElement('label');
+                qLabel.style.cssText = 'display:block;font-size:13px;color:var(--text-primary,#fff);margin-bottom:6px;';
+                qLabel.textContent = i18nText('质量') + ': ';
+                var qVal = document.createElement('span');
+                qVal.style.cssText = 'color:var(--accent,#4c9aff);font-weight:bold;';
+                qVal.textContent = COMPRESS_PCT[cfg.qualityIdx] + '%';
+                qLabel.appendChild(qVal);
+                var qSlider = document.createElement('input');
+                qSlider.type = 'range';
+                qSlider.min = '0'; qSlider.max = String(COMPRESS_PCT.length - 1); qSlider.step = '1'; qSlider.value = String(cfg.qualityIdx);
+                qSlider.style.cssText = 'width:100%;';
+                // 质量低于 20% 的黄色警示 (可能过度删除音符)
+                var qWarn = document.createElement('div');
+                qWarn.style.cssText = 'display:none;margin-top:6px;font-size:12px;line-height:1.45;color:#f5c542;';
+                qWarn.textContent = i18nText('质量低于 20%：可能过度删除音符，歌曲听感可能明显受损');
+                // 实时预估: 当前档位预计删除/保留的音符数
+                var qEst = document.createElement('div');
+                qEst.style.cssText = 'margin-top:4px;font-size:12px;line-height:1.45;color:var(--text-secondary,#a0a0a0);';
+                var syncQuality = function () {
+                    var idx = parseInt(qSlider.value, 10);
+                    cfg.qualityIdx = idx;
+                    qVal.textContent = COMPRESS_PCT[idx] + '%';
+                    qWarn.style.display = COMPRESS_PCT[idx] < COMPRESS_WARN_BELOW ? 'block' : 'none';
+                    var src = state.pianoRoll ? state.pianoRoll.getNotes() : [];
+                    var est = window.compressSongEstimate
+                        ? window.compressSongEstimate(src, COMPRESS_Q[idx], { lightenLayers: cfg.lighten, excludeLayers: cfg.exclude })
+                        : { total: src.length, deleted: 0, kept: src.length };
+                    var pct = est.total > 0 ? Math.round(est.deleted / est.total * 100) : 0;
+                    qEst.textContent = i18nText('预计删除') + ' ' + est.deleted + ' (' + pct + '%)  ·  '
+                        + i18nText('保留') + ' ' + est.kept;
+                };
+                qSlider.addEventListener('input', syncQuality);
+                syncQuality();
+                qWrap.appendChild(qLabel);
+                qWrap.appendChild(qSlider);
+                qWrap.appendChild(qWarn);
+                qWrap.appendChild(qEst);
+                body.appendChild(qWrap);
+
+                // 算法模型选择器
+                var mWrap = document.createElement('div');
+                mWrap.style.cssText = 'margin-bottom:16px;';
+                var mLabel = document.createElement('label');
+                mLabel.style.cssText = 'display:block;font-size:13px;color:var(--text-primary,#fff);margin-bottom:6px;';
+                mLabel.textContent = i18nText('算法模型') + ': ';
+                var mSel = document.createElement('select');
+                mSel.style.cssText = 'width:100%;padding:6px 8px;font-size:13px;border:1px solid var(--ctrl-stroke-default,#444);border-radius:var(--radius-sm,6px);background:var(--ctrl-fill-default,#1c1c1c);color:var(--text-primary,#fff);';
+                var modelHint = i18nText('两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。');
+                var hDesc = i18nText('务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。');
+                var pDesc = i18nText('感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。');
+                var oH = document.createElement('option');
+                oH.value = 'heuristic'; oH.textContent = i18nText('务实启发式（快速）');
+                var oP = document.createElement('option');
+                oP.value = 'perceptual'; oP.textContent = i18nText('感知引擎（智能）');
+                oH.title = hDesc; oP.title = pDesc;
+                mSel.appendChild(oH); mSel.appendChild(oP);
+                mSel.value = cfg.model;
+                mSel.title = hDesc + '\n' + pDesc + '\n' + modelHint;
+                mSel.addEventListener('change', function () { cfg.model = mSel.value; });
+                var mHint = document.createElement('div');
+                mHint.style.cssText = 'margin-top:4px;font-size:12px;line-height:1.45;color:var(--text-secondary,#a0a0a0);';
+                mHint.textContent = modelHint;
+                mWrap.appendChild(mLabel);
+                mWrap.appendChild(mSel);
+                mWrap.appendChild(mHint);
+                body.appendChild(mWrap);
+
+                // 轨道选择行 (减轻处理 / 不被处理)
+                function trackRow(labelText, kind, arr) {
+                    var row = document.createElement('div');
+                    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+                    var lb = document.createElement('span');
+                    lb.style.cssText = 'flex:0 0 auto;font-size:13px;color:var(--text-primary,#fff);';
+                    lb.textContent = labelText;
+                    var summary = document.createElement('span');
+                    summary.style.cssText = 'flex:1 1 auto;font-size:12px;color:var(--text-secondary,#a0a0a0);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                    summary.textContent = namesOf(arr);
+                    summary.title = namesOf(arr);
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'popup-btn';
+                    btn.style.cssText = 'flex:0 0 auto;';
+                    btn.textContent = i18nText('选择');
+                    btn.addEventListener('click', function () { openTrackPicker(kind); });
+                    row.appendChild(lb); row.appendChild(summary); row.appendChild(btn);
+                    return row;
+                }
+                body.appendChild(trackRow(i18nText('减轻处理的轨道'), 'lighten', cfg.lighten));
+                body.appendChild(trackRow(i18nText('不被处理的轨道'), 'exclude', cfg.exclude));
+
+                // 重排序音符 (填补空洞)
+                var rWrap = document.createElement('label');
+                rWrap.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-primary,#fff);cursor:pointer;user-select:none;';
+                var rCb = document.createElement('input');
+                rCb.type = 'checkbox';
+                rCb.checked = cfg.reorder;
+                var rSpan = document.createElement('span');
+                rSpan.textContent = i18nText('重排序音符');
+                rSpan.title = i18nText('删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞');
+                rWrap.appendChild(rCb); rWrap.appendChild(rSpan);
+                body.appendChild(rWrap);
+
+                overlay.appendChild(box);
+                document.body.appendChild(overlay);
+                _appDialogStack.push(overlay);
+
+                box.querySelector('#app-dialog-x').addEventListener('click', function () { finish(null); });
+                var cancelBtn = _appDialogBtn(i18nText('取消'), false);
+                cancelBtn.addEventListener('click', function () { finish(null); });
+                var okBtn = _appDialogBtn(i18nText('压缩'), true);
+                okBtn.addEventListener('click', function () {
+                    var idx = parseInt(qSlider.value, 10);
+                    localStorage.setItem('nbs_compress_quality', String(COMPRESS_PCT[idx]));
+                    localStorage.setItem('nbs_compress_model', mSel.value);
+                    localStorage.setItem('nbs_compress_reorder', rCb.checked ? '1' : '0');
+                    finish({
+                        quality: COMPRESS_Q[idx],
+                        model: mSel.value,
+                        reorder: rCb.checked,
+                        lighten: cfg.lighten.slice(),
+                        exclude: cfg.exclude.slice()
+                    });
+                });
+                var actions = box.querySelector('.popup-actions');
+                actions.appendChild(cancelBtn);
+                actions.appendChild(okBtn);
+                overlay.addEventListener('click', function (e) { if (e.target === overlay) finish(null); });
+                setTimeout(function () { okBtn.focus(); }, 50);
+            }
+
+            openDialog();
+        });
+    }
+
+    function doCompressSong(quality, model, reorder, lightenLayers, excludeLayers) {
         if (!state.pianoRoll) return;
         var notes = state.pianoRoll.getNotes();
         if (notes.length < 2) {
-            showAppAlert('没有可去重的音符', {title: '消除重复音符'});
+            showAppAlert(i18nText('歌曲太短，无法压缩'), { title: '歌曲压缩' });
             return;
         }
-        var seen = {};
-        var kept = [];
-        var removed = [];
-        var removedCount = 0;
-        for (var i = 0; i < notes.length; i++) {
-            var n = notes[i];
-            var key = n.tick + ':' + n.instrument + ':' + n.key;
-            if (seen[key]) { removedCount++; removed.push(n); continue; }
-            seen[key] = true;
-            kept.push(n);
-        }
-        if (removedCount === 0) {
-            // 诊断: 统计"看似重复"但属性不同的情况, 帮助定位原因
-            var sameTickKey = 0;   // 同 tick 同 key, 但音色不同
-            var sameTickInst = 0;  // 同 tick 同 instrument, 但音调不同
-            var sameKeyInst = 0;   // 同 key 同 instrument, 但时间不同 (相邻/其他 tick)
-            var seenTK = {}, seenTI = {}, seenKI = {};
-            for (var j = 0; j < notes.length; j++) {
-                var m = notes[j];
-                var tk = m.tick + ':' + m.key;
-                var ti = m.tick + ':' + m.instrument;
-                var ki = m.key + ':' + m.instrument;
-                if (seenTK[tk]) sameTickKey++; else seenTK[tk] = true;
-                if (seenTI[ti]) sameTickInst++; else seenTI[ti] = true;
-                if (seenKI[ki]) sameKeyInst++; else seenKI[ki] = true;
-            }
-            var msg = '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。';
-            if (sameTickKey > 0) msg += '\n\n提示: 有 ' + sameTickKey + ' 个音符同一时间音调相同但音色不同 (instrument 不同)';
-            if (sameTickInst > 0) msg += '\n提示: 有 ' + sameTickInst + ' 个音符同一时间音色相同但音调不同 (key 不同)';
-            if (sameKeyInst > 0) msg += '\n提示: 有 ' + sameKeyInst + ' 个音符音色音调相同但时间不同 (tick 不同)';
-            showAppAlert(msg, {title: '消除重复音符'});
-            return;
-        }
-        showAppConfirm('将删除 ' + removedCount + ' 个重复音符，是否继续？', {title: '消除重复音符', icon: 'fa-solid fa-copy', checkbox: {label: '重排序音符', title: '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞', checked: true}}).then(function(res) {
-            if (!res || !res.ok) return;
-            pushUndo(); // 在修改前记录快照, 保证可撤销
-            if (res.checked && typeof window.dedupeReorderNotes === 'function') {
-                window.dedupeReorderNotes(kept, removed);
-            }
-            state.pianoRoll.setNotes(kept);
-            state.notes = kept;
-            buildNoteIndex(state.notes);
-            updateProgressUI();
-            updateNoteCount();
-            state.pianoRoll.render();
-            if (typeof renderTrackPanel === 'function') renderTrackPanel();
-            showAppAlert('已删除 ' + removedCount + ' 个重复音符', {title: '消除重复音符'});
+        var ctx = {
+            ticksPerBeat: compressResolveTicksPerBeat(),
+            reorder: !!reorder,
+            lightenLayers: lightenLayers || [],
+            excludeLayers: excludeLayers || []
+        };
+        // 在副本上压缩: compressSongCore 会就地改写音符的 layer (每步删除后补洞上移)。
+        // 若直接传入 state 中的音符对象, 撤销快照会在"已上移"之后采集, 导致撤销无法还原原始层位。
+        var working = notes.map(function (n) {
+            return {
+                id: n.id, tick: n.tick, layer: n.layer, instrument: n.instrument,
+                key: n.key, velocity: n.velocity, pan: n.pan, pitch: n.pitch
+            };
         });
+        var res = window.compressSongCore(working, quality, model, ctx);
+        if (!res.removed || res.removed.length === 0) {
+            showAppAlert(i18nText('未删除任何音符'), { title: '歌曲压缩' });
+            return;
+        }
+        pushUndo(); // 压缩全程仅一次快照; 此时 state 仍为压缩前的原始状态
+        state.pianoRoll.setNotes(res.kept);
+        state.notes = res.kept;
+        buildNoteIndex(state.notes);
+        updateProgressUI();
+        updateNoteCount();
+        state.pianoRoll.render();
+        if (typeof renderTrackPanel === 'function') renderTrackPanel();
+        var msg = '删除 ' + res.removed.length + ' 个音符，保留 ' + res.kept.length + ' 个。';
+        if (res.moved > 0) msg += '压缩后上移填补了 ' + res.moved + ' 个音符。';
+        showAppAlert(msg, { title: '歌曲压缩' });
     }
 
     function removeEmptyTracks() {
@@ -15104,8 +15458,7 @@ function buildTimbreFittingRows(info) {
         // WinUI 3 / Fluent Design ContentDialog 风格
         var mask = document.createElement('div');
         mask.id = 'history-dialog-mask';
-        mask.className = 'popup';
-        mask.style.cssText = 'display:flex;';
+        mask.className = 'popup active';
 
         var history = getHistoryFiles();
         var tableHtml = '';

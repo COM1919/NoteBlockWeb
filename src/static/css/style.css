@@ -412,8 +412,10 @@ body.bg-active .fls-track-row-line {
     line-height: 1.4;
     box-shadow: var(--shadow-flyout);
     pointer-events: none;
-    white-space: nowrap;
-    max-width: 240px;
+    /* 长提示自动换行并保留 \n 分行; 短提示仍为单行 */
+    white-space: pre-line;
+    word-break: break-word;
+    max-width: min(280px, calc(100vw - 16px));
     opacity: 0;
     transition: opacity 120ms ease;
     font-family: var(--font-family);
@@ -6493,6 +6495,75 @@ textarea:disabled {
     border-color: rgba(255, 255, 255, 0.25);
 }
 
+/* 选择工具: 功能区块 */
+.assist-func-block {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.assist-func-block:last-of-type {
+    border-bottom: none;
+}
+.assist-func-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary, #eaeaea);
+    margin-bottom: 6px;
+}
+.assist-func-title i {
+    color: var(--accent, #6ab0ff);
+    margin-right: 4px;
+}
+.assist-apply-btn {
+    width: 100%;
+    margin-top: 4px;
+    padding: 6px 12px;
+    border: 1px solid rgba(76, 154, 255, 0.4);
+    border-radius: 6px;
+    background: rgba(76, 154, 255, 0.15);
+    color: var(--accent, #6ab0ff);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.assist-apply-btn:hover {
+    background: rgba(76, 154, 255, 0.28);
+    border-color: rgba(76, 154, 255, 0.6);
+}
+.assist-apply-btn:active {
+    background: rgba(76, 154, 255, 0.35);
+}
+.assist-select {
+    flex: 1;
+    padding: 4px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--text-primary, #fff);
+    font-size: 12px;
+    box-sizing: border-box;
+    min-height: 26px;
+}
+.assist-select:focus {
+    outline: none;
+    border-color: var(--accent, #6ab0ff);
+}
+.assist-text {
+    flex: 1;
+    padding: 4px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--text-primary, #fff);
+    font-size: 12px;
+    box-sizing: border-box;
+    min-height: 26px;
+}
+.assist-text:focus {
+    outline: none;
+    border-color: var(--accent, #6ab0ff);
+}
+
 /* Tab 按钮组 (单选模式) */
 .assist-tabs {
     display: flex;
@@ -6876,6 +6947,11 @@ textarea:disabled {
         min-height: 32px;
     }
     .assist-number {
+        min-height: 32px;
+    }
+    .assist-apply-btn,
+    .assist-select,
+    .assist-text {
         min-height: 32px;
     }
 }

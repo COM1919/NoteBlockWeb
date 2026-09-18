@@ -514,6 +514,9 @@
                 }],
                 [/^将删除 (\d+) 个重复音符，是否继续？$/, 'Delete $1 duplicate note(s)? Continue?'],
                 [/^已删除 (\d+) 个重复音符$/, 'Deleted $1 duplicate note(s)'],
+                // 歌曲压缩
+                [/^删除 (\d+) 个音符，保留 (\d+) 个。$/, 'Removed $1 note(s), kept $2.'],
+                [/^压缩后上移填补了 (\d+) 个音符。$/, 'Moved $1 note(s) upward to fill the gaps.'],
                 // 作品包 / 音色备份
                 [/^作品包已导出，包含 (\d+) 个自定义音色音频。\n把 zip 分享给他人，导入后即可完整还原音色与歌曲。$/, 'Song pack exported with $1 custom-instrument audio file(s).\nShare the zip; importing it fully restores the instruments and song.'],
                 [/^作品包导出失败: (.+)$/, function(m, msg) { return 'Song pack export failed: ' + translate(msg); }], [/^NBS 打包失败: (.+)$/, function(m, msg) { return 'NBS packing failed: ' + translate(msg); }],
@@ -975,7 +978,7 @@
         setTitle('#btn-functions', t('functions'));
         setTitle('#btn-file', t('file'));
         setTitle('#btn-keyboard-piano', t('keyboard_piano'));
-        setText('#midi-popup .midi-import-header h3', t('midi_import'));
+        setText('#midi-popup .settings-header h4', t('midi_import'));
         var settingLabel = document.querySelector('label[for="settings-language"]');
         if (settingLabel) settingLabel.textContent = t('language') + ':';
         var privacyLabel = document.querySelector('label[for="privacy-language"]');
@@ -1138,6 +1141,20 @@
         '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'After removing duplicates, isolated consecutive notes in the track below move up to fill the gaps',
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Removes notes with the same tick, instrument and pitch; enable "Reorder notes" to move isolated consecutive notes up and fill the gaps',
         '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'No duplicate notes found.\nCriterion: same tick, same instrument and same pitch, ignoring velocity.',
+        // 歌曲压缩
+        '歌曲压缩': 'Song compression', '质量': 'Quality', '算法模型': 'Algorithm model',
+        '务实启发式（快速）': 'Pragmatic heuristic (fast)', '感知引擎（智能）': 'Perceptual engine (smart)',
+        '压缩': 'Compress', '歌曲太短，无法压缩': 'Song too short to compress', '未删除任何音符': 'No notes removed',
+        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Below 20% quality: notes may be over-deleted and the song may sound noticeably degraded',
+        '预计删除': 'Estimated removal', '保留': 'Kept',
+        '减轻处理的轨道': 'Tracks with lighter processing', '不被处理的轨道': 'Tracks excluded from processing',
+        '选择': 'Select', '未选择任何轨道': 'No tracks selected',
+        '选择减轻处理的轨道': 'Select tracks for lighter processing',
+        '选择不被处理的轨道': 'Select tracks excluded from processing',
+        '在画布中点击音轨行进行选择/取消，可多选。': 'Click track rows on the canvas to select or deselect. Multi-select is supported.',
+        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Both models remove the same number of notes; they differ in which notes are kept. The perceptual engine follows listening perception more closely.',
+        '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Pragmatic heuristic (fast): quick rule-based scoring (root/third/fifth, octave duplicates, beat, velocity, duration) — fast and stable.',
+        '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Perceptual engine (smart): scores by voice role, beat, duration, velocity, masking and percussion density — closer to perceived quality, slightly slower.',
         // 导出 NBS 弹窗
         '标准 .nbs 只保存音色引用（不含音频），在其它设备/播放器上这些音色会静音。': 'A standard .nbs file stores only instrument references (no audio), so those instruments will be silent on other devices/players.',
         '导出自定义音色作品包 (zip)：歌曲 + 使用到的音色音频一起打包，完整携带音色': 'Export custom instrument pack (zip): the song and the instrument audio it uses are packed together for full portability',
@@ -1450,57 +1467,358 @@
         '重排序音符': 'ノートを並べ直す',
         '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': '重複ノートを削除した後、下の隣接トラックで孤立した連続ノートを上へ移動して空きを埋めます',
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': '同じ時間・音色・音程が完全に一致する重複ノートを削除します。「ノートを並べ直す」をオンにすると、削除後に孤立した連続ノートを上へ移動して空きを埋めます',
-        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': '重複ノートは見つかりませんでした。\n判定基準: 同一時間(tick) + 同一音色 + 同一音程、音量差は無視。'
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': '重複ノートは見つかりませんでした。\n判定基準: 同一時間(tick) + 同一音色 + 同一音程、音量差は無視。',
+        // 歌曲压缩
+        '歌曲压缩': '曲の圧縮', '质量': '品質', '算法模型': 'アルゴリズムモデル',
+        '务实启发式（快速）': '実用的ヒューリスティック（高速）', '感知引擎（智能）': '知覚エンジン（スマート）',
+        '压缩': '圧縮', '歌曲太短，无法压缩': '曲が短すぎて圧縮できません', '未删除任何音符': '削除された音符はありません',
+        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': '品質が 20% 未満: ノートが削除されすぎて、聴感が著しく損なわれる可能性があります',
+        '预计删除': '削除見込み', '保留': '保持',
+        '减轻处理的轨道': '軽減処理するトラック', '不被处理的轨道': '処理しないトラック',
+        '选择': '選択', '未选择任何轨道': 'トラックが選択されていません',
+        '选择减轻处理的轨道': '軽減処理するトラックを選択',
+        '选择不被处理的轨道': '処理しないトラックを選択',
+        '在画布中点击音轨行进行选择/取消，可多选。': 'キャンバス内のトラック行をクリックして選択/解除できます（複数選択可）。',
+        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'どちらのモデルも削除するノート数は同じで、残すノートの選び方が異なります。知覚エンジンの方が聴感に近い結果になります。',
+        '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': '実用的ヒューリスティック（高速）：ルールベースの簡易採点（根音/三度/五度、オクターブ重複、拍、ベロシティ、長さ）で高速かつ安定。',
+        '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': '知覚エンジン（スマート）：声部の役割、拍、長さ、ベロシティ、マスキング、打楽器密度で総合採点し、聴感に近いがやや低速。',
     });
     Object.assign(UI_TEXT['pt-BR'], {
         '消除重复音符': 'Remover notas duplicadas', '没有可去重的音符': 'Nenhuma nota para desduplicar',
         '重排序音符': 'Reordenar notas',
         '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'Após excluir as duplicadas, move para cima as notas consecutivas isoladas da faixa adjacente abaixo para preencher as lacunas',
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Remove notas com o mesmo tick, instrumento e altura; marque "Reordenar notas" para mover para cima as notas consecutivas isoladas e preencher as lacunas',
-        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Nenhuma nota duplicada encontrada.\nCritério: mesmo tick + mesmo instrumento + mesma altura, ignorando a intensidade.'
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Nenhuma nota duplicada encontrada.\nCritério: mesmo tick + mesmo instrumento + mesma altura, ignorando a intensidade.',
+        // 歌曲压缩
+        '歌曲压缩': 'Compressão da música', '质量': 'Qualidade', '算法模型': 'Modelo de algoritmo',
+        '务实启发式（快速）': 'Heurística pragmática (rápida)', '感知引擎（智能）': 'Motor perceptual (inteligente)',
+        '压缩': 'Comprimir', '歌曲太短，无法压缩': 'Música curta demais para comprimir', '未删除任何音符': 'Nenhuma nota removida',
+        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Qualidade abaixo de 20%: as notas podem ser removidas em excesso e a música pode soar bastante degradada',
+        '预计删除': 'Remoção estimada', '保留': 'Mantidas',
+        '减轻处理的轨道': 'Faixas com processamento reduzido', '不被处理的轨道': 'Faixas sem processamento',
+        '选择': 'Selecionar', '未选择任何轨道': 'Nenhuma faixa selecionada',
+        '选择减轻处理的轨道': 'Selecionar faixas com processamento reduzido',
+        '选择不被处理的轨道': 'Selecionar faixas sem processamento',
+        '在画布中点击音轨行进行选择/取消，可多选。': 'Clique nas linhas de faixa na tela para selecionar ou desselecionar. É possível selecionar várias.',
+        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Os dois modelos removem a mesma quantidade de notas; o que muda é quais notas são mantidas. O motor perceptual se aproxima mais da percepção auditiva.',
+        '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Heurística pragmática (rápida): pontua com regras simples (fundamental/terça/quinta, duplicatas de oitava, tempo, intensidade, duração) — rápida e estável.',
+        '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Motor perceptual (inteligente): pontua por papel da voz, tempo, duração, intensidade, mascaramento e densidade de percussão — mais próximo da audição, um pouco mais lento.',
     });
     Object.assign(UI_TEXT['id-ID'], {
         '消除重复音符': 'Hapus not duplikat', '没有可去重的音符': 'Tidak ada not untuk dihapus duplikatnya',
         '重排序音符': 'Susun ulang not',
         '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'Setelah menghapus not duplikat, not berurutan yang terisolasi di trek bersebelahan di bawah dipindahkan ke atas untuk mengisi celah',
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Hapus not dengan tick, instrumen, dan nada yang sama; aktifkan "Susun ulang not" untuk memindahkan not berurutan yang terisolasi ke atas dan mengisi celah',
-        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Tidak ada not duplikat ditemukan.\nKriteria: tick + instrumen + nada yang sama, abaikan perbedaan kecepatan.'
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Tidak ada not duplikat ditemukan.\nKriteria: tick + instrumen + nada yang sama, abaikan perbedaan kecepatan.',
+        // 歌曲压缩
+        '歌曲压缩': 'Kompresi lagu', '质量': 'Kualitas', '算法模型': 'Model algoritma',
+        '务实启发式（快速）': 'Heuristik pragmatis (cepat)', '感知引擎（智能）': 'Mesin persepsi (cerdas)',
+        '压缩': 'Kompres', '歌曲太短，无法压缩': 'Lagu terlalu pendek untuk dikompres', '未删除任何音符': 'Tidak ada not yang dihapus',
+        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Kualitas di bawah 20%: not bisa terhapus berlebihan dan lagu bisa terdengar sangat rusak',
+        '预计删除': 'Perkiraan dihapus', '保留': 'Dipertahankan',
+        '减轻处理的轨道': 'Trek dengan pemrosesan ringan', '不被处理的轨道': 'Trek tanpa pemrosesan',
+        '选择': 'Pilih', '未选择任何轨道': 'Tidak ada trek dipilih',
+        '选择减轻处理的轨道': 'Pilih trek dengan pemrosesan ringan',
+        '选择不被处理的轨道': 'Pilih trek tanpa pemrosesan',
+        '在画布中点击音轨行进行选择/取消，可多选。': 'Klik baris trek di kanvas untuk memilih atau membatalkan. Bisa pilih banyak.',
+        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Kedua model menghapus jumlah not yang sama; bedanya not mana yang dipertahankan. Mesin persepsi lebih mendekati pendengaran.',
+        '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Heuristik pragmatis (cepat): menilai dengan aturan sederhana (nada dasar/ters/kuint, duplikat oktaf, ketukan, velocity, durasi) — cepat dan stabil.',
+        '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Mesin persepsi (cerdas): menilai dari peran suara, ketukan, durasi, velocity, masking, dan kerapatan perkusi — lebih mendekati pendengaran, sedikit lebih lambat.',
     });
     Object.assign(UI_TEXT['es-ES'], {
         '消除重复音符': 'Eliminar notas duplicadas', '没有可去重的音符': 'No hay notas para desduplicar',
         '重排序音符': 'Reordenar notas',
         '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'Tras eliminar los duplicados, las notas consecutivas aisladas de la pista adyacente inferior suben para rellenar los huecos',
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Elimina notas con el mismo tick, instrumento y altura; activa "Reordenar notas" para subir las notas consecutivas aisladas y rellenar los huecos',
-        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'No se encontraron notas duplicadas.\nCriterio: mismo tick + mismo instrumento + misma altura, ignorando la velocidad.'
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'No se encontraron notas duplicadas.\nCriterio: mismo tick + mismo instrumento + misma altura, ignorando la velocidad.',
+        // 歌曲压缩
+        '歌曲压缩': 'Compresión de canción', '质量': 'Calidad', '算法模型': 'Modelo de algoritmo',
+        '务实启发式（快速）': 'Heurística pragmática (rápida)', '感知引擎（智能）': 'Motor perceptual (inteligente)',
+        '压缩': 'Comprimir', '歌曲太短，无法压缩': 'La canción es demasiado corta para comprimir', '未删除任何音符': 'No se eliminó ninguna nota',
+        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Calidad inferior al 20%: podrían eliminarse demasiadas notas y la canción podría sonar muy degradada',
+        '预计删除': 'Eliminación estimada', '保留': 'Conservadas',
+        '减轻处理的轨道': 'Pistas con procesamiento reducido', '不被处理的轨道': 'Pistas sin procesar',
+        '选择': 'Seleccionar', '未选择任何轨道': 'Ninguna pista seleccionada',
+        '选择减轻处理的轨道': 'Seleccionar pistas con procesamiento reducido',
+        '选择不被处理的轨道': 'Seleccionar pistas sin procesar',
+        '在画布中点击音轨行进行选择/取消，可多选。': 'Haz clic en las filas de pista del lienzo para seleccionar o deseleccionar. Se permite selección múltiple.',
+        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Ambos modelos eliminan la misma cantidad de notas; la diferencia es qué notas se conservan. El motor perceptual se acerca más a la percepción auditiva.',
+        '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Heurística pragmática (rápida): puntúa con reglas simples (fundamental/tercera/quinta, duplicados de octava, pulso, intensidad, duración) — rápida y estable.',
+        '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Motor perceptual (inteligente): puntúa por rol de la voz, pulso, duración, intensidad, enmascaramiento y densidad de percusión — más fiel al oído, algo más lento.',
     });
     Object.assign(UI_TEXT['ru-RU'], {
         '消除重复音符': 'Удалить дубликаты нот', '没有可去重的音符': 'Нет нот для удаления дубликатов',
         '重排序音符': 'Переставить ноты',
         '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'После удаления дубликатов изолированные последовательные ноты на соседней дорожке снизу сдвигаются вверх, заполняя пустоты',
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Удаляет ноты с одинаковым tick, инструментом и высотой; включите «Переставить ноты», чтобы сдвинуть изолированные последовательные ноты вверх и заполнить пустоты',
-        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Дубликаты нот не найдены.\nКритерий: тот же tick + тот же инструмент + та же высота, разница громкости игнорируется.'
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Дубликаты нот не найдены.\nКритерий: тот же tick + тот же инструмент + та же высота, разница громкости игнорируется.',
+        // 歌曲压缩
+        '歌曲压缩': 'Сжатие песни', '质量': 'Качество', '算法模型': 'Модель алгоритма',
+        '务实启发式（快速）': 'Прагматическая эвристика (быстро)', '感知引擎（智能）': 'Перцептивный движок (умный)',
+        '压缩': 'Сжать', '歌曲太短，无法压缩': 'Песня слишком короткая для сжатия', '未删除任何音符': 'Ни одной ноты не удалено',
+        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Качество ниже 20%: возможны чрезмерные удаления нот, звучание может заметно ухудшиться',
+        '预计删除': 'Ожидаемое удаление', '保留': 'Останется',
+        '减轻处理的轨道': 'Дорожки с облегчённой обработкой', '不被处理的轨道': 'Дорожки без обработки',
+        '选择': 'Выбрать', '未选择任何轨道': 'Дорожки не выбраны',
+        '选择减轻处理的轨道': 'Выбрать дорожки с облегчённой обработкой',
+        '选择不被处理的轨道': 'Выбрать дорожки без обработки',
+        '在画布中点击音轨行进行选择/取消，可多选。': 'Щёлкайте по строкам дорожек на холсте, чтобы выбрать или снять выбор. Можно выбрать несколько.',
+        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Обе модели удаляют одинаковое число нот; различается лишь то, какие ноты остаются. Перцептивный движок ближе к слуховому восприятию.',
+        '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Прагматическая эвристика (быстро): оценка по простым правилам (основной тон/терция/квинта, дубли октав, доля, velocity, длительность) — быстро и стабильно.',
+        '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Перцептивный движок (умный): оценка по роли голоса, доле, длительности, velocity, маскировке и плотности перкуссии — ближе к восприятию, чуть медленнее.',
     });
     Object.assign(UI_TEXT['de-DE'], {
         '消除重复音符': 'Doppelte Noten entfernen', '没有可去重的音符': 'Keine Noten zum Entfernen von Duplikaten',
         '重排序音符': 'Noten neu anordnen',
         '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'Nach dem Entfernen der Duplikate werden isolierte aufeinanderfolgende Noten der darunterliegenden Spur nach oben verschoben, um die Lücken zu füllen',
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Entfernt Noten mit gleichem Tick, Instrument und gleicher Tonhöhe; aktivieren Sie „Noten neu anordnen“, um isolierte aufeinanderfolgende Noten nach oben zu verschieben und die Lücken zu füllen',
-        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Keine doppelten Noten gefunden.\nKriterium: gleicher Tick + gleiches Instrument + gleiche Tonhöhe, Lautstärke wird ignoriert.'
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Keine doppelten Noten gefunden.\nKriterium: gleicher Tick + gleiches Instrument + gleiche Tonhöhe, Lautstärke wird ignoriert.',
+        // 歌曲压缩
+        '歌曲压缩': 'Song-Kompression', '质量': 'Qualität', '算法模型': 'Algorithmus-Modell',
+        '务实启发式（快速）': 'Pragmatische Heuristik (schnell)', '感知引擎（智能）': 'Perzeptiver Motor (intelligent)',
+        '压缩': 'Komprimieren', '歌曲太短，无法压缩': 'Song zu kurz zum Komprimieren', '未删除任何音符': 'Keine Noten entfernt',
+        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Qualität unter 20 %: Noten könnten übermäßig entfernt werden, der Klang kann deutlich leiden',
+        '预计删除': 'Geschätzte Löschung', '保留': 'Behalten',
+        '减轻处理的轨道': 'Spuren mit reduzierter Verarbeitung', '不被处理的轨道': 'Spuren ohne Verarbeitung',
+        '选择': 'Auswählen', '未选择任何轨道': 'Keine Spuren ausgewählt',
+        '选择减轻处理的轨道': 'Spuren mit reduzierter Verarbeitung auswählen',
+        '选择不被处理的轨道': 'Spuren ohne Verarbeitung auswählen',
+        '在画布中点击音轨行进行选择/取消，可多选。': 'Klicken Sie im Canvas auf Spurzeilen, um aus- oder abzuwählen. Mehrfachauswahl möglich.',
+        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Beide Modelle entfernen gleich viele Noten; unterschiedlich ist, welche Noten erhalten bleiben. Die perzeptive Engine kommt dem Höreindruck näher.',
+        '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Pragmatische Heuristik (schnell): Bewertung nach einfachen Regeln (Grundton/Terz/Quinte, Oktav-Dubletten, Takt, Anschlagstärke, Dauer) — schnell und stabil.',
+        '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Perzeptive Engine (intelligent): Bewertung nach Stimmlage, Takt, Dauer, Anschlagstärke, Verdeckung und Perkussionsdichte — näher am Höreindruck, etwas langsamer.',
     });
     Object.assign(UI_TEXT['fr-FR'], {
         '消除重复音符': 'Supprimer les notes en double', '没有可去重的音符': 'Aucune note à dédupliquer',
         '重排序音符': 'Réorganiser les notes',
         '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': 'Après suppression des doublons, les notes consécutives isolées de la piste adjacente inférieure remontent pour combler les vides',
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Supprime les notes ayant le même tick, instrument et hauteur ; activez « Réorganiser les notes » pour faire remonter les notes consécutives isolées et combler les vides',
-        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Aucune note en double trouvée.\nCritère : même tick + même instrument + même hauteur, la vélocité est ignorée.'
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Aucune note en double trouvée.\nCritère : même tick + même instrument + même hauteur, la vélocité est ignorée.',
+        // 歌曲压缩
+        '歌曲压缩': 'Compression de chanson', '质量': 'Qualité', '算法模型': "Modèle d'algorithme",
+        '务实启发式（快速）': 'Heuristique pragmatique (rapide)', '感知引擎（智能）': 'Moteur perceptuel (intelligent)',
+        '压缩': 'Compresser', '歌曲太短，无法压缩': 'Chanson trop courte pour compression', '未删除任何音符': 'Aucune note supprimée',
+        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Qualité inférieure à 20 % : trop de notes risquent d\'être supprimées, le rendu peut être nettement dégradé',
+        '预计删除': 'Suppression estimée', '保留': 'Conservées',
+        '减轻处理的轨道': 'Pistes à traitement réduit', '不被处理的轨道': 'Pistes non traitées',
+        '选择': 'Sélectionner', '未选择任何轨道': 'Aucune piste sélectionnée',
+        '选择减轻处理的轨道': 'Sélectionner les pistes à traitement réduit',
+        '选择不被处理的轨道': 'Sélectionner les pistes non traitées',
+        '在画布中点击音轨行进行选择/取消，可多选。': 'Cliquez sur les lignes de piste du canevas pour sélectionner ou désélectionner. Sélection multiple possible.',
+        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Les deux modèles suppriment le même nombre de notes ; seule diffère la sélection des notes conservées. Le moteur perceptuel se rapproche de la perception auditive.',
+        '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Heuristique pragmatique (rapide) : notation par règles simples (fondamentale/tierce/quinte, doublons d’octave, temps, vélocité, durée) — rapide et stable.',
+        '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Moteur perceptuel (intelligent) : notation par rôle de voix, temps, durée, vélocité, masquage et densité de percussions — plus proche de l’écoute, un peu plus lent.',
     });
     Object.assign(UI_TEXT['ko-KR'], {
         '消除重复音符': '중복 노트 제거', '没有可去重的音符': '중복 제거할 노트가 없습니다',
         '重排序音符': '노트 재정렬',
         '删除重复音符后，将下方相邻轨道中孤立的连续音符向上移动填补空洞': '중복 노트를 삭제한 뒤 아래 인접 트랙에서 고립된 연속 노트를 위로 이동해 빈 곳을 채웁니다',
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': '같은 tick, 악기, 음높이의 중복 노트를 삭제합니다. "노트 재정렬"을 켜면 삭제 후 고립된 연속 노트를 위로 이동해 빈 곳을 채웁니다',
-        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': '중복 노트를 찾지 못했습니다.\n기준: 같은 tick + 같은 악기 + 같은 음높이, 음량 차이는 무시.'
+        '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': '중복 노트를 찾지 못했습니다.\n기준: 같은 tick + 같은 악기 + 같은 음높이, 음량 차이는 무시.',
+        // 歌曲压缩
+        '歌曲压缩': '노래 압축', '质量': '품질', '算法模型': '알고리즘 모델',
+        '务实启发式（快速）': '실용적 휴리스틱 (빠름)', '感知引擎（智能）': '지각 엔진 (스마트)',
+        '压缩': '압축', '歌曲太短，无法压缩': '노래가 너무 짧아 압축할 수 없습니다', '未删除任何音符': '삭제된 노트가 없습니다',
+        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': '품질이 20% 미만: 노트가 과도하게 삭제되어 청감이 크게 손상될 수 있습니다',
+        '预计删除': '예상 삭제', '保留': '유지',
+        '减轻处理的轨道': '축소 처리할 트랙', '不被处理的轨道': '처리하지 않을 트랙',
+        '选择': '선택', '未选择任何轨道': '선택된 트랙 없음',
+        '选择减轻处理的轨道': '축소 처리할 트랙 선택',
+        '选择不被处理的轨道': '처리하지 않을 트랙 선택',
+        '在画布中点击音轨行进行选择/取消，可多选。': '캔버스에서 트랙 행을 클릭해 선택/해제할 수 있습니다. 여러 개 선택 가능.',
+        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': '두 모델은 삭제하는 노트 수가 같고, 어떤 노트를 남기는지만 다릅니다. 지각 엔진이 청감에 더 가깝습니다.',
+        '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': '실용적 휴리스틱(빠름): 규칙 기반 간단 채점(근음/3도/5도, 옥타브 중복, 박자, 벨로시티, 길이) — 빠르고 안정적.',
+        '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': '지각 엔진(스마트): 성부 역할, 박자, 길이, 벨로시티, 마스킹, 타악기 밀도로 종합 채점 — 청감에 더 가깝지만 조금 느림.',
     });
+
+    // ============ 设置项文案 (八度数字 / 点击次数 / 方块名) 各语言补充 ============
+    // 对应 index.html 三个设置 checkbox 的完整文本节点(整段文本作为 key)
+    var _noteExtraI18n = {
+        'en-US': {
+            '音调文字显示八度数字': 'Keyboard labels show octave number',
+            '音符上显示音符盒点击次数': 'Show note-block click count on notes',
+            '音符上显示方块名': 'Show block name on notes'
+        },
+        'ja-JP': {
+            '音调文字显示八度数字': '鍵盤ラベルにオクターブ数字を表示',
+            '音符上显示音符盒点击次数': '音符に音符ブロックのクリック回数を表示',
+            '音符上显示方块名': '音符にブロック名を表示'
+        },
+        'ko-KR': {
+            '音调文字显示八度数字': '키보드 라벨에 옥타브 숫자 표시',
+            '音符上显示音符盒点击次数': '노트에 노트 블록 클릭 횟수 표시',
+            '音符上显示方块名': '노트에 블록 이름 표시'
+        },
+        'pt-BR': {
+            '音调文字显示八度数字': 'Rótulos do teclado mostram o número da oitava',
+            '音符上显示音符盒点击次数': 'Mostrar o número de cliques do bloco musical nas notas',
+            '音符上显示方块名': 'Mostrar o nome do bloco nas notas'
+        },
+        'id-ID': {
+            '音调文字显示八度数字': 'Label keyboard menampilkan angka oktaf',
+            '音符上显示音符盒点击次数': 'Tampilkan jumlah klik blok nada pada not',
+            '音符上显示方块名': 'Tampilkan nama blok pada not'
+        },
+        'es-ES': {
+            '音调文字显示八度数字': 'Las etiquetas del teclado muestran el número de octava',
+            '音符上显示音符盒点击次数': 'Mostrar el número de clics del bloque musical en las notas',
+            '音符上显示方块名': 'Mostrar el nombre del bloque en las notas'
+        },
+        'ru-RU': {
+            '音调文字显示八度数字': 'Показывать октаву на подписях клавиш',
+            '音符上显示音符盒点击次数': 'Показывать количество кликов музыкального блока на нотах',
+            '音符上显示方块名': 'Показывать название блока на нотах'
+        },
+        'de-DE': {
+            '音调文字显示八度数字': 'Tastaturbeschriftungen zeigen Oktavnummer',
+            '音符上显示音符盒点击次数': 'Klickanzahl des Notenblocks auf Noten anzeigen',
+            '音符上显示方块名': 'Blocknamen auf Noten anzeigen'
+        },
+        'fr-FR': {
+            '音调文字显示八度数字': 'Les libellés du clavier affichent l\'octave',
+            '音符上显示音符盒点击次数': 'Afficher le nombre de clics du bloc de notes sur les notes',
+            '音符上显示方块名': 'Afficher le nom du bloc sur les notes'
+        }
+    };
+    var _nl;
+    for (_nl in _noteExtraI18n) {
+        if (Object.prototype.hasOwnProperty.call(_noteExtraI18n, _nl)) Object.assign(UI_TEXT[_nl], _noteExtraI18n[_nl]);
+    }
+
+    // ============ 设置弹窗补充词条 (es/ru/de/fr/ko) 完整补齐 ============
+    // 对应 index.html 设置弹窗 ($settings-popup) 静态文本节点(整段文本作为 key)。
+    // 这些词条在 en/ja 已有译文，其余语言缺失，此处补齐。
+    var _settingsExtraI18n = {
+        'es-ES': {
+            '平滑翻页 (播放头居中)': 'Desplazamiento suave (reproducción centrada)',
+            '音符播放高亮动画': 'Animación de resaltado de notas al reproducir',
+            '录制时显示音符动画 (关闭可提升录制性能)': 'Mostrar animación de notas al grabar (desactivar mejora el rendimiento de grabación)',
+            '音效优化 (混响/立体声)': 'Mejora de audio (reverb/estéreo)',
+            '音符音量透明度 (音量越低越透明)': 'Transparencia del volumen de las notas (menor volumen = más transparente)',
+            'NBS 导出版本:': 'Versión de exportación NBS:',
+            '含铜号角乐器时自动 V6': 'Usar V6 automáticamente con instrumentos de cuerno de cobre',
+            '关于 NoteBlockWeb': 'Acerca de NoteBlockWeb',
+            '通用': 'General', '个性化': 'Personalización', '清除': 'Borrar', '平铺': 'Mosaico', '拉伸': 'Estirar',
+            '缩放适配': 'Ajustar escala', '普通半透明': 'Semitransparente normal', '毛玻璃': 'Vidrio esmerilado', '亚克力': 'Acrílico',
+            '背景图片:': 'Imagen de fondo:', '背景透明度:': 'Transparencia de fondo:', '背景模式:': 'Modo de fondo:',
+            '表面材质:': 'Material de superficie:', '面板透明度:': 'Transparencia del panel:', '音轨栏透明度:': 'Transparencia del panel de pistas:',
+            '网格材质:': 'Material de la cuadrícula:', '网格透明度:': 'Transparencia de la cuadrícula:',
+            '播放时询问': 'Preguntar al reproducir', '自动后台下载': 'Descarga automática en segundo plano',
+            '不使用 (内置合成器)': 'Desactivado (sintetizador integrado)', 'MIDI 音色库:': 'Banco de sonidos MIDI:',
+            '未下载': 'No descargado', '立即下载': 'Descargar ahora', '清除缓存': 'Borrar caché', '音色库状态:': 'Estado del banco de sonidos:',
+            '语言': 'Idioma',
+            '提示: 背景图片覆盖整个网页; 透明度 100% 完全透明, 0% 不透明; 表面材质控制工具栏, 网格材质单独控制音符网格区域; 面板透明度控制工具栏透明程度, 音轨栏透明度单独控制左侧音轨信息栏': 'Sugerencia: la imagen de fondo cubre toda la página; 100 % de transparencia = totalmente transparente, 0 % = opaco. El material de superficie controla la barra de herramientas; el material de la cuadrícula controla solo la zona de la cuadrícula de notas. La transparencia del panel controla la opacidad de la barra de herramientas, y la transparencia del panel de pistas controla la barra de información de pistas de la izquierda.'
+        },
+        'ru-RU': {
+            '平滑翻页 (播放头居中)': 'Плавное следование (плейхед по центру)',
+            '音符播放高亮动画': 'Анимация подсветки нот при воспроизведении',
+            '录制时显示音符动画 (关闭可提升录制性能)': 'Показывать анимацию нот при записи (отключение повышает производительность записи)',
+            '音效优化 (混响/立体声)': 'Улучшение звука (реверберация/стерео)',
+            '音符音量透明度 (音量越低越透明)': 'Прозрачность по громкости ноты (тише = прозрачнее)',
+            'NBS 导出版本:': 'Версия экспорта NBS:',
+            '含铜号角乐器时自动 V6': 'Автоматически переключаться на V6 при наличии медных горнов',
+            '关于 NoteBlockWeb': 'О NoteBlockWeb',
+            '通用': 'Общие', '个性化': 'Персонализация', '清除': 'Очистить', '平铺': 'Замостить', '拉伸': 'Растянуть',
+            '缩放适配': 'Вписать по размеру', '普通半透明': 'Обычный полупрозрачный', '毛玻璃': 'Матовое стекло', '亚克力': 'Акрил',
+            '背景图片:': 'Фоновая картинка:', '背景透明度:': 'Прозрачность фона:', '背景模式:': 'Режим фона:',
+            '表面材质:': 'Материал поверхности:', '面板透明度:': 'Прозрачность панели:', '音轨栏透明度:': 'Прозрачность панели дорожек:',
+            '网格材质:': 'Материал сетки:', '网格透明度:': 'Прозрачность сетки:',
+            '播放时询问': 'Спрашивать при воспроизведении', '自动后台下载': 'Автоскачивание в фоне',
+            '不使用 (内置合成器)': 'Не использовать (встроенный синтезатор)', 'MIDI 音色库:': 'MIDI-звуковые банки:',
+            '未下载': 'Не загружено', '立即下载': 'Скачать сейчас', '清除缓存': 'Очистить кэш', '音色库状态:': 'Состояние звукового банка:',
+            '语言': 'Язык',
+            '提示: 背景图片覆盖整个网页; 透明度 100% 完全透明, 0% 不透明; 表面材质控制工具栏, 网格材质单独控制音符网格区域; 面板透明度控制工具栏透明程度, 音轨栏透明度单独控制左侧音轨信息栏': 'Подсказка: фоновая картинка покрывает всю страницу; прозрачность 100 % — полностью прозрачно, 0 % — непрозрачно; материал поверхности управляет панелью инструментов, материал сетки отдельно управляет областью нотной сетки; прозрачность панели управляет степенью прозрачности панели инструментов, а прозрачность панели дорожек отдельно управляет левой информационной панелью дорожек.'
+        },
+        'de-DE': {
+            '平滑翻页 (播放头居中)': 'Sanftes Scrollen (Wiedergabekopf mittig)',
+            '音符播放高亮动画': 'Noten-Highlight-Animation bei der Wiedergabe',
+            '录制时显示音符动画 (关闭可提升录制性能)': 'Notenanimation während der Aufnahme anzeigen (deaktivieren verbessert Aufnahmeleistung)',
+            '音效优化 (混响/立体声)': 'Audioverbesserung (Hall/Stereo)',
+            '音符音量透明度 (音量越低越透明)': 'Notentransparenz nach Lautstärke (leiser = transparenter)',
+            'NBS 导出版本:': 'NBS-Exportversion:',
+            '含铜号角乐器时自动 V6': 'Automatisch V6 bei Kupferhorn-Instrumenten verwenden',
+            '关于 NoteBlockWeb': 'Über NoteBlockWeb',
+            '通用': 'Allgemein', '个性化': 'Personalisierung', '清除': 'Löschen', '平铺': 'Kacheln', '拉伸': 'Strecken',
+            '缩放适配': 'Skalieren', '普通半透明': 'Normales halbtransparentes', '毛玻璃': 'Mattglas', '亚克力': 'Acryl',
+            '背景图片:': 'Hintergrundbild:', '背景透明度:': 'Hintergrundtransparenz:', '背景模式:': 'Hintergrundmodus:',
+            '表面材质:': 'Oberflächenmaterial:', '面板透明度:': 'Transparenz des Bedienfelds:', '音轨栏透明度:': 'Transparenz der Spurspalte:',
+            '网格材质:': 'Rastermaterial:', '网格透明度:': 'Rastertransparenz:',
+            '播放时询问': 'Beim Abspielen fragen', '自动后台下载': 'Automatischer Hintergrunddownload',
+            '不使用 (内置合成器)': 'Deaktiviert (integrierter Synthesizer)', 'MIDI 音色库:': 'MIDI-Soundfont:',
+            '未下载': 'Nicht heruntergeladen', '立即下载': 'Jetzt herunterladen', '清除缓存': 'Cache löschen', '音色库状态:': 'Soundfont-Status:',
+            '语言': 'Sprache',
+            '提示: 背景图片覆盖整个网页; 透明度 100% 完全透明, 0% 不透明; 表面材质控制工具栏, 网格材质单独控制音符网格区域; 面板透明度控制工具栏透明程度, 音轨栏透明度单独控制左侧音轨信息栏': 'Tipp: Das Hintergrundbild bedeckt die gesamte Seite. 100 % Transparenz = vollständig transparent, 0 % = undurchsichtig. Das Oberflächenmaterial steuert die Werkzeugleiste; das Rastermaterial steuert den Notenrasterbereich. Die Transparenz des Bedienfelds steuert die Deckkraft der Werkzeugleiste; die Transparenz der Spurspalte steuert die linke Spurinformationsleiste.'
+        },
+        'fr-FR': {
+            '平滑翻页 (播放头居中)': 'Défilement fluide (curseur de lecture centré)',
+            '音符播放高亮动画': 'Animation de surbrillance des notes à la lecture',
+            '录制时显示音符动画 (关闭可提升录制性能)': 'Afficher l’animation des notes à l’enregistrement (désactiver améliore les performances)',
+            '音效优化 (混响/立体声)': 'Amélioration audio (réverb/stéréo)',
+            '音符音量透明度 (音量越低越透明)': 'Transparence du volume des notes (volume plus bas = plus transparent)',
+            'NBS 导出版本:': 'Version d’exportation NBS :',
+            '含铜号角乐器时自动 V6': 'Utiliser V6 automatiquement avec les instruments à cor de cuivre',
+            '关于 NoteBlockWeb': 'À propos de NoteBlockWeb',
+            '通用': 'Général', '个性化': 'Personnalisation', '清除': 'Effacer', '平铺': 'Mosaïque', '拉伸': 'Étirer',
+            '缩放适配': 'Ajuster à l’échelle', '普通半透明': 'Semi-transparent normal', '毛玻璃': 'Verre dépoli', '亚克力': 'Acrylique',
+            '背景图片:': 'Image de fond :', '背景透明度:': 'Transparence du fond :', '背景模式:': 'Mode de fond :',
+            '表面材质:': 'Matériau de surface :', '面板透明度:': 'Transparence du panneau :', '音轨栏透明度:': 'Transparence de la colonne des pistes :',
+            '网格材质:': 'Matériau de la grille :', '网格透明度:': 'Transparence de la grille :',
+            '播放时询问': 'Demander à la lecture', '自动后台下载': 'Téléchargement automatique en arrière-plan',
+            '不使用 (内置合成器)': 'Désactivé (synthétiseur intégré)', 'MIDI 音色库:': 'Banque de sons MIDI :',
+            '未下载': 'Non téléchargé', '立即下载': 'Télécharger maintenant', '清除缓存': 'Vider le cache', '音色库状态:': 'État de la banque de sons :',
+            '语言': 'Langue',
+            '提示: 背景图片覆盖整个网页; 透明度 100% 完全透明, 0% 不透明; 表面材质控制工具栏, 网格材质单独控制音符网格区域; 面板透明度控制工具栏透明程度, 音轨栏透明度单独控制左侧音轨信息栏': 'Astuce : l’image de fond couvre toute la page. Transparence 100 % = totalement transparent, 0 % = opaque. Le matériau de surface contrôle la barre d’outils ; le matériau de la grille contrôle séparément la zone de la grille de notes. La transparence du panneau contrôle l’opacité de la barre d’outils, et la transparence de la colonne des pistes contrôle la barre d’informations des pistes à gauche.'
+        },
+        'ko-KR': {
+            '平滑翻页 (播放头居中)': '부드러운 이동 (재생 헤드 중앙)',
+            '音符播放高亮动画': '재생 시 노트 강조 애니메이션',
+            '录制时显示音符动画 (关闭可提升录制性能)': '녹음 시 노트 애니메이션 표시 (끄면 녹음 성능 향상)',
+            '音效优化 (混响/立体声)': '오디오 강화 (리버브/스테레오)',
+            '音符音量透明度 (音量越低越透明)': '노트 음량 투명도 (음량이 낮을수록 투명)',
+            'NBS 导出版本:': 'NBS 내보내기 버전:',
+            '含铜号角乐器时自动 V6': '구리 호른 악기가 있으면 자동으로 V6 사용',
+            '关于 NoteBlockWeb': 'NoteBlockWeb 정보',
+            '通用': '일반', '个性化': '개인화', '清除': '지우기', '平铺': '바둑판식 반복', '拉伸': '늘리기',
+            '缩放适配': '크기에 맞춤', '普通半透明': '일반 반투명', '毛玻璃': '매트 글라스', '亚克力': '아크릴',
+            '背景图片:': '배경 이미지:', '背景透明度:': '배경 투명도:', '背景模式:': '배경 모드:',
+            '表面材质:': '표면 재질:', '面板透明度:': '패널 투명도:', '音轨栏透明度:': '트랙 표시줄 투명도:',
+            '网格材质:': '그리드 재질:', '网格透明度:': '그리드 투명도:',
+            '播放时询问': '재생할 때 확인', '自动后台下载': '자동 백그라운드 다운로드',
+            '不使用 (内置合成器)': '사용 안 함 (내장 신디사이저)', 'MIDI 音色库:': 'MIDI 사운드폰트:',
+            '未下载': '미다운로드', '立即下载': '지금 다운로드', '清除缓存': '캐시 지우기', '音色库状态:': '사운드폰트 상태:',
+            '语言': '언어',
+            '提示: 背景图片覆盖整个网页; 透明度 100% 完全透明, 0% 不透明; 表面材质控制工具栏, 网格材质单独控制音符网格区域; 面板透明度控制工具栏透明程度, 音轨栏透明度单独控制左侧音轨信息栏': '팁: 배경 이미지는 전체 페이지를 덮습니다. 투명도 100%이면 완전 투명, 0%이면 불투명입니다. 표면 재질은 툴바를 제어하고, 그리드 재질은 노트 그리드 영역을 별도로 제어합니다. 패널 투명도는 툴바의 투명도를, 트랙 표시줄 투명도는 왼쪽 트랙 정보 표시줄을 별도로 제어합니다.'
+        },
+        'pt-BR': {
+            '通用': 'Geral', '个性化': 'Personalização', '清除': 'Limpar', '平铺': 'Lado a lado', '拉伸': 'Esticar',
+            '缩放适配': 'Ajustar escala', '普通半透明': 'Semitransparente comum', '毛玻璃': 'Vidro fosco', '亚克力': 'Acrílico',
+            '背景图片:': 'Imagem de fundo:', '背景透明度:': 'Transparência do fundo:', '背景模式:': 'Modo de fundo:',
+            '表面材质:': 'Material da superfície:', '面板透明度:': 'Transparência do painel:', '音轨栏透明度:': 'Transparência da coluna de faixas:',
+            '网格材质:': 'Material da grade:', '网格透明度:': 'Transparência da grade:',
+            '播放时询问': 'Perguntar ao reproduzir', '自动后台下载': 'Download automático em segundo plano',
+            '不使用 (内置合成器)': 'Desativado (sintetizador integrado)', 'MIDI 音色库:': 'Banco de sons MIDI:',
+            '未下载': 'Não baixado', '立即下载': 'Baixar agora', '清除缓存': 'Limpar cache', '音色库状态:': 'Estado do banco de sons:',
+            '音符音量透明度 (音量越低越透明)': 'Transparência do volume das notas (volume menor = mais transparente)',
+            '语言': 'Idioma',
+            '提示: 背景图片覆盖整个网页; 透明度 100% 完全透明, 0% 不透明; 表面材质控制工具栏, 网格材质单独控制音符网格区域; 面板透明度控制工具栏透明程度, 音轨栏透明度单独控制左侧音轨信息栏': 'Dica: a imagem de fundo cobre a página inteira. Transparência 100% = totalmente transparente, 0% = opaco. O material da superfície controla a barra de ferramentas; o material da grade controla separadamente a área da grade de notas. A transparência do painel controla a opacidade da barra de ferramentas e a transparência da coluna de faixas controla a barra de informações de faixas à esquerda.'
+        },
+        'id-ID': {
+            '通用': 'Umum', '个性化': 'Personalisasi', '清除': 'Bersihkan', '平铺': 'Berpetak', '拉伸': 'Regangkan',
+            '缩放适配': 'Sesuaikan ukuran', '普通半透明': 'Biasa semi-transparan', '毛玻璃': 'Kaca buram', '亚克力': 'Akrilik',
+            '背景图片:': 'Gambar latar:', '背景透明度:': 'Transparansi latar:', '背景模式:': 'Mode latar:',
+            '表面材质:': 'Material permukaan:', '面板透明度:': 'Transparansi panel:', '音轨栏透明度:': 'Transparansi kolom track:',
+            '网格材质:': 'Material grid:', '网格透明度:': 'Transparansi grid:',
+            '播放时询问': 'Tanyakan saat memutar', '自动后台下载': 'Unduhan latar otomatis',
+            '不使用 (内置合成器)': 'Tidak digunakan (sintesis bawaan)', 'MIDI 音色库:': 'Bank suara MIDI:',
+            '未下载': 'Belum diunduh', '立即下载': 'Unduh sekarang', '清除缓存': 'Bersihkan cache', '音色库状态:': 'Status bank suara:',
+            '音符音量透明度 (音量越低越透明)': 'Transparansi volume not (volume lebih rendah = lebih transparan)',
+            '语言': 'Bahasa',
+            '提示: 背景图片覆盖整个网页; 透明度 100% 完全透明, 0% 不透明; 表面材质控制工具栏, 网格材质单独控制音符网格区域; 面板透明度控制工具栏透明程度, 音轨栏透明度单独控制左侧音轨信息栏': 'Tips: gambar latar menutupi seluruh halaman. Transparansi 100% = transparan penuh, 0% = tidak transparan. Material permukaan mengontrol toolbar; material grid mengontrol area grid not secara terpisah. Transparansi panel mengontrol tingkat transparansi toolbar, dan transparansi kolom track mengontrol bilah info track di kiri.'
+        }
+    };
+    for (_nl in _settingsExtraI18n) {
+        if (Object.prototype.hasOwnProperty.call(_settingsExtraI18n, _nl)) Object.assign(UI_TEXT[_nl], _settingsExtraI18n[_nl]);
+    }
 
     window.WebNBSI18n = { init: init, apply: apply, getLocale: function() { return current; }, t: t, translate: translate, supported: SUPPORTED.slice() };
 })();

@@ -6,9 +6,11 @@ FastAPI 静态托管服务
 服务端仅负责托管前端静态文件并提供少量配置接口。
 """
 import os
+import re
+import json
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
 
@@ -73,6 +75,59 @@ soundfont:
   name: ""
 """
 
+# 独立定义的 SEO 配置段 (带注释和默认值)。
+# 1) 首次启动生成 config.yaml 时作为默认配置的一部分写入;
+# 2) 若已有 config.yaml 但缺少 seo 段, 会把这个段追加到文件末尾,
+#    使用户能看到并可修改默认关键词/标题/描述。
+_SEO_CONFIG_YAML = """# SEO 搜索引擎优化配置
+# 这些值会作为 <meta> 标签写入首页 <head>, 供百度/Google/Bing 等搜索引擎
+# 与 QQ/微信等社交平台分享卡片读取。留空即使用默认值 (下方已标注默认)。
+# 修改后需重启服务生效。
+seo:
+  # 站点公开地址 (用于生成分享卡片的绝对链接, 如 https://example.com/)
+  # 留空则分享卡片使用相对地址 (部分平台可能需要绝对地址才能显示图片)
+  site_url: ""
+  # SEO 标题 (浏览器标签 + 搜索结果标题 + 分享卡片标题)
+  # 默认: NoteBlockWeb - 在线 Minecraft 音符盒 (NBS) 编曲编辑器
+  title: ""
+  # SEO 描述 (搜索结果摘要 + 分享卡片描述), 建议 60~120 个字符
+  # 默认: 免费在线 Minecraft 音符盒 (Note Block / NBS) 编曲工具：支持 NBS 导入导出、MIDI 导入、钢琴卷帘编辑、音色拟合与音频渲染，无需安装即可在浏览器中使用。
+  description: ""
+  # 搜索引擎关键词 (逗号分隔)。注意: 现在的搜索引擎已不依赖 keywords 决定排名,
+  # 主要作用是对 HTML 进行语义标注。
+  # 默认: Minecraft, 音符盒, Note Block, NBS, 编曲, 编辑器, 音乐制作, MIDI, 在线工具, Music, Editor, Note block music
+  keywords: ""
+"""
+
+# 合并: 默认配置文件 = 基本配置 + seo 段
+_DEFAULT_CONFIG_YAML += "\n" + _SEO_CONFIG_YAML
+
+
+# ============ SEO 搜索引擎优化 ============
+# 配置 seo.title/site_url/description/keywords 留空时使用的默认值。
+SEO_DEFAULTS = {
+    'site_url': '',
+    'title': 'NoteBlockWeb - 在线 Minecraft 音符盒 (NBS) 编曲编辑器',
+    'description': '免费在线 Minecraft 音符盒 (Note Block / NBS) 编曲工具：支持 NBS 导入导出、MIDI 导入、钢琴卷帘编辑、音色拟合与音频渲染，无需安装即可在浏览器中使用。',
+    'keywords': 'Minecraft, 音符盒, Note Block, NBS, 编曲, 编辑器, 音乐制作, MIDI, 在线工具, Music, Editor, Note block music',
+}
+
+
+def _ensure_seo_in_config(config_path):
+    """若已有 config.yaml 但缺少 seo 段, 把默认 seo 段(带注释和默认值)追加到文件末尾,
+    使用户能直接看到默认可修改的关键词/标题/描述。"""
+    try:
+        import yaml
+        with open(config_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f) or {}
+        if 'seo' in data:
+            return
+        with open(config_path, 'a', encoding='utf-8') as f:
+            f.write('\n' + _SEO_CONFIG_YAML)
+        print('[WebNBS] 已在 config.yaml 末尾写入默认 SEO 配置 (可自行修改关键词/标题/描述)')
+    except Exception as e:
+        print(f'[警告] 写入默认 SEO 配置到 config.yaml 失败: {e}')
+
 
 def load_config():
     """加载 config.yaml 配置文件, 不存在则自动创建默认配置"""
@@ -91,7 +146,8 @@ def load_config():
         'soundfont': {
             'url': '',
             'name': ''
-        }
+        },
+        'seo': dict(SEO_DEFAULTS)
     }
     if not os.path.exists(config_path):
         # 配置文件不存在, 自动创建带注释的默认配置
@@ -119,6 +175,7 @@ def load_config():
                         default_config[key] = user_config[key]
                 else:
                     default_config[key] = user_config[key]
+        _ensure_seo_in_config(config_path)
         return default_config
     except ImportError:
         print("[警告] 未安装 PyYAML, 使用默认配置. pip install pyyaml")
@@ -129,6 +186,87 @@ def load_config():
 
 
 CONFIG = load_config()
+
+
+def _inject_seo(html):
+    """把 SEO 元数据注入首页 <head>:
+    - 百度/Google/Bing 等搜索引擎: title/keywords/description/robots/canonical/JSON-LD
+    - 社交分享卡片 (QQ/微信/微博/WhatsApp/Facebook): Open Graph + schema.org itemprop
+    - Twitter: twitter:card 大图卡片
+    配置 seo 段留空时使用 SEO_DEFAULTS 默认值。"""
+    seo = CONFIG.get('seo', {}) or {}
+    title = str(seo.get('title') or '').strip() or SEO_DEFAULTS['title']
+    description = str(seo.get('description') or '').strip() or SEO_DEFAULTS['description']
+    keywords = str(seo.get('keywords') or '').strip() or SEO_DEFAULTS['keywords']
+    site_url = str(seo.get('site_url') or '').strip()
+    base_url = site_url.rstrip('/') if site_url else ''
+    page_url = (base_url + '/') if base_url else '/'
+    image = (base_url + '/static/logo.png') if base_url else '/static/logo.png'
+
+    def esc(s):  # HTML 属性转义
+        return (s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                 .replace('"', '&quot;').replace("'", '&#39;'))
+
+    et, ed, ek, ei = esc(title), esc(description), esc(keywords), esc(image)
+
+    # 替换已有 <title> (与配置标题保持一致)
+    html = re.sub(r'<title>[^<]*</title>', '<title>' + et + '</title>', html, count=1)
+
+    tags = []
+    # ---- 搜索引擎基础元数据 (百度/Google/Bing/搜狗/360 等) ----
+    tags.append('<meta name="keywords" content="' + ek + '">')
+    tags.append('<meta name="description" content="' + ed + '">')
+    tags.append('<meta name="robots" content="index, follow, max-image-preview:large">')
+    tags.append('<meta name="author" content="NoteBlockWeb">')
+    tags.append('<meta name="copyright" content="NoteBlockWeb">')
+    tags.append('<meta name="application-name" content="NoteBlockWeb">')
+    if base_url:
+        tags.append('<link rel="canonical" href="' + esc(page_url) + '">')
+
+    # ---- Open Graph (Facebook / WhatsApp / QQ / 微信 / 微博 / 知乎等社交平台) ----
+    tags.append('<meta property="og:type" content="website">')
+    tags.append('<meta property="og:site_name" content="NoteBlockWeb">')
+    tags.append('<meta property="og:locale" content="zh_CN">')
+    tags.append('<meta property="og:title" content="' + et + '">')
+    tags.append('<meta property="og:description" content="' + ed + '">')
+    tags.append('<meta property="og:image" content="' + ei + '">')
+    tags.append('<meta property="og:image:alt" content="' + et + '">')
+    if base_url:
+        tags.append('<meta property="og:url" content="' + esc(page_url) + '">')
+
+    # ---- QQ / 微信分享: 补充 schema.org itemprop, 与 og 互为兜底 ----
+    tags.append('<meta itemprop="name" content="' + et + '">')
+    tags.append('<meta itemprop="description" content="' + ed + '">')
+    tags.append('<meta itemprop="image" content="' + ei + '">')
+    tags.append('<meta itemprop="image:alt" content="' + et + '">')
+
+    # ---- Twitter 分享卡片 (大图模式) ----
+    tags.append('<meta name="twitter:card" content="summary_large_image">')
+    tags.append('<meta name="twitter:title" content="' + et + '">')
+    tags.append('<meta name="twitter:description" content="' + ed + '">')
+    tags.append('<meta name="twitter:image" content="' + ei + '">')
+
+    # ---- 结构化数据 (Google / Bing 富结果) ----
+    json_ld = {
+        '@context': 'https://schema.org',
+        '@type': 'WebApplication',
+        'name': 'NoteBlockWeb',
+        'url': page_url,
+        'description': description,
+        'applicationCategory': 'MusicApplication',
+        'operatingSystem': 'Any',
+        'genre': 'Music',
+        'inLanguage': 'zh-CN'
+    }
+    tags.append('<script type="application/ld+json">' +
+                json.dumps(json_ld, ensure_ascii=False) + '</script>')
+
+    block = '\n    '.join(tags)
+    if '</head>' in html:
+        html = html.replace('</head>', block + '\n</head>', 1)
+    else:
+        html += '\n' + block
+    return html
 
 
 # 创建 FastAPI 应用
@@ -166,8 +304,10 @@ IS_PUBLIC = CONFIG.get('public', True)
 async def index():
     """主页"""
     # 禁止缓存首页, 避免手机端一直加载旧版 HTML/JS (版本号防缓存的双保险)
-    return FileResponse(os.path.join(SRC_DIR, "index.html"),
-                        headers={"Cache-Control": "no-cache"})
+    # 注入 SEO 元数据 (标题/关键词/描述/OG/微信QQ分享卡片/Twitter/JSON-LD)
+    with open(os.path.join(SRC_DIR, "index.html"), 'r', encoding='utf-8') as f:
+        html = _inject_seo(f.read())
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/config")

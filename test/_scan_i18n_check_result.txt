@@ -10,7 +10,7 @@ LOG          audio_engine.js:284 -> 已加载音色 [
 LOG          audio_engine.js:287 -> 全部音色加载完成, 音频引擎就绪
 LOG          audio_engine.js:291 -> 加载音色失败 [
 LOG          audio_engine.js:304 -> AudioContext resume 失败:
-LOG          audio_engine.js:474 -> 即时加载失败 [
+MISSING      audio_engine.js:474 -> 即时加载失败 [
 KEY          audio_render.js:22 -> 原声
 KEY          audio_render.js:23 -> 无任何处理, 最接近 NBS 原始输出
 KEY          audio_render.js:28 -> 中频增强 + 轻房间混响 + 轻压缩, 伴奏欢唱感
@@ -121,22 +121,22 @@ MISSING      main.js:8010 ->  个音符同一时间音调相同但音色不同 (
 MISSING      main.js:8011 ->  个音符同一时间音色相同但音调不同 (key 不同)
 MISSING      main.js:8012 ->  个音符音色音调相同但时间不同 (tick 不同)
 KEY          main.js:8016 -> 将删除 
-PTN-SUB      main.js:8016 ->  个重复音符（同一时间、音色与音调完全相同的音符只保留一个，忽略音量差异），是否继续？
+MISSING      main.js:8016 ->  个重复音符（同一时间、音色与音调完全相同的音符只保留一个，忽略音量差异），是否继续？
 PTN-SUB      main.js:8023 -> 已删除 
 PTN-SUB      main.js:8023 ->  个重复音符
 MISSING      main.js:8053 ->  个空轨 (从 
 PTN-SUB      main.js:8053 ->  减到 
 PTN-SUB      main.js:8053 -> )，是否继续？
-LOG          main.js:8265 -> [Sustain Fill] 间隔=
-LOG          main.js:8265 -> , 填充了 
+MISSING      main.js:8265 -> [Sustain Fill] 间隔=
+MISSING      main.js:8265 -> , 填充了 
 KEY          main.js:8265 ->  个音符
-LOG          main.js:8409 -> [Clear Sustain] 留空=
-LOG          main.js:8409 -> , 删除了 
-LOG          main.js:8560 -> [Arpeggio Tracks] 规律=
-LOG          main.js:8560 -> , 处理了 
+MISSING      main.js:8409 -> [Clear Sustain] 留空=
+MISSING      main.js:8409 -> , 删除了 
+MISSING      main.js:8560 -> [Arpeggio Tracks] 规律=
+MISSING      main.js:8560 -> , 处理了 
 KEY          main.js:8612 -> 已处理 
 PTN-SUB      main.js:8612 ->  个音符，超出 Minecraft 标准音域的音符已按八度折叠。
-LOG          main.js:8613 -> [Transpose Octave] 处理了 
+MISSING      main.js:8613 -> [Transpose Octave] 处理了 
 KEY          main.js:8619 -> 音域处理
 KEY          main.js:8740 -> 已完成音域处理，调整了 
 PTN-SUB      main.js:8740 ->  个音符。
@@ -157,10 +157,10 @@ PTN-SUB      main.js:10754 ->  个八度)
 KEY          main.js:10821 -> 乐器 
 KEY          main.js:10893 ->  轨道
 KEY          main.js:10894 ->  音符
-LOG          main.js:11165 -> Web MIDI API 失败:
+MISSING      main.js:11165 -> Web MIDI API 失败:
 KEY          main.js:11494 -> 已选择 
 PTN-SUB      main.js:11494 ->  个轨道
-LOG          main.js:12766 -> [WebNBS] parseMidiFileForPlayback: @tonejs/midi 解析失败, 回退到自包含解析器
+MISSING      main.js:12766 -> [WebNBS] parseMidiFileForPlayback: @tonejs/midi 解析失败, 回退到自包含解析器
 KEY          main.js:13783 -> 鼓音符 
 KEY          main.js:13784 -> 通道 
 MISSING      main.js:13793 -> <button class=\
@@ -169,12 +169,12 @@ KEY          main.js:14401 -> MIDI 导入失败:
 KEY          main.js:14428 -> 吸附网格: 
 PTN-SUB      main.js:14538 ->  音轨 · 
 KEY          main.js:14802 -> 已清理 
-LOG          main.js:14802 ->  个孤儿历史文件
+MISSING      main.js:14802 ->  个孤儿历史文件
 KEY          main.js:14830 -> 配额超限, 已清理 
-LOG          main.js:14830 ->  个旧文件后重试成功
-LOG          main.js:14844 -> localStorage 配额严重不足, 保存失败:
-LOG          main.js:14852 -> localStorage 保存失败:
-LOG          main.js:14955 ->  数据缺失:
+MISSING      main.js:14830 ->  个旧文件后重试成功
+MISSING      main.js:14844 -> localStorage 配额严重不足, 保存失败:
+MISSING      main.js:14852 -> localStorage 保存失败:
+MISSING      main.js:14955 ->  数据缺失:
 KEY          main.js:15232 -> 渲染中…
 KEY          main.js:15248 -> MP3 编码库未加载
 KEY          main.js:15249 -> 编码 MP3…
@@ -226,14 +226,14 @@ KEY          main.js:15667 -> 跳过（该音色静音）
 KEY          main.js:15678 -> 「替换」会把歌曲中该音色的音符改用到所选音色；「跳过」则让这些音符静音（仍保留在歌曲中）。
 KEY          main.js:15681 -> 替换并加载
 KEY          main.js:15683 -> 稍后导入
-LOG          main.js:15854 -> 加载本地数据失败:
-LOG          nbs_client.js:773 -> [WebNBS] _writeNBS: 过滤了 
-LOG          nbs_client.js:773 ->  个负 tick 音符
-LOG          nbs_client.js:776 -> [WebNBS] _writeNBS: 检测到 
-LOG          nbs_client.js:776 ->  个 (tick,layer) 冲突, 已自动分配新 layer
-LOG          nbs_client.js:882 -> [WebNBS] @tonejs/midi 未加载, 使用回退 MIDI 解析器 (精度可能降低)
+MISSING      main.js:15854 -> 加载本地数据失败:
+MISSING      nbs_client.js:773 -> [WebNBS] _writeNBS: 过滤了 
+MISSING      nbs_client.js:773 ->  个负 tick 音符
+MISSING      nbs_client.js:776 -> [WebNBS] _writeNBS: 检测到 
+MISSING      nbs_client.js:776 ->  个 (tick,layer) 冲突, 已自动分配新 layer
+MISSING      nbs_client.js:882 -> [WebNBS] @tonejs/midi 未加载, 使用回退 MIDI 解析器 (精度可能降低)
 KEY          nbs_client.js:1272 -> MIDI 文件格式损坏或数据不完整 (轨道 
-LOG          nbs_client.js:1732 -> [WebNBS] 检测到异常远端音符，已过滤 
+MISSING      nbs_client.js:1732 -> [WebNBS] 检测到异常远端音符，已过滤 
 MISSING      nbs_client.js:1733 -> , 阈值=
 PTN-SUB      nbs_client.js:2372 -> (通道
 KEY          piano_roll.js:514 -> 取消静音
@@ -273,7 +273,7 @@ KEY          HTML:- -> 从备份 zip 恢复自定义音色（同名同内容自�
 KEY          HTML:- -> 输入音色名称
 KEY          HTML:- -> 低 7 个半音试听
 KEY          HTML:- -> 高 7 个半音试听
-KEY          HTML:- -> 删除同一时间中音色和音调完全相同的重复音符。用于在尽可能保持听感的条件下减少总音符数量，但会对歌曲质量造成一些损失
+MISSING      HTML:- -> 删除同一时间中音色和音调完全相同的重复音符。用于在尽可能保持听感的条件下减少总音符数量，但会对歌曲质量造成一些损失
 KEY          HTML:- -> 消除重复音符
 KEY          HTML:- -> 音域处理
 KEY          HTML:- -> 查找音符

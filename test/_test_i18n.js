@@ -1,6 +1,7 @@
 // 运行时验证 i18n 翻译：加载 i18n.js，切换语言，对真实句子样例调用 translate()
 const fs = require('fs');
-const path = 'src/static/js/i18n.js';
+const path = require('path');
+const i18nFile = path.join(__dirname, '..', 'src/static/js/i18n.js');
 global.NodeFilter = { SHOW_TEXT: 4 };
 global.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
 global.CustomEvent = class { constructor(type) { this.type = type; } };
@@ -15,7 +16,7 @@ global.document = {
   querySelector: () => null,
   dispatchEvent: () => {},
 };
-eval(fs.readFileSync(path, 'utf8'));
+eval(fs.readFileSync(i18nFile, 'utf8'));
 const I18n = global.window.WebNBSI18n;
 
 // 真实运行时句子样例（依据 main.js / nbs_client.js 等源码中的拼接逻辑构造）
