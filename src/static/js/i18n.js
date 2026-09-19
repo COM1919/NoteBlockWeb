@@ -245,7 +245,7 @@
     });
 
     // Static controls that are shared by the toolbar, floating menus, MIDI
-    // dialog and FLS view. Keeping these additions together prevents the same
+    // dialog. Keeping these additions together prevents the same
     // visible label from being translated in one dialog but missed in another.
     Object.assign(UI_TEXT['en-US'], {
         '速度:': 'Tempo:', '速度 (Tick/秒):': 'Tempo (ticks/sec):', '音符:': 'Notes:', '音符': 'Notes', '音轨设置': 'Track settings',
@@ -1029,7 +1029,7 @@
         '未加载歌曲': 'No song loaded', '未命名': 'Untitled', '未知错误': 'Unknown error', '未选中有效音符': 'No valid note selected',
         '未配置 MIDI 音色库下载地址 (服务端 config.yaml)': 'MIDI soundfont URL is not configured (server config.yaml)',
         '本次导入中已提示过的通道': 'Channels already prompted in this import',
-        '正在上传...': 'Uploading...', '正在下载': 'Downloading', '正在处理...': 'Processing...', '正在解析...': 'Parsing...', '正在解析音色库...': 'Parsing soundfont...',
+        '正在下载': 'Downloading', '正在处理...': 'Processing...', '正在解析...': 'Parsing...', '正在解析音色库...': 'Parsing soundfont...',
         '永远差一格/有偏差': 'Always off by one / off-pitch', '没有添加任何音符 (可能选中区间已满)': 'No notes were added (the selection may be full)',
         '浏览器不支持 Web MIDI，且 TinySynth 未加载，无法试听。': 'Web MIDI is unsupported and TinySynth is not loaded; cannot preview.',
         '浏览器不支持 Web MIDI，且 TinySynth 未加载，无法试听原音色。': 'Web MIDI is unsupported and TinySynth is not loaded; cannot preview the original timbre.',
@@ -1051,7 +1051,7 @@
     });
 
     // ============ 运行时补充词条 2 (en-US) ============
-    // 新增功能 (MIDI 音色库/音色替代/音域处理/FLS) 的错误消息与弹窗文本。
+    // 新增功能 (MIDI 音色库/音色替代/音域处理) 的错误消息与弹窗文本。
     // 多数为拼接文本, 由 translatePattern 处理; 这里的完整片段供
     // translateStaticText 的文本节点直接命中。
     Object.assign(UI_TEXT['en-US'], {
@@ -1142,17 +1142,18 @@
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Removes notes with the same tick, instrument and pitch; enable "Reorder notes" to move isolated consecutive notes up and fill the gaps',
         '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'No duplicate notes found.\nCriterion: same tick, same instrument and same pitch, ignoring velocity.',
         // 歌曲压缩
-        '歌曲压缩': 'Song compression', '质量': 'Quality', '算法模型': 'Algorithm model',
+        '歌曲压缩': 'Song compression', '压缩等级': 'Compression level', '算法模型': 'Algorithm model',
+        '近乎无损': 'Near-lossless', '高质量': 'High quality', '中等质量': 'Medium quality', '较低质量': 'Lower quality', '最低质量': 'Lowest quality',
         '务实启发式（快速）': 'Pragmatic heuristic (fast)', '感知引擎（智能）': 'Perceptual engine (smart)',
         '压缩': 'Compress', '歌曲太短，无法压缩': 'Song too short to compress', '未删除任何音符': 'No notes removed',
-        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Below 20% quality: notes may be over-deleted and the song may sound noticeably degraded',
+        '最低质量：可能过度删除音符，歌曲听感可能明显受损': 'Lowest quality: notes may be over-deleted and the song may sound noticeably degraded',
         '预计删除': 'Estimated removal', '保留': 'Kept',
         '减轻处理的轨道': 'Tracks with lighter processing', '不被处理的轨道': 'Tracks excluded from processing',
         '选择': 'Select', '未选择任何轨道': 'No tracks selected',
         '选择减轻处理的轨道': 'Select tracks for lighter processing',
         '选择不被处理的轨道': 'Select tracks excluded from processing',
         '在画布中点击音轨行进行选择/取消，可多选。': 'Click track rows on the canvas to select or deselect. Multi-select is supported.',
-        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Both models remove the same number of notes; they differ in which notes are kept. The perceptual engine follows listening perception more closely.',
+        '两种模型保留的音符略有差异，感知引擎更贴近听感、更保守。': 'The two models keep slightly different notes; the perceptual engine is closer to listening perception and more conservative.',
         '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Pragmatic heuristic (fast): quick rule-based scoring (root/third/fifth, octave duplicates, beat, velocity, duration) — fast and stable.',
         '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Perceptual engine (smart): scores by voice role, beat, duration, velocity, masking and percussion density — closer to perceived quality, slightly slower.',
         // 导出 NBS 弹窗
@@ -1293,7 +1294,7 @@
         '未加载歌曲': '曲が読み込まれていません', '未命名': '無題', '未知错误': '不明なエラー', '未选中有效音符': '有効なノートが選択されていません',
         '未配置 MIDI 音色库下载地址 (服务端 config.yaml)': 'MIDI 音色ライブラリのダウンロード URL が設定されていません (サーバー config.yaml)',
         '本次导入中已提示过的通道': '今回のインポートで通知済みのチャンネル',
-        '正在上传...': 'アップロード中...', '正在下载': 'ダウンロード中', '正在处理...': '処理中...', '正在解析...': '解析中...', '正在解析音色库...': '音色ライブラリを解析中...',
+        '正在下载': 'ダウンロード中', '正在处理...': '処理中...', '正在解析...': '解析中...', '正在解析音色库...': '音色ライブラリを解析中...',
         '永远差一格/有偏差': '常に 1 マスずれる/ずれがある', '没有添加任何音符 (可能选中区间已满)': 'ノートが追加されませんでした (選択区間が埋まっている可能性があります)',
         '浏览器不支持 Web MIDI，且 TinySynth 未加载，无法试听。': 'Web MIDI 未対応かつ TinySynth が読み込まれていないため試聴できません。',
         '浏览器不支持 Web MIDI，且 TinySynth 未加载，无法试听原音色。': 'Web MIDI 未対応かつ TinySynth が読み込まれていないため、元の音色を試聴できません。',
@@ -1469,17 +1470,18 @@
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': '同じ時間・音色・音程が完全に一致する重複ノートを削除します。「ノートを並べ直す」をオンにすると、削除後に孤立した連続ノートを上へ移動して空きを埋めます',
         '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': '重複ノートは見つかりませんでした。\n判定基準: 同一時間(tick) + 同一音色 + 同一音程、音量差は無視。',
         // 歌曲压缩
-        '歌曲压缩': '曲の圧縮', '质量': '品質', '算法模型': 'アルゴリズムモデル',
+        '歌曲压缩': '曲の圧縮', '压缩等级': '圧縮レベル', '算法模型': 'アルゴリズムモデル',
+        '近乎无损': 'ほぼロスレス', '高质量': '高品質', '中等质量': '中品質', '较低质量': '低品質', '最低质量': '最低品質',
         '务实启发式（快速）': '実用的ヒューリスティック（高速）', '感知引擎（智能）': '知覚エンジン（スマート）',
         '压缩': '圧縮', '歌曲太短，无法压缩': '曲が短すぎて圧縮できません', '未删除任何音符': '削除された音符はありません',
-        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': '品質が 20% 未満: ノートが削除されすぎて、聴感が著しく損なわれる可能性があります',
+        '最低质量：可能过度删除音符，歌曲听感可能明显受损': '最低品質: ノートが削除されすぎて、聴感が著しく損なわれる可能性があります',
         '预计删除': '削除見込み', '保留': '保持',
         '减轻处理的轨道': '軽減処理するトラック', '不被处理的轨道': '処理しないトラック',
         '选择': '選択', '未选择任何轨道': 'トラックが選択されていません',
         '选择减轻处理的轨道': '軽減処理するトラックを選択',
         '选择不被处理的轨道': '処理しないトラックを選択',
         '在画布中点击音轨行进行选择/取消，可多选。': 'キャンバス内のトラック行をクリックして選択/解除できます（複数選択可）。',
-        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'どちらのモデルも削除するノート数は同じで、残すノートの選び方が異なります。知覚エンジンの方が聴感に近い結果になります。',
+        '两种模型保留的音符略有差异，感知引擎更贴近听感、更保守。': 'どちらのモデルも残すノートはわずかに異なります。知覚エンジンは聴感に近く、より保守的です。',
         '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': '実用的ヒューリスティック（高速）：ルールベースの簡易採点（根音/三度/五度、オクターブ重複、拍、ベロシティ、長さ）で高速かつ安定。',
         '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': '知覚エンジン（スマート）：声部の役割、拍、長さ、ベロシティ、マスキング、打楽器密度で総合採点し、聴感に近いがやや低速。',
     });
@@ -1490,17 +1492,18 @@
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Remove notas com o mesmo tick, instrumento e altura; marque "Reordenar notas" para mover para cima as notas consecutivas isoladas e preencher as lacunas',
         '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Nenhuma nota duplicada encontrada.\nCritério: mesmo tick + mesmo instrumento + mesma altura, ignorando a intensidade.',
         // 歌曲压缩
-        '歌曲压缩': 'Compressão da música', '质量': 'Qualidade', '算法模型': 'Modelo de algoritmo',
+        '歌曲压缩': 'Compressão da música', '压缩等级': 'Nível de compressão', '算法模型': 'Modelo de algoritmo',
+        '近乎无损': 'Quase sem perdas', '高质量': 'Alta qualidade', '中等质量': 'Qualidade média', '较低质量': 'Qualidade baixa', '最低质量': 'Qualidade mínima',
         '务实启发式（快速）': 'Heurística pragmática (rápida)', '感知引擎（智能）': 'Motor perceptual (inteligente)',
         '压缩': 'Comprimir', '歌曲太短，无法压缩': 'Música curta demais para comprimir', '未删除任何音符': 'Nenhuma nota removida',
-        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Qualidade abaixo de 20%: as notas podem ser removidas em excesso e a música pode soar bastante degradada',
+        '最低质量：可能过度删除音符，歌曲听感可能明显受损': 'Qualidade mínima: as notas podem ser removidas em excesso e a música pode soar bastante degradada',
         '预计删除': 'Remoção estimada', '保留': 'Mantidas',
         '减轻处理的轨道': 'Faixas com processamento reduzido', '不被处理的轨道': 'Faixas sem processamento',
         '选择': 'Selecionar', '未选择任何轨道': 'Nenhuma faixa selecionada',
         '选择减轻处理的轨道': 'Selecionar faixas com processamento reduzido',
         '选择不被处理的轨道': 'Selecionar faixas sem processamento',
         '在画布中点击音轨行进行选择/取消，可多选。': 'Clique nas linhas de faixa na tela para selecionar ou desselecionar. É possível selecionar várias.',
-        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Os dois modelos removem a mesma quantidade de notas; o que muda é quais notas são mantidas. O motor perceptual se aproxima mais da percepção auditiva.',
+        '两种模型保留的音符略有差异，感知引擎更贴近听感、更保守。': 'Os dois modelos mantêm notas ligeiramente diferentes; o motor perceptual é mais próximo da percepção auditiva e mais conservador.',
         '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Heurística pragmática (rápida): pontua com regras simples (fundamental/terça/quinta, duplicatas de oitava, tempo, intensidade, duração) — rápida e estável.',
         '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Motor perceptual (inteligente): pontua por papel da voz, tempo, duração, intensidade, mascaramento e densidade de percussão — mais próximo da audição, um pouco mais lento.',
     });
@@ -1511,17 +1514,18 @@
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Hapus not dengan tick, instrumen, dan nada yang sama; aktifkan "Susun ulang not" untuk memindahkan not berurutan yang terisolasi ke atas dan mengisi celah',
         '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Tidak ada not duplikat ditemukan.\nKriteria: tick + instrumen + nada yang sama, abaikan perbedaan kecepatan.',
         // 歌曲压缩
-        '歌曲压缩': 'Kompresi lagu', '质量': 'Kualitas', '算法模型': 'Model algoritma',
+        '歌曲压缩': 'Kompresi lagu', '压缩等级': 'Tingkat kompresi', '算法模型': 'Model algoritma',
+        '近乎无损': 'Hampir tanpa kehilangan', '高质量': 'Kualitas tinggi', '中等质量': 'Kualitas sedang', '较低质量': 'Kualitas rendah', '最低质量': 'Kualitas terendah',
         '务实启发式（快速）': 'Heuristik pragmatis (cepat)', '感知引擎（智能）': 'Mesin persepsi (cerdas)',
         '压缩': 'Kompres', '歌曲太短，无法压缩': 'Lagu terlalu pendek untuk dikompres', '未删除任何音符': 'Tidak ada not yang dihapus',
-        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Kualitas di bawah 20%: not bisa terhapus berlebihan dan lagu bisa terdengar sangat rusak',
+        '最低质量：可能过度删除音符，歌曲听感可能明显受损': 'Kualitas terendah: not bisa terhapus berlebihan dan lagu bisa terdengar sangat rusak',
         '预计删除': 'Perkiraan dihapus', '保留': 'Dipertahankan',
         '减轻处理的轨道': 'Trek dengan pemrosesan ringan', '不被处理的轨道': 'Trek tanpa pemrosesan',
         '选择': 'Pilih', '未选择任何轨道': 'Tidak ada trek dipilih',
         '选择减轻处理的轨道': 'Pilih trek dengan pemrosesan ringan',
         '选择不被处理的轨道': 'Pilih trek tanpa pemrosesan',
         '在画布中点击音轨行进行选择/取消，可多选。': 'Klik baris trek di kanvas untuk memilih atau membatalkan. Bisa pilih banyak.',
-        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Kedua model menghapus jumlah not yang sama; bedanya not mana yang dipertahankan. Mesin persepsi lebih mendekati pendengaran.',
+        '两种模型保留的音符略有差异，感知引擎更贴近听感、更保守。': 'Kedua model mempertahankan not yang sedikit berbeda; mesin persepsi lebih mendekati pendengaran dan lebih konservatif.',
         '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Heuristik pragmatis (cepat): menilai dengan aturan sederhana (nada dasar/ters/kuint, duplikat oktaf, ketukan, velocity, durasi) — cepat dan stabil.',
         '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Mesin persepsi (cerdas): menilai dari peran suara, ketukan, durasi, velocity, masking, dan kerapatan perkusi — lebih mendekati pendengaran, sedikit lebih lambat.',
     });
@@ -1532,17 +1536,18 @@
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Elimina notas con el mismo tick, instrumento y altura; activa "Reordenar notas" para subir las notas consecutivas aisladas y rellenar los huecos',
         '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'No se encontraron notas duplicadas.\nCriterio: mismo tick + mismo instrumento + misma altura, ignorando la velocidad.',
         // 歌曲压缩
-        '歌曲压缩': 'Compresión de canción', '质量': 'Calidad', '算法模型': 'Modelo de algoritmo',
+        '歌曲压缩': 'Compresión de canción', '压缩等级': 'Nivel de compresión', '算法模型': 'Modelo de algoritmo',
+        '近乎无损': 'Casi sin pérdidas', '高质量': 'Alta calidad', '中等质量': 'Calidad media', '较低质量': 'Calidad baja', '最低质量': 'Calidad mínima',
         '务实启发式（快速）': 'Heurística pragmática (rápida)', '感知引擎（智能）': 'Motor perceptual (inteligente)',
         '压缩': 'Comprimir', '歌曲太短，无法压缩': 'La canción es demasiado corta para comprimir', '未删除任何音符': 'No se eliminó ninguna nota',
-        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Calidad inferior al 20%: podrían eliminarse demasiadas notas y la canción podría sonar muy degradada',
+        '最低质量：可能过度删除音符，歌曲听感可能明显受损': 'Calidad mínima: podrían eliminarse demasiadas notas y la canción podría sonar muy degradada',
         '预计删除': 'Eliminación estimada', '保留': 'Conservadas',
         '减轻处理的轨道': 'Pistas con procesamiento reducido', '不被处理的轨道': 'Pistas sin procesar',
         '选择': 'Seleccionar', '未选择任何轨道': 'Ninguna pista seleccionada',
         '选择减轻处理的轨道': 'Seleccionar pistas con procesamiento reducido',
         '选择不被处理的轨道': 'Seleccionar pistas sin procesar',
         '在画布中点击音轨行进行选择/取消，可多选。': 'Haz clic en las filas de pista del lienzo para seleccionar o deseleccionar. Se permite selección múltiple.',
-        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Ambos modelos eliminan la misma cantidad de notas; la diferencia es qué notas se conservan. El motor perceptual se acerca más a la percepción auditiva.',
+        '两种模型保留的音符略有差异，感知引擎更贴近听感、更保守。': 'Ambos modelos conservan notas ligeramente diferentes; el motor perceptual es más cercano a la percepción auditiva y más conservador.',
         '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Heurística pragmática (rápida): puntúa con reglas simples (fundamental/tercera/quinta, duplicados de octava, pulso, intensidad, duración) — rápida y estable.',
         '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Motor perceptual (inteligente): puntúa por rol de la voz, pulso, duración, intensidad, enmascaramiento y densidad de percusión — más fiel al oído, algo más lento.',
     });
@@ -1553,17 +1558,18 @@
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Удаляет ноты с одинаковым tick, инструментом и высотой; включите «Переставить ноты», чтобы сдвинуть изолированные последовательные ноты вверх и заполнить пустоты',
         '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Дубликаты нот не найдены.\nКритерий: тот же tick + тот же инструмент + та же высота, разница громкости игнорируется.',
         // 歌曲压缩
-        '歌曲压缩': 'Сжатие песни', '质量': 'Качество', '算法模型': 'Модель алгоритма',
+        '歌曲压缩': 'Сжатие песни', '压缩等级': 'Уровень сжатия', '算法模型': 'Модель алгоритма',
+        '近乎无损': 'Почти без потерь', '高质量': 'Высокое качество', '中等质量': 'Среднее качество', '较低质量': 'Низкое качество', '最低质量': 'Минимальное качество',
         '务实启发式（快速）': 'Прагматическая эвристика (быстро)', '感知引擎（智能）': 'Перцептивный движок (умный)',
         '压缩': 'Сжать', '歌曲太短，无法压缩': 'Песня слишком короткая для сжатия', '未删除任何音符': 'Ни одной ноты не удалено',
-        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Качество ниже 20%: возможны чрезмерные удаления нот, звучание может заметно ухудшиться',
+        '最低质量：可能过度删除音符，歌曲听感可能明显受损': 'Минимальное качество: возможны чрезмерные удаления нот, звучание может заметно ухудшиться',
         '预计删除': 'Ожидаемое удаление', '保留': 'Останется',
         '减轻处理的轨道': 'Дорожки с облегчённой обработкой', '不被处理的轨道': 'Дорожки без обработки',
         '选择': 'Выбрать', '未选择任何轨道': 'Дорожки не выбраны',
         '选择减轻处理的轨道': 'Выбрать дорожки с облегчённой обработкой',
         '选择不被处理的轨道': 'Выбрать дорожки без обработки',
         '在画布中点击音轨行进行选择/取消，可多选。': 'Щёлкайте по строкам дорожек на холсте, чтобы выбрать или снять выбор. Можно выбрать несколько.',
-        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Обе модели удаляют одинаковое число нот; различается лишь то, какие ноты остаются. Перцептивный движок ближе к слуховому восприятию.',
+        '两种模型保留的音符略有差异，感知引擎更贴近听感、更保守。': 'Две модели сохраняют немного разные ноты; перцептивный движок ближе к слуховому восприятию и более консервативен.',
         '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Прагматическая эвристика (быстро): оценка по простым правилам (основной тон/терция/квинта, дубли октав, доля, velocity, длительность) — быстро и стабильно.',
         '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Перцептивный движок (умный): оценка по роли голоса, доле, длительности, velocity, маскировке и плотности перкуссии — ближе к восприятию, чуть медленнее.',
     });
@@ -1574,17 +1580,18 @@
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Entfernt Noten mit gleichem Tick, Instrument und gleicher Tonhöhe; aktivieren Sie „Noten neu anordnen“, um isolierte aufeinanderfolgende Noten nach oben zu verschieben und die Lücken zu füllen',
         '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Keine doppelten Noten gefunden.\nKriterium: gleicher Tick + gleiches Instrument + gleiche Tonhöhe, Lautstärke wird ignoriert.',
         // 歌曲压缩
-        '歌曲压缩': 'Song-Kompression', '质量': 'Qualität', '算法模型': 'Algorithmus-Modell',
+        '歌曲压缩': 'Song-Kompression', '压缩等级': 'Kompressionstufe', '算法模型': 'Algorithmus-Modell',
+        '近乎无损': 'Nahezu verlustfrei', '高质量': 'Hohe Qualität', '中等质量': 'Mittlere Qualität', '较低质量': 'Niedrigere Qualität', '最低质量': 'Minimale Qualität',
         '务实启发式（快速）': 'Pragmatische Heuristik (schnell)', '感知引擎（智能）': 'Perzeptiver Motor (intelligent)',
         '压缩': 'Komprimieren', '歌曲太短，无法压缩': 'Song zu kurz zum Komprimieren', '未删除任何音符': 'Keine Noten entfernt',
-        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Qualität unter 20 %: Noten könnten übermäßig entfernt werden, der Klang kann deutlich leiden',
+        '最低质量：可能过度删除音符，歌曲听感可能明显受损': 'Minimale Qualität: Noten könnten übermäßig entfernt werden, der Klang kann deutlich leiden',
         '预计删除': 'Geschätzte Löschung', '保留': 'Behalten',
         '减轻处理的轨道': 'Spuren mit reduzierter Verarbeitung', '不被处理的轨道': 'Spuren ohne Verarbeitung',
         '选择': 'Auswählen', '未选择任何轨道': 'Keine Spuren ausgewählt',
         '选择减轻处理的轨道': 'Spuren mit reduzierter Verarbeitung auswählen',
         '选择不被处理的轨道': 'Spuren ohne Verarbeitung auswählen',
         '在画布中点击音轨行进行选择/取消，可多选。': 'Klicken Sie im Canvas auf Spurzeilen, um aus- oder abzuwählen. Mehrfachauswahl möglich.',
-        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Beide Modelle entfernen gleich viele Noten; unterschiedlich ist, welche Noten erhalten bleiben. Die perzeptive Engine kommt dem Höreindruck näher.',
+        '两种模型保留的音符略有差异，感知引擎更贴近听感、更保守。': 'Beide Modelle behalten leicht unterschiedliche Noten; die perzeptive Engine ist näher am Höreindruck und konservativer.',
         '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Pragmatische Heuristik (schnell): Bewertung nach einfachen Regeln (Grundton/Terz/Quinte, Oktav-Dubletten, Takt, Anschlagstärke, Dauer) — schnell und stabil.',
         '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Perzeptive Engine (intelligent): Bewertung nach Stimmlage, Takt, Dauer, Anschlagstärke, Verdeckung und Perkussionsdichte — näher am Höreindruck, etwas langsamer.',
     });
@@ -1595,17 +1602,18 @@
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': 'Supprime les notes ayant le même tick, instrument et hauteur ; activez « Réorganiser les notes » pour faire remonter les notes consécutives isolées et combler les vides',
         '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': 'Aucune note en double trouvée.\nCritère : même tick + même instrument + même hauteur, la vélocité est ignorée.',
         // 歌曲压缩
-        '歌曲压缩': 'Compression de chanson', '质量': 'Qualité', '算法模型': "Modèle d'algorithme",
+        '歌曲压缩': 'Compression de chanson', '压缩等级': 'Niveau de compression', '算法模型': "Modèle d'algorithme",
+        '近乎无损': 'Quasi sans perte', '高质量': 'Haute qualité', '中等质量': 'Qualité moyenne', '较低质量': 'Qualité inférieure', '最低质量': 'Qualité minimale',
         '务实启发式（快速）': 'Heuristique pragmatique (rapide)', '感知引擎（智能）': 'Moteur perceptuel (intelligent)',
         '压缩': 'Compresser', '歌曲太短，无法压缩': 'Chanson trop courte pour compression', '未删除任何音符': 'Aucune note supprimée',
-        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': 'Qualité inférieure à 20 % : trop de notes risquent d\'être supprimées, le rendu peut être nettement dégradé',
+        '最低质量：可能过度删除音符，歌曲听感可能明显受损': 'Qualité minimale : trop de notes risquent d\'être supprimées, le rendu peut être nettement dégradé',
         '预计删除': 'Suppression estimée', '保留': 'Conservées',
         '减轻处理的轨道': 'Pistes à traitement réduit', '不被处理的轨道': 'Pistes non traitées',
         '选择': 'Sélectionner', '未选择任何轨道': 'Aucune piste sélectionnée',
         '选择减轻处理的轨道': 'Sélectionner les pistes à traitement réduit',
         '选择不被处理的轨道': 'Sélectionner les pistes non traitées',
         '在画布中点击音轨行进行选择/取消，可多选。': 'Cliquez sur les lignes de piste du canevas pour sélectionner ou désélectionner. Sélection multiple possible.',
-        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': 'Les deux modèles suppriment le même nombre de notes ; seule diffère la sélection des notes conservées. Le moteur perceptuel se rapproche de la perception auditive.',
+        '两种模型保留的音符略有差异，感知引擎更贴近听感、更保守。': 'Les deux modèles conservent des notes légèrement différentes ; le moteur perceptuel est plus proche de la perception auditive et plus conservateur.',
         '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': 'Heuristique pragmatique (rapide) : notation par règles simples (fondamentale/tierce/quinte, doublons d’octave, temps, vélocité, durée) — rapide et stable.',
         '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': 'Moteur perceptuel (intelligent) : notation par rôle de voix, temps, durée, vélocité, masquage et densité de percussions — plus proche de l’écoute, un peu plus lent.',
     });
@@ -1616,17 +1624,18 @@
         '删除同一时间中音色和音调完全相同的重复音符；勾选「重排序音符」可将删除后孤立的连续音符上移填补空洞': '같은 tick, 악기, 음높이의 중복 노트를 삭제합니다. "노트 재정렬"을 켜면 삭제 후 고립된 연속 노트를 위로 이동해 빈 곳을 채웁니다',
         '未发现重复音符。\n判定标准: 同一时间(tick) + 相同音色 + 相同音调，忽略音量差异。': '중복 노트를 찾지 못했습니다.\n기준: 같은 tick + 같은 악기 + 같은 음높이, 음량 차이는 무시.',
         // 歌曲压缩
-        '歌曲压缩': '노래 압축', '质量': '품질', '算法模型': '알고리즘 모델',
+        '歌曲压缩': '노래 압축', '压缩等级': '압축 수준', '算法模型': '알고리즘 모델',
+        '近乎无损': '거의 무손실', '高质量': '고품질', '中等质量': '중간 품질', '较低质量': '낮은 품질', '最低质量': '최저 품질',
         '务实启发式（快速）': '실용적 휴리스틱 (빠름)', '感知引擎（智能）': '지각 엔진 (스마트)',
         '压缩': '압축', '歌曲太短，无法压缩': '노래가 너무 짧아 압축할 수 없습니다', '未删除任何音符': '삭제된 노트가 없습니다',
-        '质量低于 20%：可能过度删除音符，歌曲听感可能明显受损': '품질이 20% 미만: 노트가 과도하게 삭제되어 청감이 크게 손상될 수 있습니다',
+        '最低质量：可能过度删除音符，歌曲听感可能明显受损': '최저 품질: 노트가 과도하게 삭제되어 청감이 크게 손상될 수 있습니다',
         '预计删除': '예상 삭제', '保留': '유지',
         '减轻处理的轨道': '축소 처리할 트랙', '不被处理的轨道': '처리하지 않을 트랙',
         '选择': '선택', '未选择任何轨道': '선택된 트랙 없음',
         '选择减轻处理的轨道': '축소 처리할 트랙 선택',
         '选择不被处理的轨道': '처리하지 않을 트랙 선택',
         '在画布中点击音轨行进行选择/取消，可多选。': '캔버스에서 트랙 행을 클릭해 선택/해제할 수 있습니다. 여러 개 선택 가능.',
-        '两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。': '두 모델은 삭제하는 노트 수가 같고, 어떤 노트를 남기는지만 다릅니다. 지각 엔진이 청감에 더 가깝습니다.',
+        '两种模型保留的音符略有差异，感知引擎更贴近听感、更保守。': '두 모델이 남기는 노트가 약간 다릅니다. 지각 엔진은 청감에 더 가깝고 더 보수적입니다.',
         '务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。': '실용적 휴리스틱(빠름): 규칙 기반 간단 채점(근음/3도/5도, 옥타브 중복, 박자, 벨로시티, 길이) — 빠르고 안정적.',
         '感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。': '지각 엔진(스마트): 성부 역할, 박자, 길이, 벨로시티, 마스킹, 타악기 밀도로 종합 채점 — 청감에 더 가깝지만 조금 느림.',
     });

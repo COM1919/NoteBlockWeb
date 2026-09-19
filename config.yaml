@@ -37,13 +37,6 @@ release:
     - 底部 88 键钢琴键盘改为按真实键盘宽度居中。
     - 统一右键和浮层菜单为更接近 Windows 11 WinUI 的半透明 Mica/Acrylic 视觉。
 
-# 高级配置 (可选)
-advanced:
-  # 临时文件保留时间 (秒), 超时自动清理
-  temp_cleanup_seconds: 3600
-  # MIDI/NBS 文件最大大小 (MB)
-  max_upload_size_mb: 50
-
 # MIDI 音色库配置 (SF3/SF2 格式)
 # 配置下载链接后, 由客户端在设置中选择下载策略 (播放时询问 / 自动后台下载 / 不使用)。
 # 已下载的音色库会缓存在浏览器 (IndexedDB), 再次访问直接复用。

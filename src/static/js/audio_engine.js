@@ -269,7 +269,7 @@ function preloadAllSounds() {
     var total = uniqueNames.length;
 
     uniqueNames.forEach(function(name) {
-        var url = '/static/sounds/' + name + '.ogg';
+        var url = window.STATIC_BASE + '/sounds/' + name + '.ogg';
         fetch(url)
             .then(function(response) {
                 if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -459,7 +459,7 @@ function playBuffer(buffer, key, velocity, pan, soundName, customOpt, pitch) {
 function loadAndPlaySound(soundName, key, velocity, pan, pitch) {
     if (!audioContext) return;
 
-    var url = '/static/sounds/' + soundName + '.ogg';
+    var url = window.STATIC_BASE + '/sounds/' + soundName + '.ogg';
 
     fetch(url)
         .then(function(response) {

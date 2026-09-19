@@ -8,12 +8,21 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>NoteBlockWeb - Minecraft Note Block Studio</title>
     <script defer src="https://analytics.xozet.com/script.js" data-website-id="b89726f0-3b37-4bfe-8b8d-69f6cb487cfa"></script>
-    <link rel="icon" href="/static/logo.png" type="image/png">
+    <script>
+        // 路径基址: 用 file:// 直接打开 index.html 时, 以 "/" 开头的绝对路径会被
+        // 解析到磁盘根目录 (file:///static/...), 因此 HTML 内资源改用相对路径,
+        // JS 内部统一通过 window.STATIC_BASE 拼接。部署到服务器时 index.html 由
+        // "/" 提供, 两种情况结果一致, 均指向 static 目录。
+        window.STATIC_BASE = (location.protocol === 'file:')
+            ? new URL('static', location.href).href.replace(/\/$/, '')
+            : '/static';
+    </script>
+    <link rel="icon" href="static/logo.png" type="image/png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=20260913g">
+    <link rel="stylesheet" href="static/css/style.css?v=20260913g">
 </head>
 <body>
 
@@ -168,120 +177,6 @@
                 </button>
             </div>
         </div>
-    </div>
-
-    <!-- ========== FLS 模式界面 ========== -->
-    <div id="fls-app" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
-        <!-- FLS 工具栏 -->
-        <div class="fls-toolbar" id="fls-toolbar" style="display:flex;align-items:center;height:32px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--ctrl-stroke-default);padding:0 8px;gap:8px;flex-shrink:0;">
-            <span id="fls-song-name" style="font-size:12px;font-weight:600;color:var(--text-primary);">FLS Playlist</span>
-            <button class="fls-add-track-btn" id="fls-add-track" title="添加音轨" style="margin-left:auto;background:none;border:1px solid var(--ctrl-stroke-default);color:var(--text-secondary);padding:2px 10px;border-radius:4px;cursor:pointer;font-size:11px;">
-                <i class="fa-solid fa-plus"></i> 音轨
-            </button>
-        </div>
-
-        <div style="flex:1;display:flex;overflow:hidden;position:relative;">
-            <!-- FLS 播放列表 (轨道行 + 时间线) -->
-            <div class="fls-playlist" id="fls-playlist" style="flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;">
-                <div class="fls-timeline" id="fls-timeline" style="flex:1;display:flex;overflow:hidden;">
-                    <div class="fls-track-rows" id="fls-track-rows" style="width:180px;flex-shrink:0;overflow:hidden auto;background:rgba(0,0,0,0.15);"></div>
-                    <div class="fls-timeline-body" id="fls-timeline-body" style="flex:1;overflow:auto;position:relative;">
-                        <div class="fls-timeline-ruler" id="fls-timeline-ruler" style="height:24px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--ctrl-stroke-default);position:sticky;top:0;z-index:2;"></div>
-                        <div class="fls-playhead" id="fls-playhead" style="position:absolute;top:0;left:0;width:2px;height:100%;background:var(--accent-red);z-index:3;display:none;pointer-events:none;"></div>
-                    </div>
-                </div>
-                <!-- Clip 右键菜单 -->
-                <div class="fls-clip-menu" id="fls-clip-menu" style="display:none;position:fixed;z-index:10000;background:rgba(22,33,62,0.96);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:4px 0;min-width:140px;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
-                    <div class="fls-clip-menu-item" data-action="open">打开钢琴卷帘</div>
-                    <div class="fls-clip-menu-item" data-action="rename">重命名</div>
-                    <div class="fls-clip-menu-item" data-action="duplicate">复制片段</div>
-                    <div class="fls-clip-menu-item" data-action="delete">删除片段</div>
-                </div>
-            </div>
-
-            <!-- FLS 音轨设置抽屉 -->
-            <div class="fls-settings-drawer" id="fls-settings-drawer" style="display:none;width:280px;flex-shrink:0;background:rgba(0,0,0,0.25);border-left:1px solid var(--ctrl-stroke-default);overflow-y:auto;padding:12px;">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-                    <h4 id="fls-settings-title" style="margin:0;font-size:14px;flex:1;">音轨设置</h4>
-                    <button id="fls-settings-close" style="background:none;border:none;color:var(--text-secondary);font-size:18px;cursor:pointer;">&times;</button>
-                </div>
-                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">名称</label>
-                <input type="text" id="fls-set-name" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);margin-bottom:10px;">
-                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">乐器</label>
-                <select id="fls-set-instrument" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);margin-bottom:10px;"></select>
-                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">音量</label>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                    <input type="range" id="fls-set-vol" min="0" max="100" value="100" style="flex:1;">
-                    <span id="fls-vol-value" style="font-size:11px;min-width:30px;text-align:right;">100</span>
-                </div>
-                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">声像</label>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                    <input type="range" id="fls-set-pan" min="0" max="100" value="50" style="flex:1;">
-                    <span id="fls-pan-value" style="font-size:11px;min-width:30px;text-align:right;">50</span>
-                </div>
-                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">混响</label>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                    <input type="range" id="fls-set-reverb" min="0" max="100" value="0" style="flex:1;">
-                    <span id="fls-reverb-value" style="font-size:11px;min-width:30px;text-align:right;">0</span>
-                </div>
-                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">淡入</label>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                    <input type="range" id="fls-set-fadein" min="0" max="100" value="0" style="flex:1;">
-                    <span id="fls-fadein-value" style="font-size:11px;min-width:30px;text-align:right;">0</span>
-                </div>
-                <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">淡出</label>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                    <input type="range" id="fls-set-fadeout" min="0" max="100" value="0" style="flex:1;">
-                    <span id="fls-fadeout-value" style="font-size:11px;min-width:30px;text-align:right;">0</span>
-                </div>
-                <div style="display:flex;gap:8px;margin-bottom:10px;">
-                    <button id="fls-set-mute" style="flex:1;padding:6px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-secondary);cursor:pointer;">静音</button>
-                    <button id="fls-set-solo" style="flex:1;padding:6px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-secondary);cursor:pointer;">独奏</button>
-                </div>
-                <button id="fls-delete-track" style="width:100%;padding:6px;font-size:12px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:rgba(255,60,60,0.15);color:var(--accent-red);cursor:pointer;">
-                    <i class="fa-solid fa-trash"></i> 删除音轨
-                </button>
-            </div>
-
-            <!-- FLS 钢琴卷帘编辑器 (覆盖层) -->
-            <div class="fls-full-piano-roll" id="fls-piano-roll" style="display:none;position:absolute;inset:0;z-index:40;background:var(--app-bg);flex-direction:column;">
-                <div style="display:flex;align-items:center;height:36px;padding:0 8px;background:rgba(0,0,0,0.3);border-bottom:1px solid var(--ctrl-stroke-default);gap:8px;flex-shrink:0;">
-                    <button id="fls-pr-back" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:16px;padding:4px 8px;">
-                        <i class="fa-solid fa-arrow-left"></i>
-                    </button>
-                    <span id="fls-pr-title" style="font-size:13px;font-weight:600;color:var(--text-primary);"></span>
-                    <span id="fls-pr-info" style="font-size:11px;color:var(--text-tertiary);"></span>
-                </div>
-                <div style="flex:1;position:relative;overflow:hidden;">
-                    <canvas id="fls-pr-canvas" style="display:block;width:100%;height:100%;"></canvas>
-                    <div id="fls-pr-playhead" style="position:absolute;top:0;left:0;width:2px;height:100%;background:var(--accent-red);z-index:3;display:none;pointer-events:none;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ========== FLS 底部控制栏 ========== -->
-    <div class="fls-bottom-bar" id="fls-bottom-bar" style="display:none;align-items:center;height:32px;background:rgba(0,0,0,0.3);border-top:1px solid var(--ctrl-stroke-default);padding:0 8px;gap:8px;flex-shrink:0;">
-        <button class="toolbar-btn" id="fls-btn-play" title="播放/暂停" style="min-width:28px;min-height:24px;font-size:11px;">
-            <i class="fa-solid fa-play"></i>
-        </button>
-        <button class="toolbar-btn" id="fls-btn-stop" title="停止" style="min-width:24px;min-height:24px;font-size:11px;">
-            <i class="fa-solid fa-stop"></i>
-        </button>
-        <button class="toolbar-btn" id="fls-btn-rev" title="回到开头" style="min-width:24px;min-height:24px;font-size:11px;">
-            <i class="fa-solid fa-backward-step"></i>
-        </button>
-        <div style="flex:1;min-width:0;">
-            <div id="fls-progress-bar" style="position:relative;height:4px;background:var(--ctrl-fill-default);border-radius:2px;overflow:visible;cursor:pointer;touch-action:none;">
-                <div id="fls-progress-fill" style="height:100%;width:0%;background:var(--accent);border-radius:2px;transition:none;pointer-events:none;"></div>
-                <div id="fls-progress-handle" style="position:absolute;top:-4px;width:12px;height:12px;border-radius:50%;background:var(--accent);border:2px solid var(--app-bg);left:0%;transition:none;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,0.4);"></div>
-            </div>
-        </div>
-        <span id="fls-progress-time" style="font-family:var(--font-family-mono);font-size:11px;color:var(--text-secondary);white-space:nowrap;min-width:80px;">0:00 / 0:00</span>
-        <label style="font-size:11px;color:var(--text-secondary);white-space:nowrap;display:flex;align-items:center;gap:4px;">
-            BPM:
-            <input type="number" id="fls-tempo-input" value="20" min="1" max="400" style="width:50px;padding:2px 4px;font-size:11px;border:1px solid var(--ctrl-stroke-default);border-radius:4px;background:var(--ctrl-fill-default);color:var(--text-primary);text-align:center;">
-        </label>
     </div>
 
     <!-- ========== 隐藏的文件输入 ========== -->
@@ -742,7 +637,7 @@
                 <button class="settings-close-btn" id="about-close-x">&times;</button>
             </div>
             <div class="settings-body" style="text-align:center;padding:20px 16px;">
-                <img src="/static/logo.png" alt="NoteBlockWeb" style="width:64px;height:64px;margin-bottom:12px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.35);">
+                <img src="static/logo.png" alt="NoteBlockWeb" style="width:64px;height:64px;margin-bottom:12px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.35);">
                 <h3 style="margin:0 0 4px;font-size:16px;">NoteBlockWeb</h3>
                 <p style="margin:0 0 12px;font-size:12px;color:var(--text-secondary);">基于 Web 的 Minecraft 音符盒编辑器</p>
                 <p style="margin:0 0 4px;font-size:11px;color:var(--text-tertiary);">支持 NBS 格式导入/导出, MIDI 导入, 钢琴卷帘编辑</p>
@@ -1303,24 +1198,24 @@
         </div>
     </div>
 
-    <!-- ========== 上传进度弹窗 ========== -->
-    <div class="popup" id="upload-progress-popup" style="display:none;">
+    <!-- ========== 任务进度弹窗 ========== -->
+    <div class="popup" id="task-progress-popup" style="display:none;">
         <div class="popup-content" style="max-width:340px;">
             <div class="settings-header">
-                <i class="fa-solid fa-cloud-upload-alt"></i>
-                <h4 id="upload-progress-title">处理中</h4>
+                <i class="fa-solid fa-spinner fa-spin"></i>
+                <h4 id="task-progress-title">处理中</h4>
             </div>
             <div class="settings-body">
-                <p id="upload-progress-filename" style="margin:0 0 8px;font-size:12px;color:var(--text-secondary);"></p>
+                <p id="task-progress-filename" style="margin:0 0 8px;font-size:12px;color:var(--text-secondary);"></p>
                 <div style="height:6px;background:var(--ctrl-fill-default);border-radius:3px;overflow:hidden;margin-bottom:8px;">
-                    <div id="upload-progress-bar" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width 0.2s;"></div>
+                    <div id="task-progress-bar" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width 0.2s;"></div>
                 </div>
                 <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-tertiary);">
-                    <span id="upload-progress-percent">0%</span>
-                    <span id="upload-progress-speed">0 B/s</span>
-                    <span id="upload-progress-eta">计算中…</span>
+                    <span id="task-progress-percent">0%</span>
+                    <span id="task-progress-speed">0 B/s</span>
+                    <span id="task-progress-eta">计算中…</span>
                 </div>
-                <p id="upload-progress-phase" style="margin:4px 0 0;font-size:11px;color:var(--text-tertiary);"></p>
+                <p id="task-progress-phase" style="margin:4px 0 0;font-size:11px;color:var(--text-tertiary);"></p>
             </div>
         </div>
     </div>
@@ -1382,29 +1277,24 @@
     }
 </script>
 <!-- nbs_client.js 必须在 api_client.js 之前加载 (api_client.js 引用 NBSClient 全局对象) -->
-<script src="/static/js/nbs_client.js?v=20260913h"></script>
-<script src="/static/js/api_client.js?v=20260905a"></script>
-<script src="/static/js/custom_dropdown.js?v=20260913f"></script>
-<script src="/static/js/i18n.js?v=20260913m"></script>
-<script src="/static/js/audio_engine.js?v=20260906e"></script>
-<script src="/static/js/custom_instruments.js?v=20260905a"></script>
-<script src="/static/js/audio_fix_utils.js?v=20260905a"></script>
-<script src="/static/js/sf3_player.js?v=20260808a"></script>
-<script src="/static/js/spessa_player.js?v=20260808a"></script>
-<script src="/static/js/soundfont_loader.js?v=20260808b"></script>
-<script src="/static/js/piano_roll.js?v=20260913n"></script>
-<script src="/static/js/fls_core.js?v=20260728a"></script>
-<script src="/static/js/fls_track_panel.js?v=20260718m"></script>
-<script src="/static/js/fls_playlist.js?v=20260728e"></script>
-<script src="/static/js/fls_group_roll.js?v=20260728d"></script>
-<script src="/static/js/fls_pianoroll.js?v=20260728d"></script>
+<script src="static/js/nbs_client.js?v=20260919b"></script>
+<script src="static/js/api_client.js?v=20260905a"></script>
+<script src="static/js/custom_dropdown.js?v=20260913f"></script>
+<script src="static/js/i18n.js?v=20260919b"></script>
+<script src="static/js/audio_engine.js?v=20260918a"></script>
+<script src="static/js/custom_instruments.js?v=20260905a"></script>
+<script src="static/js/audio_fix_utils.js?v=20260905a"></script>
+<script src="static/js/sf3_player.js?v=20260808a"></script>
+<script src="static/js/spessa_player.js?v=20260918a"></script>
+<script src="static/js/soundfont_loader.js?v=20260808b"></script>
+<script src="static/js/piano_roll.js?v=20260913n"></script>
 <!-- 本地化第三方库: ZIP 打包 (jszip) / MP3 编码 (lamejs) -->
-<script src="/static/vendor/jszip.min.js?v=20260905a"></script>
-<script src="/static/vendor/lame.min.js?v=20260905a"></script>
+<script src="static/vendor/jszip.min.js?v=20260905a"></script>
+<script src="static/vendor/lame.min.js?v=20260905a"></script>
 <!-- 离线渲染引擎: audio_render.js 必须在 main.js 之前加载 -->
-<script src="/static/js/render_jsmix.js?v=20260906e"></script>
-<script src="/static/js/audio_render.js?v=20260906f"></script>
-<script src="/static/js/main.js?v=20260913j"></script>
+<script src="static/js/render_jsmix.js?v=20260906e"></script>
+<script src="static/js/audio_render.js?v=20260918a"></script>
+<script src="static/js/main.js?v=20260919b"></script>
 
 </body>
 </html>

@@ -7,8 +7,41 @@ const path = require('path');
 
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const PORT = 9333;
-const URL = 'http://localhost:8000/static/_test_render.html';
+const SERVE_PORT = 8123;
+const ROOT = path.join(__dirname, '..');
+const URL = 'http://localhost:' + SERVE_PORT + '/_test_render.html';
 const USER_DATA = path.join(os.tmpdir(), 'nbs_cdp_' + Date.now());
+
+// 测试页位于 test/ 目录, 但其资源使用 /static/* 绝对路径, 因此自备一个
+// 静态服务: /_test_render.html -> test/, /static/* -> src/static/
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.ogg': 'audio/ogg',
+  '.wav': 'audio/wav',
+  '.png': 'image/png'
+};
+
+function startStaticServer() {
+  const server = http.createServer((req, res) => {
+    let rel = decodeURIComponent(req.url.split('?')[0]);
+    let file;
+    if (rel === '/_test_render.html') {
+      file = path.join(__dirname, '_test_render.html');
+    } else if (rel.startsWith('/static/')) {
+      file = path.join(ROOT, 'src', rel.replace(/^\//, ''));
+    } else {
+      res.writeHead(404); res.end('not found'); return;
+    }
+    fs.readFile(file, (err, buf) => {
+      if (err) { res.writeHead(404); res.end('not found'); return; }
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
+      res.end(buf);
+    });
+  });
+  return new Promise((ok) => server.listen(SERVE_PORT, () => ok(server)));
+}
 
 function getJson(url) {
   return new Promise((ok, no) => {
@@ -21,6 +54,7 @@ function getJson(url) {
 }
 
 async function main() {
+  const server = await startStaticServer();
   const edge = spawn(EDGE, [
     '--headless=new', '--disable-gpu', '--no-sandbox',
     '--remote-debugging-port=' + PORT,
@@ -38,8 +72,8 @@ async function main() {
   console.log('[ok] CDP 端口就绪, targets=' + targets.length);
   targets.forEach(t => console.log('  target type=' + t.type + ' url=' + t.url));
 
-  const page = targets.find(t => t.type === 'page' && t.url.includes('localhost:8000')) || targets.find(t => t.type === 'page');
-  if (!page) { console.error('未找到页面 target'); edge.kill(); process.exit(1); }
+  const page = targets.find(t => t.type === 'page' && t.url.includes('localhost:' + SERVE_PORT)) || targets.find(t => t.type === 'page');
+  if (!page) { console.error('未找到页面 target'); edge.kill(); server.close(); process.exit(1); }
 
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((ok, no) => { ws.onopen = ok; ws.onerror = no; });
@@ -80,6 +114,7 @@ async function main() {
   if (!last.includes('TESTS DONE') && !last.includes('ERROR')) console.error('超时未完成');
   ws.close();
   edge.kill();
+  server.close();
   try { fs.rmSync(USER_DATA, { recursive: true, force: true }); } catch (e) {}
 }
 

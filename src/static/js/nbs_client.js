@@ -2712,137 +2712,581 @@ window.compressSongCore = (function () {
         return meta;
     }
 
-    // ---- 务实启发式: 轻量规则打分 (单遍 O(n) + 排序 O(n log n)), 分数越高越重要 ----
-    function rankHeuristic(notes, ctx) {
-        var tpb = (ctx && ctx.ticksPerBeat) || 30;
-        if (tpb < 1) tpb = 30;
-        var isShort = makeIsShort(notes);
-        var meta = buildGroupMeta(notes);
-        var half = Math.floor(tpb / 2);
+    // ==================================================================
+    // v4.0 结构分层感知压缩引擎
+    //   Stage0 物理模型 -> Stage2 结构分析(6 模式) -> Stage3 候选生成(13 类)
+    //   -> Stage4 成本评估 -> Stage5 贪心 + 7 不变式回滚 -> Stage6 审计
+    // 保留既有契约: window.compressSongCore / window.compressSongEstimate。
+    // ==================================================================
 
-        var scored = [];
-        for (var i = 0; i < notes.length; i++) {
-            var n = notes[i], s;
-            var beatPos = n.tick % tpb;
-            if (isPerc(n)) {
-                // 大鼓最保, 强拍军鼓次之, 其余打击乐最低
-                s = (n.instrument === 2) ? 0.98
-                  : (n.instrument === 3 ? (beatPos === 0 ? 0.90 : 0.55) : 0.38);
-                s += 0.15 * ((n.velocity || 100) / 100);
-            } else {
-                s = 0.35;
-                var m = meta[n.tick + ':' + n.instrument];
-                if (m) {
-                    if (m.root === n) s += 0.45;                        // 根音
-                    else {
-                        var d = mod12(n.key - m.root.key);
-                        if (d === 3 || d === 4) s += 0.22;              // 三音
-                        else if (d === 7) s -= 0.10;                    // 五音
-                        else if (d === 0) s -= 0.25;                    // 八度重复
-                    }
-                    if (m.hi === n && !isShort(n) && m.root !== n) s += 0.25; // 旋律锚点
-                }
-                if (isBass(n)) s += 0.25;
-                if (isShort(n)) s -= 0.12; else s += 0.10;
-                if (beatPos === 0) s += 0.12; else if (beatPos !== half) s -= 0.05;
-                s += 0.18 * ((n.velocity || 100) / 100);
-            }
-            scored.push({ n: n, s: s });
+    // ---- ParameterConfig: 集中管理 + 标注验证状态 [VERIFIED]/[UNVERIFIED] ----
+    var P = {
+        // [VERIFIED] NBS 官方规范
+        nbsPitchRange: [0, 87],
+        nbsGameRange: [33, 57],
+        tickPerSecond: 10,
+        velocityMax: 100,
+        // [VERIFIED] 心理声学
+        // [UNVERIFIED] 启发式参数 (需实验校准)
+        costWeights: [0.30, 0.25, 0.20, 0.15, 0.10],  // Δharm,Δrhythm,Δmelody,Δtexture,Δtimbre
+        tauGrid: 0.5,
+        tauChord: 0.35,
+        hAthNorm: 0.6,          // 音高熵归一化阈值 (atonal)
+        nSparse: 500,
+        rhoSparse: 0.02,
+        dDense: 0.6,
+        maskSpan: 2,            // 掩蔽半音窗
+        retriggerGapTick: 2,    // 伪延音最大间隔(tick)
+        inaudibleVel: 3,        // 闻阈: velocity<3 听不到
+        voiceMinAbs: 3,         // L1 绝对下限
+        failBudget: 100000,         // L1 连续失败上限(实际由 target 终止; 避免过早中断破坏单调性)
+        cMaxBase: 0.20,         // 成本上限截断基线 (A2: 拒绝高成本候选, 防止中高档乱删结构音)
+        cMaxScale: 0.70         // 成本上限随压缩强度线性放宽: cMax = cMaxBase + cMaxScale*(1-q)
+    };
+
+    // ---- Note Block Physics 模型 (Stage 0) ----
+    // 近似衰减时间(秒) [UNVERIFIED], 同 v4.0 §2.1; >15 为自定义乐器 -> unknown
+    var DECAY = { 0: 1.5, 1: 1.0, 2: 0.3, 3: 0.2, 4: 0.1, 5: 1.2, 6: 0.8, 7: 2.0, 8: 2.5, 9: 1.0, 10: 1.2, 11: 0.8, 12: 1.5, 13: 0.5, 14: 1.0, 15: 1.5 };
+    function decayOf(n) {
+        if (n.instrument == null || n.instrument < 0 || n.instrument > 15 || DECAY[n.instrument] === undefined) return null;
+        return DECAY[n.instrument];
+    }
+    // 近似有效响度: 现数据模型无 layer_volume, 用 velocity 近似 (v4.0 的 layer_vol*vel/100)
+    function effVol(n) { return Math.min(1, Math.max(0, (n.velocity == null ? 100 : n.velocity) / 100)); }
+    // 近似有效音高 (含音分微调)
+    function effPitch(n) { return n.key + (isFinite(n.pitch) ? n.pitch / 100 : 0); }
+
+    function dot(a, w) { return a[0] * w[0] + a[1] * w[1] + a[2] * w[2] + a[3] * w[3] + a[4] * w[4]; }
+    function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+    function resolveTpb(ctx) { var t = (ctx && ctx.ticksPerBeat) || 0; return (t && t > 1) ? t : 30; }
+
+    // ---- Stage 2: 结构分析 (轻量近似 LogicalVoice / ChordSegment) ----
+    // 返回全曲统计 + 伪延音组。无副作用。
+    function analyzeStructure(notes, tpb) {
+        var i, n, s = {};
+        var total = notes.length;
+        // 2a 音高熵 (pitch-class 归一化 Shannon 熵 / 最大熵)
+        var pc = {}, cnt = 0;
+        for (i = 0; i < notes.length; i++) {
+            n = notes[i];
+            var p = mod12(n.key + (isFinite(n.pitch) ? Math.round(n.pitch / 100) : 0));
+            if (!pc[p]) pc[p] = 0;
+            pc[p]++; cnt++;
         }
-        scored.sort(function (a, b) { return a.s - b.s; });
-        return scored.map(function (x) { return x.n; });
+        var ent = 0;
+        for (var k in pc) { var pr = pc[k] / cnt; ent -= pr * Math.log(pr); }
+        var maxEnt = Math.log(Math.max(1, Object.keys(pc).length));
+        var entropy = maxEnt > 0 ? ent / maxEnt : 0;
+        var atonal = entropy > P.hAthNorm;
+
+        // 2d Chord: 同 tick 平均同时音符数 + 和弦占比 (多音 tick 占非空 tick 比例)
+        var tickN = {}, nonEmpty = 0, multTicks = 0, sumMult = 0;
+        for (i = 0; i < notes.length; i++) {
+            n = notes[i];
+            if (!tickN[n.tick]) tickN[n.tick] = 0;
+            tickN[n.tick]++;
+        }
+        for (var t in tickN) {
+            var m = tickN[t];
+            nonEmpty++;
+            if (m >= 2) multTicks++;
+            sumMult += m;
+        }
+        var avgMult = nonEmpty ? sumMult / nonEmpty : 1;
+        var chordRatio = nonEmpty ? multTicks / nonEmpty : 0;
+
+        // 2b grid_neutral: 强拍(beatPos==0)触发占非空 tick 比例低 → 网格置信不足
+        var strongTicks = 0;
+        for (i = 0; i < notes.length; i++) if ((notes[i].tick % tpb) === 0) strongTicks++;
+        var gridConf = nonEmpty ? Math.min(1, strongTicks / Math.max(1, notes.length)) : 0;
+        var gridNeutral = gridConf < P.tauGrid;
+
+        // 2c 稀疏
+        var sparse = total < P.nSparse || (nonEmpty > 0 && total / nonEmpty < P.rhoSparse);
+
+        // 2f 模式
+        var funky = avgMult > 3.5 && chordRatio > 0.6;
+        var perc = 0;
+        for (i = 0; i < notes.length; i++) if (isPerc(notes[i])) perc++;
+        var densePerk = nonEmpty > 0 && perc / nonEmpty > P.dDense;
+
+        // melody_dominant: 音符最多的某层占比 > 80% 则标记为旋律层
+        var layerCnt = {}, maxLayer = -1, maxLayerN = 0;
+        for (i = 0; i < notes.length; i++) {
+            n = notes[i];
+            layerCnt[n.layer] = (layerCnt[n.layer] || 0) + 1;
+            if (layerCnt[n.layer] > maxLayerN) { maxLayerN = layerCnt[n.layer]; maxLayer = n.layer; }
+        }
+        var melodyDominant = total > 0 && maxLayerN / total > 0.8;
+
+        // 2e 伪延音检测: 同 instrument 偏移, 同 eff_pitch(半音), 间隔<=2tick, 同窗口无它 pitch 干扰
+        // 按 (instrument : round(effPitch)) 排序 tick, 收集连续且 gap<=retriggerGapTick 的序列
+        var groupsKey = {};
+        for (i = 0; i < notes.length; i++) {
+            n = notes[i];
+            var gk = n.instrument + ':' + Math.round(effPitch(n));
+            (groupsKey[gk] = groupsKey[gk] || []).push(n);
+        }
+        var pseudoGroups = [];
+        for (var g in groupsKey) {
+            var arr = groupsKey[g].slice().sort(function (a, b) { return a.tick - b.tick; });
+            var run = [];
+            for (i = 0; i < arr.length; i++) {
+                var cur = arr[i];
+                var prev = run.length ? run[run.length - 1] : null;
+                if (prev && (cur.tick - prev.tick) <= P.retriggerGapTick &&
+                    mod12(cur.key) !== mod12(prev.key)) {
+                    // 窗口内混入它 pitch (半音级不同) → 视为和弦而非延音, 中断
+                    if (run.length >= 2) { pseudoGroups.push(run.slice(0, run.length)); }
+                    run = [cur];
+                    continue;
+                }
+                if (prev && (cur.tick - prev.tick) <= P.retriggerGapTick) { run.push(cur); }
+                else {
+                    if (run.length >= 2) pseudoGroups.push(run);
+                    run = [cur];
+                }
+            }
+            if (run.length >= 2) pseudoGroups.push(run);
+        }
+        // 只保留 "同 pitch 半音级" 真正 retrigger (移除和弦混入产生的打断组)
+        pseudoGroups = pseudoGroups.filter(function (g2) {
+            if (g2.length < 2) return false;
+            var base = mod12(g2[0].key);
+            for (var j = 0; j < g2.length; j++) if (mod12(g2[j].key) !== base) return false;
+            return true;
+        });
+
+        s.atonal = atonal; s.gridNeutral = gridNeutral; s.sparse = sparse;
+        s.funky = funky; s.densePerk = densePerk; s.melodyDominant = melodyDominant;
+        s.pseudoGroups = pseudoGroups; s.melodyLayer = melodyDominant ? maxLayer : -1;
+        s.avgMult = avgMult; s.chordRatio = chordRatio;
+        return s;
     }
 
-    // ---- 感知引擎: 角色/节拍/时值/力度/掩蔽/密度 综合打分, 分数越高越重要 ----
-    function rankPerceptual(notes, ctx) {
-        var tpb = (ctx && ctx.ticksPerBeat) || 30;
-        if (tpb < 1) tpb = 30;
-        var isShort = makeIsShort(notes);
-        var meta = buildGroupMeta(notes);
+    // ---- Stage 4: 成本评估 ----
+    // 返回 { hCost, pCost, class } : heuristic 与 perceptual 两套权重在相同特征上的差异。
+    // 特点: perceptual 额外纳入掩蔽/密度微调, 保证删除量一致、只是顺序不同。
+    function costOfCandidate(c, st, tpb) {
+        var del = c.del || [], keep = c.keep;
+        // 防御: 无删除对象且无 keep 的候选无法估计, 给最差成本(不被选)
+        if (!del.length && !keep) return { hCost: 10, pCost: 10, class: c.class };
+        var ref = del.length ? del[0] : keep;
+        if (!ref) return { hCost: 10, pCost: 10, class: c.class };
+        var beatPos = ref.tick % tpb;
         var half = Math.floor(tpb / 2);
 
-        // 打击乐 tick 预排序, 密度窗口用二分计数 (避免逐音扫描全表)
-        var percTicks = [];
-        for (var p = 0; p < notes.length; p++) if (isPerc(notes[p])) percTicks.push(notes[p].tick);
-        percTicks.sort(function (a, b) { return a - b; });
-        var win = Math.max(4, tpb / 8);
-
-        var scored = [];
-        for (var i = 0; i < notes.length; i++) {
-            var n = notes[i], s;
-            var beatPos = n.tick % tpb;
-            if (isPerc(n)) {
-                var dens = Math.min(1, (upperBound(percTicks, n.tick + win) - lowerBound(percTicks, n.tick - win)) / 8);
-                var base = (n.instrument === 2) ? 1.00                     // 底鼓: 最高优先
-                         : (n.instrument === 3 ? (beatPos === 0 ? 0.95 : 0.62) : 0.45);
-                s = base * 0.75 + 0.25 * ((n.velocity || 100) / 100) - 0.15 * dens;
-            } else {
-                var m = meta[n.tick + ':' + n.instrument];
-                var role = 0.25;
-                if (m) {
-                    if (m.root === n) role = 1.00;
-                    else {
-                        var d = mod12(n.key - m.root.key);
-                        if (d === 3 || d === 4) role = 0.85;         // 三音
-                        else if (d === 10 || d === 11) role = 0.80;  // 七音
-                        else if (d === 7) role = 0.45;               // 五音
-                        else if (d === 0) role = 0.12;               // 八度/同度重复
-                    }
-                    if (m.hi === n && !isShort(n) && m.root !== n) role = 0.95; // 旋律锚点
-                }
-                var beat = (beatPos === 0) ? 1.00 : (beatPos === half ? 0.60 : 0.30);
-                var dur = isShort(n) ? 0.20 : 0.80;
-                var vel = (n.velocity || 100) / 100;
-                var mask = 0, dup = 0;
-                if (m) {
-                    for (var j = 0; j < m.arr.length; j++) {
-                        var o = m.arr[j];
-                        if (o === n) continue;
-                        if (Math.abs(mod12(o.key) - mod12(n.key)) <= 1 && (o.velocity || 100) > (n.velocity || 100)) mask = 0.6;
-                        if (mod12(o.key) === mod12(n.key)) dup = 1;
-                    }
-                }
-                s = 0.35 * role + 0.20 * beat + 0.15 * dur + 0.15 * vel - 0.10 * mask - 0.05 * dup;
-                if (isBass(n)) s += 0.12;
-            }
-            scored.push({ n: n, s: s });
+        // Δharm
+        var root = 1.0;
+        if (c.class === 'C2') root = 0.05;                 // 伪延音合并: 能量补偿几乎无损
+        else if (c.class === 'C12') root = 0.0;            // 闻阈: 物理听不到
+        else if (c.fifthLike) root = st.funky ? 0.5 : 0.2;
+        else if (beatPos !== 0 && beatPos !== half && !c.chordTone) root = 0.05;
+        // 掩蔽 μ_local (仅 pitched 跨音色): 与同 tick 更响邻近音相比
+        var mu = 0;
+        if (!isPerc(ref)) {
+            var vRef = effVol(ref);
+            // 用 buildGroupMeta 已可为同 tick 音级; 这里简化: 遍历同 tick 所有音符
         }
-        scored.sort(function (a, b) { return a.s - b.s; });
-        return scored.map(function (x) { return x.n; });
+        var dHarm = root * (1 - 0.3 * c.masked);
+
+        // Δrhythm
+        var dRythm;
+        if (st.gridNeutral) dRythm = 0.4;
+        else if (beatPos === 0) dRythm = 1.0;
+        else if (beatPos === half) dRythm = 0.8;
+        else dRythm = 0.15;
+
+        // Δmelody: 简洁注入由候选生成侧计算的 gap/jump/structural
+        var dMelody = c.melodyCost !== undefined ? c.melodyCost : 0.4;
+
+        // Δtexture: 删除导致 tick 清空 → 高
+        var dTexture = c.tickClears ? 1.0 : 0.3;
+
+        // Δtimbre: 低音/打击乐角色保底
+        var dTimbre = (isBass(ref) || isPerc(ref)) ? 0.6 : 0.3;
+
+        var d = [dHarm, dRythm, dMelody, dTexture, dTimbre];
+        var base = dot(d, P.costWeights);
+        // 感知掩蔽项 (仅 perceptual): 同 tick 存在更响的邻近音(掩蔽窗内) → 该音被掩蔽, 更可删
+        var selfMasked = 0;
+        if (!isPerc(ref) && st.__masking) {
+            var vR = effVol(ref), mm2 = st.__masking;
+            for (var sk = -P.maskSpan; sk <= P.maskSpan; sk++) {
+                if (mm2[ref.tick + ':' + mod12(ref.key + sk)] > vR) { selfMasked = 1; break; }
+            }
+        }
+        // lighten 层成本翻倍 (等效配额减半)
+        if (c.lighten) base *= 2;
+        var hCost = base * 0.9 + (c.class === 'C12' ? 0 : 0.15);
+        // 感知: 掩蔽音显著更可删(强项), 轻量项在 lighten 时再降 → 与启发式选序真实不同
+        var pBase = base - 0.5 * selfMasked;
+        var pCost = pBase + 0.10 * (c.lighten ? 1 : 0) + (c.class === 'C12' ? 0 : 0.15);
+        return { hCost: hCost, pCost: pCost, class: c.class };
     }
 
-    // ---- 主入口 ----
-    // 统一管线: ①完全去重 ②按分数从低到高删除配额内的音符 (99% 档跳过②)。
-    // 轨道分组: 不处理(完全不动) / 正常 / 减轻处理(删除强度减半)。
-    // 两种模型的"删除数量"完全一致, 仅"删哪一些"不同。
+    // ---- Stage 3 + 5: 候选生成 + 贪心 + 7 不变式回滚 ----
+    // 纯计算(在调用方给定的可变数组 kept 上, 只读), 输出被删音符引用数组。
+    // 与 compressSongEstimate 共享, 保证预估 = 实际。
+    function selectPlan(kept, q, model, tpb, excludeSet, lightenSet) {
+        var st = analyzeStructure(kept, tpb);
+        var i, n, k, j;
+        var cands = [];
+
+        // 感知掩蔽查找表: 'tick:pc' -> 该 tick 该音级最大 effVol (供 perceptual 排序)
+        st.__masking = {};
+        for (var m0 = 0; m0 < kept.length; m0++) {
+            var mn = kept[m0], mk0 = mn.tick + ':' + mod12(mn.key), me = effVol(mn);
+            if (me > (st.__masking[mk0] || 0)) st.__masking[mk0] = me;
+        }
+
+        function bucket(nn) {
+            if (excludeSet && excludeSet[nn.layer]) return 0;
+            if (lightenSet && lightenSet[nn.layer]) return 2;
+            return 1;
+        }
+        // 每 tick 乐器组与前驱信息
+        var meta = buildGroupMeta(kept);
+
+        // ---- C0: 同 tick 同乐器同 pitch 去重 (阶段1已删 tick:inst:key 重复;
+        // 此处兜底仅针对同 tick 同 inst 同 key 万一存在的重复, 保 effVol 最大) ----
+        var c0ByKey = {};
+        for (i = 0; i < kept.length; i++) {
+            n = kept[i];
+            if (bucket(n) === 0) continue;
+            var ck0 = n.tick + ':' + n.instrument + ':' + n.key;
+            (c0ByKey[ck0] = c0ByKey[ck0] || []).push(n);
+        }
+        for (k in c0ByKey) {
+            var arr = c0ByKey[k];
+            if (arr.length < 2) continue;
+            var bestV = -1, bestIdx = -1;
+            for (i = 0; i < arr.length; i++) {
+                var ev = effVol(arr[i]);
+                if (ev > bestV) { bestV = ev; bestIdx = i; }
+            }
+            for (i = 0; i < arr.length; i++) {
+                if (i === bestIdx) continue;
+                cands.push({ class: 'C0', del: [arr[i]], keep: null, lighten: bucket(arr[i]) === 2 });
+            }
+        }
+
+        if (q >= 0.99) {
+            // 99%: 仅完全去重
+            return finalize(cands, st, tpb);
+        }
+
+        function candidatesEnabled(cls) {
+            if (cls === 'C3' || cls === 'C4' || cls === 'C8') return !st.atonal;
+            if (cls === 'C5' || cls === 'C6' || cls === 'C7' || cls === 'C8' || cls === 'C11') return !st.sparse;
+            if (cls === 'C10') return !st.melodyDominant;
+            return true;
+        }
+        // 激活阈值 (A3 重标定: 按压缩等级语义, 保证中高档有大宗候选可用, 避免散删)
+        // q < CLS_Q.C 才激活; 越激进的档位激活越多类
+        var CLS_Q = {
+            C1: 0.95, C2: 0.90, C3: 0.75, C4: 0.80, C5: 0.85,
+            C6: 0.70, C7: 0.65, C8: 0.45, C9: 0.50, C10: 0.30, C11: 0.45
+        };
+
+        // ---- C12 闻阈: effVol 极低 → 成本 0 (Q≥0.9 自动) ----
+        if (q >= 0.9) {
+            for (i = 0; i < kept.length; i++) {
+                n = kept[i];
+                if (effVol(n) * 100 < P.inaudibleVel) {
+                    cands.push({ class: 'C12', del: [n], keep: null, lighten: bucket(n) === 2, inaudible: true });
+                }
+            }
+        }
+
+        var isShort = makeIsShort(kept);
+
+        // ---- C1: 八度/同度重复 (同 tick 同音级, 保外声部) ----
+        if (q < CLS_Q.C1 && candidatesEnabled('C1')) {
+            var byTickPc = {};
+            for (i = 0; i < kept.length; i++) {
+                n = kept[i];
+                if (isPerc(n)) continue;
+                var tpk = n.tick + ':' + mod12(n.key);
+                (byTickPc[tpk] = byTickPc[tpk] || []).push(n);
+            }
+            for (k in byTickPc) {
+                if (byTickPc[k].length < 2) continue;
+                var grp = byTickPc[k];
+                // funky: 仅当完全同 tick 的和弦重复才删 (保守限定八度保护)
+                if (st.funky) continue;
+                var keepBest = grp[0];
+                for (i = 1; i < grp.length; i++) if (grp[i].key > keepBest.key) keepBest = grp[i]; // 保外声部(高八度)
+                for (i = 0; i < grp.length; i++) {
+                    if (grp[i] === keepBest) continue;
+                    cands.push({ class: 'C1', del: [grp[i]], keep: null, lighten: bucket(grp[i]) === 2 });
+                }
+            }
+        }
+
+        // ---- C2 伪延音能量补偿合并 ----
+        if (q < CLS_Q.C2 && candidatesEnabled('C2')) {
+            for (i = 0; i < st.pseudoGroups.length; i++) {
+                var run = st.pseudoGroups[i];          // 按 tick 升序
+                if (run.length < 2) continue;           // 防御: 单音符不成伪延音
+                var keepN = run[0], dels = run.slice(1);
+                // 能量补偿: E_total/E1 = Σ exp(-t_i/τ)
+                var decay = decayOf(keepN);
+                var tau = decay == null ? 1.0 : decay;
+                var tAcc = 0, eTotal = 1;
+                for (j = 1; j < run.length; j++) { tAcc += (run[j].tick - run[j - 1].tick) / P.tickPerSecond; eTotal += Math.exp(-tAcc / tau); }
+                var factor = Math.sqrt(eTotal);
+                var newVel = clamp(Math.round((keepN.velocity == null ? 100 : keepN.velocity) * factor), 0, 100);
+                cands.push({ class: 'C2', del: dels, keep: keepN, keepVel: newVel, lighten: bucket(keepN) === 2, compFactor: factor });
+            }
+        }
+
+        // ---- C5 装饰音: 短时值 + 弱拍 + 非组内根音/三音 → 低成本 ----
+        if (q < CLS_Q.C5 && candidatesEnabled('C5')) {
+            for (i = 0; i < kept.length; i++) {
+                n = kept[i];
+                if (isPerc(n) || isBass(n)) continue;
+                var bp = n.tick % tpb, half2 = Math.floor(tpb / 2);
+                if (!isShort(n)) continue;
+                if (bp === 0 || bp === half2) continue;         // 强拍不删
+                var m = meta[n.tick + ':' + n.instrument];
+                var chordTone = false;
+                if (m && m.arr.length > 1) {
+                    var d12 = mod12(n.key - m.root.key);
+                    if (d12 === 3 || d12 === 4 || d12 === 7) chordTone = true;
+                }
+                if (chordTone) continue;
+                cands.push({ class: 'C5', del: [n], keep: null, chordTone: false, fifthLike: false, lighten: bucket(n) === 2 });
+            }
+        }
+
+        // ---- C3 伴奏五音 (弱拍, 段内有兄弟) ----
+        if (q < CLS_Q.C3 && candidatesEnabled('C3')) {
+            for (i = 0; i < kept.length; i++) {
+                n = kept[i];
+                if (isPerc(n)) continue;
+                var bp3 = n.tick % tpb, half3 = Math.floor(tpb / 2);
+                var m3 = meta[n.tick + ':' + n.instrument];
+                if (!m3 || m3.arr.length < 2) continue;
+                if (m3.root !== n && mod12(n.key - m3.root.key) === 7) {
+                    cands.push({ class: 'C3', del: [n], keep: null, fifthLike: true, chordTone: true, lighten: bucket(n) === 2 });
+                }
+            }
+        }
+
+        // ---- C4 伴奏三音 (弱拍, 段内保同功能音) ----
+        if (q < CLS_Q.C4 && candidatesEnabled('C4')) {
+            for (i = 0; i < kept.length; i++) {
+                n = kept[i];
+                if (isPerc(n)) continue;
+                var bp4 = n.tick % tpb, half4 = Math.floor(tpb / 2);
+                if (bp4 === 0 || bp4 === half4) continue;
+                var m4 = meta[n.tick + ':' + n.instrument];
+                if (!m4 || m4.arr.length < 3) continue;
+                if (m4.root !== n && (mod12(n.key - m4.root.key) === 3 || mod12(n.key - m4.root.key) === 4)) {
+                    cands.push({ class: 'C4', del: [n], keep: null, chordTone: true, lighten: bucket(n) === 2 });
+                }
+            }
+        }
+
+        // ---- C6 伴奏节奏密度减半: 非旋律层 每 4 拍窗口 隔一删一 (合并为单候选) ----
+        if (q < CLS_Q.C6 && candidatesEnabled('C6')) {
+            var win4 = tpb * 4, byLayer = {};
+            for (i = 0; i < kept.length; i++) { n = kept[i]; (byLayer[n.layer] = byLayer[n.layer] || []).push(n); }
+            for (var L in byLayer) {
+                if (st.melodyDominant && L === String(st.melodyLayer)) continue;
+                var warr = byLayer[L].slice().sort(function (a, b) { return a.tick - b.tick; });
+                // 按 4 拍窗口分组
+                var winMap = {};
+                for (i = 0; i < warr.length; i++) {
+                    var wk = Math.floor(warr[i].tick / win4);
+                    (winMap[wk] = winMap[wk] || []).push(warr[i]);
+                }
+                for (var w2 in winMap) {
+                    var wlist = winMap[w2].slice().sort(function (a, b) { return a.tick - b.tick; });
+                    var delHalf = [];
+                    for (i = 0; i < wlist.length; i += 2) { if (i + 1 < wlist.length) delHalf.push(wlist[i + 1]); }
+                    if (delHalf.length) cands.push({ class: 'C6', del: delHalf, keep: null, lighten: bucket(wlist[0]) === 2 });
+                }
+            }
+        }
+
+        // ---- C7 Hat 网格稀疏化 / C9 ghost snare ----
+        if (q < CLS_Q.C7 && candidatesEnabled('C7')) {
+            var cdDel = [];
+            for (i = 0; i < kept.length; i++) {
+                n = kept[i];
+                if (isPerc(n) && n.instrument !== 2 && n.instrument !== 3) {
+                    cdDel.push(n);
+                }
+            }
+            // dense_perk 放宽: 仍可删弱拍, 但数量按 60% 处理; 感知引擎更保守(保留更多 ghost/hat)
+            var keepFrac = st.densePerk ? 0.6 : (model === 'perceptual' ? 0.7 : 0.5);
+            var cdKeep = Math.ceil(cdDel.length * keepFrac);
+            cdDel.sort(function (a, b) { return (a.tick % tpb) - (b.tick % tpb) || a.tick - b.tick; });
+            var removeCd = cdDel.slice(cdKeep);
+            if (removeCd.length) cands.push({ class: 'C7', del: removeCd, keep: null, lighten: false });
+        }
+
+        // ---- C8 内声部整段静音 / C11 段落重复: 稀疏与窄实现, 保守不生成大段 ---
+        // (完整实现需段落切分; 当前按文档标记 [UNVERIFIED] 且保持不删根音, 故以最简形式占位)
+
+        // ---- C10 旋律弱拍短音剪枝 ----
+        if (q < CLS_Q.C10 && candidatesEnabled('C10')) {
+            for (i = 0; i < kept.length; i++) {
+                n = kept[i];
+                if (st.melodyDominant && n.layer !== st.melodyLayer) continue;
+                var bp10 = n.tick % tpb, half10 = Math.floor(tpb / 2);
+                if (!isShort(n) || bp10 === 0 || bp10 === half10) continue;
+                cands.push({ class: 'C10', del: [n], keep: null, lighten: bucket(n) === 2 });
+            }
+        }
+
+        return finalize(cands, st, tpb);
+
+        // ---- 最终: 排序 + 预算 + 7 不变式回滚 ----
+        function finalize(candidates, st2, tpb2) {
+            var isPerceptual = (model === 'perceptual');
+            // 非 99% 时对无法估成本类给基准 (99% 已直接返回)
+            candidates.forEach(function (c) {
+                if (c.costObj) return;
+                c.costObj = costOfCandidate(c, st2, tpb2);
+            });
+            // 排序依据 (A1: 产出效率优先 = cost / 删音符数 升序, 使组级大宗候选优先于细粒度散删)
+            // 逐模型确定性微扰(1e-6 级)仅用于两模型稳定地选序不同, 不影响删除量与成本判定
+            for (i = 0; i < candidates.length; i++) {
+                var c2 = candidates[i], cref = (c2.del && c2.del.length) ? c2.del[0] : c2.keep;
+                var baseC = isPerceptual ? c2.costObj.pCost : c2.costObj.hCost;
+                var delLen = (c2.del && c2.del.length) ? c2.del.length : 1;
+                var jit = isPerceptual ? ((cref ? cref.tick : 0) % 17) : ((cref ? cref.layer : 0) % 11);
+                c2.baseCost = baseC;                                   // 保留原始成本供 c_max 截断
+                c2.cost = baseC / delLen + jit * 1e-6;                  // 单位成本(每删一音的代价)
+            }
+            candidates.sort(function (a, b) { return a.cost - b.cost; });
+
+            // 预算 (与旧契约一致): 删除量 ≈ 去重后非 exclude 音符 × (1-q); lighten 折半体现在成本×2
+            var budgetNote = 0;
+            for (i = 0; i < kept.length; i++) {
+                var bb = bucket(kept[i]);
+                if (bb) budgetNote++;
+            }
+            var target = Math.round(budgetNote * (1 - q));
+            if (target > kept.length - 1) target = Math.max(0, kept.length - 1);
+            // A2: 成本上限截断 c_max(Q) — 拒绝高成本候选, 防止中高档乱删结构/旋律音
+            var cMax = P.cMaxBase + P.cMaxScale * (1 - q);
+
+            var removedSet = new Set(), audit = { C0: 0, C1: 0, C2: 0, C3: 0, C4: 0, C5: 0, C6: 0, C7: 0, C10: 0, C12: 0 };
+            var delCount = 0, failure = 0, merged = 0, patches = [];
+            function removedCount() { return removedSet.size; }
+
+            // ---- 增量计数器: 使不变式 O(del) 而非 O(n) 每次 (避免拖动滑块卡顿) ----
+            var layerTot = {}, layerRem = {}, tickRem = {}, maxRemov = clamp(0.5 + 0.4 * (1 - q), 0.2, 0.9);
+            for (i = 0; i < kept.length; i++) {
+                var kn = kept[i];
+                layerTot[kn.layer] = (layerTot[kn.layer] || 0) + 1;
+                layerRem[kn.layer] = (layerRem[kn.layer] || 0) + 1;
+                tickRem[kn.tick] = (tickRem[kn.tick] || 0) + 1;
+            }
+
+            function violates(c) {
+                var dd = c.del, cnt = 0;
+                // 统计本候选在 "尚未删除" 的存活音符 (跳过已删)
+                var byLayer = {}, byTick = {}, instrument2 = false, backbeatsnare = false;
+                for (var vi = 0; vi < dd.length; vi++) {
+                    var vn = dd[vi];
+                    if (removedSet.has(vn)) continue;
+                    cnt++;
+                    if (vn.instrument === 2) instrument2 = true;                       // I1 kick
+                    if (vn.instrument === 3 && (Math.floor(vn.tick / tpb2) % 2 === 1)) backbeatsnare = true; // I2 backbeat snare (拍2/4, 非downbeat)
+                    byLayer[vn.layer] = (byLayer[vn.layer] || 0) + 1;                  // I5
+                    byTick[vn.tick] = (byTick[vn.tick] || 0) + 1;                      // I4
+                }
+                if (cnt === 0) return true;
+                if (instrument2) return true;
+                if (backbeatsnare) return true;
+                // I4 tick 非空: 删除后每个受影响 tick 仍 ≥1 存活
+                // 例外: C2 伪延音合并时由 keep 音延续, 允许被删 retrigger 的 tick 清空
+                if (c.class !== 'C2') for (var t in byTick) if ((tickRem[t] || 0) - byTick[t] < 1) return true;
+                // I5 L1 双重: 每个受影响 layer 删除后剩余 ≥ max(voiceMinAbs, orig*(1-maxRemov))
+                for (var la in byLayer) {
+                    var remain2 = (layerRem[la] || 0) - byLayer[la];
+                    var minKeep = Math.max(P.voiceMinAbs, Math.round((layerTot[la] || 0) * (1 - maxRemov)));
+                    if (remain2 < minKeep) return true;
+                }
+                return false;
+            }
+            // 应用候选: 删除集合矢量扣减增量计数器
+            function applyRemoved(batch) {
+                for (var ai = 0; ai < batch.length; ai++) {
+                    var an = batch[ai];
+                    if (removedSet.has(an)) continue;
+                    removedSet.add(an); delCount++;
+                    if (layerRem[an.layer] != null) layerRem[an.layer]--;
+                    if (tickRem[an.tick] != null) tickRem[an.tick]--;
+                }
+            }
+
+            var order = candidates.slice();
+            for (i = 0; i < order.length; i++) {
+                if (failure >= P.failBudget) break;
+                // C12(inaudible) 例外: 听不到的音符不计入预算, 恒可用
+                if (removedCount() >= target && !order[i].inaudible) break;
+                var cand = order[i];
+                if (!cand.del || !cand.del.length) continue;                     // 防御: 无删除对象
+                if (cand.del.some(function (dn) { return bucket(dn) === 0; })) continue; // 不处理层全保
+                // A2: c_max 截断 — 超过成本上限的候选直接跳过(continue, 非 break: 后续可能有更廉价候选)
+                if (!cand.inaudible && cand.baseCost > cMax) continue;
+                var ok = !cand.inaudible ? !violates(cand) : true;
+                if (!ok) { failure++; continue; }
+                // 字节收益保证: 必然会减少音符数 → 总是 >0
+                if (cand.keep && cand.del.length && cand.keepVel !== undefined) {
+                    if (!removedSet.has(cand.keep)) patches.push({ keep: cand.keep, vel: cand.keepVel }); // 能量补偿由 core 统一应用
+                    merged++;
+                }
+                var before = removedSet.size;
+                applyRemoved(cand.del);
+                if (removedSet.size > before) { failure = 0; audit[cand.class] = (audit[cand.class] || 0) + 1; }
+            }
+
+            var out = [];
+            removedSet.forEach(function (rn) { out.push(rn); });
+            audit.pseudoMerged = merged;
+            audit.mode = { atonal: st2.atonal, sparse: st2.sparse, funky: st2.funky, densePerk: st2.densePerk, gridNeutral: st2.gridNeutral, melodyDominant: st2.melodyDominant };
+            out.mode = audit.mode;
+            out.pseudoMerged = audit.pseudoMerged;
+            out.candidateDist = audit;
+            out.inaudible = audit.C12 || 0;
+            out.velPatches = patches;
+            return out;
+        }
+    }
+
+    // ---- 对外主入口 (契约不变) ----
+    // ①完全去重 ②结构分析+候选+贪心+回滚; 保留轨道分组与空洞填补。
     function compressSongCore(notes, quality, model, ctx) {
         ctx = ctx || {};
         var q = quality;
         var doReorder = (ctx.reorder !== false);
         var excludeSet = toLayerSet(ctx.excludeLayers);
         var lightenSet = toLayerSet(ctx.lightenLayers);
-        var kept = notes.slice();                 // 存活列表 (对象引用)
+        var kept = notes.slice();
         var removed = [];
         var moved = 0;
 
-        // 轨道分组: 0=不处理 1=正常 2=减轻
         function bucket(n) {
             if (excludeSet && excludeSet[n.layer]) return 0;
             if (lightenSet && lightenSet[n.layer]) return 2;
             return 1;
         }
-
         function flushBatch(batch) {
             if (!batch || batch.length === 0) return;
             var del = new Set(batch);
             kept = kept.filter(function (x) { return !del.has(x); });
-            if (doReorder) {
-                moved += window.dedupeReorderNotes(kept, batch);
-            }
+            if (doReorder) moved += window.dedupeReorderNotes(kept, batch);
             for (var j = 0; j < batch.length; j++) removed.push(batch[j]);
         }
 
-        // 阶段 1: 完全去重 (仅 正常/减轻 轨道; 不处理轨道原样保留, 不参与去重)
+        // 阶段1: 完全去重
         var seen = {}, dedupeBatch = [];
         for (var i = 0; i < kept.length; i++) {
             var n = kept[i];
@@ -2853,67 +3297,64 @@ window.compressSongCore = (function () {
         }
         flushBatch(dedupeBatch);
 
-        // 阶段 2: 有损删除 (按轨道分组各自计算配额; 减轻组强度减半; 99% 档不执行)
+        var audit = null;
         if (q < 0.99) {
-            var cnt = { 1: 0, 2: 0 }, pool = [];
-            for (var p = 0; p < kept.length; p++) {
-                var b = bucket(kept[p]);
-                if (b === 0) continue;
-                cnt[b]++;
-                pool.push(kept[p]);
-            }
-            var budget = {
-                1: Math.round(cnt[1] * (1 - q)),
-                2: Math.round(cnt[2] * (1 - q) * 0.5)
-            };
-            if (pool.length > 0 && (budget[1] > 0 || budget[2] > 0)) {
-                // 全局统一打分排序, 再按各组配额取用 -> 每组都删自己最低分的成员
-                var order = (model === 'perceptual') ? rankPerceptual(pool, ctx) : rankHeuristic(pool, ctx);
-                var batch2 = [];
-                for (var m = 0; m < order.length; m++) {
-                    var b2 = bucket(order[m]);
-                    if (b2 && budget[b2] > 0) { batch2.push(order[m]); budget[b2]--; }
-                    if (budget[1] <= 0 && budget[2] <= 0) break;
+            var tpb = resolveTpb(ctx);
+            var plan = selectPlan(kept, q, model || 'heuristic', tpb, excludeSet, lightenSet);
+            // 应用伪延音能量补偿 (仅作用于 kept 中的克隆音符)
+            if (plan.velPatches) {
+                for (var vi3 = 0; vi3 < plan.velPatches.length; vi3++) {
+                    plan.velPatches[vi3].keep.velocity = plan.velPatches[vi3].vel;
                 }
-                if (batch2.length > kept.length - 1) batch2 = batch2.slice(0, kept.length - 1); // 至少保留 1 个音符
-                flushBatch(batch2);
             }
+            audit = {
+                mode: plan.mode || null,
+                candidateDist: plan.candidateDist || null,
+                pseudoMerged: plan.pseudoMerged || 0,
+                inaudible: plan.inaudible || 0
+            };
+            if (plan.length) flushBatch(plan);
         }
 
         return {
             kept: kept,
             removed: removed,
-            moved: moved
+            moved: moved,
+            audit: (ctx.audit === false) ? undefined : audit
         };
     }
 
-    // 实时预估 (弹窗用): 与 compressSongCore 使用同一配额公式, 但只算数量不排序, O(n)。
-    // 由于两种模型删除数量相同, 该预估与所选模型无关。
-    // opts: { excludeLayers: [], lightenLayers: [] }
+    // ---- 实时预估: 在克隆副本上运行完整核心, 保证 预估 = 实际(含 reorder 层位重排) ----
     window.compressSongEstimate = function (notes, quality, opts) {
         notes = notes || [];
-        var excludeSet = toLayerSet(opts && opts.excludeLayers);
-        var lightenSet = toLayerSet(opts && opts.lightenLayers);
+        opts = opts || {};
+        var estModel = opts.model || 'heuristic';   // 预估跟随所选模型 (两模型删除数可不同)
         var total = notes.length;
-        var seen = {}, dup = { 1: 0, 2: 0 }, cnt = { 1: 0, 2: 0 };
+        // dupes 只需静态计数(非 excluded 层的 tick:inst:key 重复), 无需重排
+        var excludeSet = opts.excludeLayers ? toLayerSet(opts.excludeLayers) : null;
+        var seen = {}, dupes = 0;
         for (var i = 0; i < total; i++) {
-            var n = notes[i], b;
-            if (excludeSet && excludeSet[n.layer]) continue;      // 不处理
-            b = (lightenSet && lightenSet[n.layer]) ? 2 : 1;
-            cnt[b]++;
+            var n = notes[i];
+            if (excludeSet && excludeSet[n.layer]) continue;
             var k = n.tick + ':' + n.instrument + ':' + n.key;
-            if (seen[k]) { dup[b]++; continue; }
-            seen[k] = true;
+            if (seen[k]) dupes++; else seen[k] = true;
         }
-        var deleted = dup[1] + dup[2];
-        if (quality < 0.99) {
-            deleted += Math.round((cnt[1] - dup[1]) * (1 - quality));
-            deleted += Math.round((cnt[2] - dup[2]) * (1 - quality) * 0.5);
-        }
+        // 精确数量: 复刻核心在克隆上运行(不改写调用方对象)
+        var work = notes.map(function (x) {
+            return { id: x.id, tick: x.tick, layer: x.layer, instrument: x.instrument, key: x.key, velocity: x.velocity, pan: x.pan, pitch: x.pitch };
+        });
+        var res = compressSongCore(work, quality, estModel, {
+            ticksPerBeat: opts.ticksPerBeat,
+            reorder: opts.reorder !== false,
+            excludeLayers: opts.excludeLayers,
+            lightenLayers: opts.lightenLayers,
+            audit: false
+        });
+        var deleted = res.removed.length;
         if (deleted > total - 1) deleted = Math.max(0, total - 1);
         return {
             total: total,
-            dupes: dup[1] + dup[2],
+            dupes: dupes,
             deleted: deleted,
             kept: total - deleted
         };

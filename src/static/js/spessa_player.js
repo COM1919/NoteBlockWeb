@@ -8,8 +8,8 @@
 (function() {
     'use strict';
 
-    var MODULE_URL = '/static/vendor/spessasynth_lib.js';
-    var PROCESSOR_URL = '/static/vendor/spessasynth_processor.min.js';
+    var MODULE_URL = window.STATIC_BASE + '/vendor/spessasynth_lib.js';
+    var PROCESSOR_URL = window.STATIC_BASE + '/vendor/spessasynth_processor.min.js';
     var _libPromise = null;
 
     function getLib() {

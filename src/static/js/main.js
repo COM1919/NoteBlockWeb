@@ -36,13 +36,6 @@
         // 歌曲
         song: null,
 
-        // FLS 模式
-        flsEnabled: false,
-        flsModel: null,
-        flsPlaylist: null,
-        flsTrackPanel: null,
-        flsPianoRoll: null,
-
         // 平滑翻页开关: false=超出后翻页, true=播放头始终居中
         smoothScroll: false,
 
@@ -859,7 +852,7 @@
         });
     }
 
-    // 暴露到全局，供 fls_playlist.js / fls_track_panel.js 等外部模块使用
+    // 暴露到全局
     window.showAppAlert = showAppAlert;
     window.showAppConfirm = showAppConfirm;
     window.showAppPrompt = showAppPrompt;
@@ -1065,7 +1058,6 @@
         }
         $setValue('tempo-slider', state.tempo);
         $setValue('tempo-value', state.tempo);
-        $setValue('fls-tempo-input', Math.round(state.tempo));
         $setValue('settings-tempo-slider', Math.max(5, Math.min(655, state.tempo)));
         $setValue('settings-tempo-input', state.tempo);
         $setText('settings-tempo-value', state.tempo.toFixed(1));
@@ -1171,7 +1163,6 @@
             tempoSlider.addEventListener('input', function(e) {
                 state.tempo = parseFloat(e.target.value);
                 $('tempo-value').value = state.tempo;
-                $setValue('fls-tempo-input', Math.round(state.tempo));
                 markDirty();
                 if (state.isPlaying) restartPlayback();
             });
@@ -1208,7 +1199,6 @@
                 val = Math.max(0, Math.min(512, val));
                 val = Math.round(val * 100) / 100;
                 state.tempo = val;
-                $setValue('fls-tempo-input', Math.round(val));
                 markDirty();
                 if (state.isPlaying) restartPlayback();
             });
@@ -1799,7 +1789,6 @@
                 $setText('settings-tempo-value', v.toFixed(3).replace(/\.?0+$/, ''));
                 updateRadioTempoSlider();
                 $('tempo-value').value = v.toFixed(1);
-                $setValue('fls-tempo-input', Math.round(v));
                 markDirty();
                 if (state.isPlaying) restartPlayback();
             });
@@ -2121,31 +2110,7 @@
             window.addEventListener('orientationchange', scheduleToolbarRefresh);
         }
 
-        // FLS 底部栏
-        var flsPlayBtn = $('fls-btn-play');
-        if (flsPlayBtn) flsPlayBtn.addEventListener('click', handlePlayToggle);
-        var flsStopBtn = $('fls-btn-stop');
-        if (flsStopBtn) flsStopBtn.addEventListener('click', handleStop);
-        var flsRevBtn = $('fls-btn-rev');
-        if (flsRevBtn) flsRevBtn.addEventListener('click', function() { seekToTick(0); if (state.pianoRoll) state.pianoRoll._scrollToPlayhead(); });
-        var flsTempoInput = $('fls-tempo-input');
-        if (flsTempoInput) flsTempoInput.addEventListener('change', function(e) {
-            var v = parseInt(e.target.value) || 20;
-            v = Math.max(1, Math.min(400, v));
-            state.tempo = v;
-            $setValue('tempo-slider', v);
-            $('tempo-value').value = v;
-            markDirty();
-            if (state.isPlaying) restartPlayback();
-            updateProgressUI();
-        });
-
         updateProgressUI();
-
-        // 启动持续进度条 RAF 循环 (无论是否播放, 都保持进度条丝滑)
-        startFlsProgressRAF();
-        // 初始化进度条拖动 (PC + 移动端)
-        initFlsProgressBarDrag();
 
         // 键盘快捷键
         initKeyboardShortcuts();
@@ -4883,9 +4848,6 @@
 
     // ============ 进度条 ============
     function getSongLengthTicks() {
-        if (state.flsEnabled && state.flsModel) {
-            return state.flsModel.getSongLength();
-        }
         return Math.max(state.maxTick + 4, 64);
     }
 
@@ -4976,134 +4938,6 @@
         if (timeEl) {
             timeEl.textContent = Math.floor(state.currentTick) + ' / ' + Math.floor(totalTicks) + ' tick';
         }
-        updateFlsProgressBar();
-    }
-
-    // 进度条 UI 平滑更新: 不依赖 CSS transition, 直接 RAF 插值
-    var _flsProgressLastTick = 0;
-    var _flsProgressDragging = false; // 是否正在拖动进度条
-    function updateFlsProgressBar() {
-        var totalTicks = getSongLengthTicks();
-        if (totalTicks <= 0) return;
-        var fill = $('fls-progress-fill');
-        var handle = $('fls-progress-handle');
-        if (fill) fill.style.transition = 'none';
-        if (handle) handle.style.transition = 'none';
-    }
-
-    // RAF 循环: 持续把 progress bar 拉向 currentTick, 实现丝滑连续移动
-    function startFlsProgressRAF() {
-        if (state._flsProgressRAF) return;
-        var fill = $('fls-progress-fill');
-        var handle = $('fls-progress-handle');
-        var timeEl = $('fls-progress-time');
-        var lastDrawTick = 0;
-        function tick() {
-            state._flsProgressRAF = requestAnimationFrame(tick);
-            var totalTicks = getSongLengthTicks();
-            if (totalTicks <= 0) {
-                if (fill) fill.style.width = '0%';
-                if (handle) handle.style.left = '0%';
-                return;
-            }
-            var ct = state.currentTick;
-            // 拖动期间不插值, 直接用 currentTick (seekToTick 已更新)
-            if (_flsProgressDragging) {
-                _flsProgressLastTick = ct;
-            } else {
-                // 插值: 指针以 0.45 因子向 currentTick 靠近, 实现丝滑追赶
-                _flsProgressLastTick += (ct - _flsProgressLastTick) * 0.45;
-            }
-            var ratio = Math.max(0, Math.min(1, _flsProgressLastTick / totalTicks));
-            var pct = (ratio * 100).toFixed(2) + '%';
-            if (fill) fill.style.width = pct;
-            if (handle) handle.style.left = pct;
-            // 拖动时放大手柄, 增加触控反馈
-            if (handle) {
-                if (_flsProgressDragging) {
-                    handle.style.transform = 'scale(1.4)';
-                    handle.style.transition = 'transform 0.1s ease-out';
-                } else {
-                    handle.style.transform = 'scale(1)';
-                    handle.style.transition = 'transform 0.15s ease-out';
-                }
-            }
-            if (timeEl) {
-                // 换算 ticks -> 拍 -> 秒 (按 tempo 估算)
-                var tempo = Math.max(1, state.tempo || 20);
-                var seconds = _flsProgressLastTick / tempo;
-                var m = Math.floor(seconds / 60);
-                var s = Math.floor(seconds % 60);
-                var totalSec = totalTicks / tempo;
-                var tm = Math.floor(totalSec / 60);
-                var ts = Math.floor(totalSec % 60);
-                timeEl.textContent = m + ':' + (s < 10 ? '0' + s : s) + ' / ' + tm + ':' + (ts < 10 ? '0' + ts : ts);
-            }
-        }
-        // 初始化 lastTick
-        _flsProgressLastTick = state.currentTick;
-        state._flsProgressRAF = requestAnimationFrame(tick);
-    }
-
-    // 初始化进度条拖动 (支持 PC 鼠标 + 移动端触摸)
-    function initFlsProgressBarDrag() {
-        var bar = $('fls-progress-bar');
-        if (!bar) return;
-
-        function seekFromEvent(clientX) {
-            var rect = bar.getBoundingClientRect();
-            var ratio = (clientX - rect.left) / rect.width;
-            ratio = Math.max(0, Math.min(1, ratio));
-            var totalTicks = getSongLengthTicks();
-            if (totalTicks <= 0) return;
-            var targetTick = Math.round(ratio * totalTicks);
-            seekToTick(targetTick);
-        }
-
-        // PC 端鼠标拖动
-        bar.addEventListener('mousedown', function(e) {
-            if (e.button !== 0) return; // 仅左键
-            e.preventDefault();
-            _flsProgressDragging = true;
-            seekFromEvent(e.clientX);
-            var onMove = function(ev) {
-                if (!_flsProgressDragging) return;
-                seekFromEvent(ev.clientX);
-            };
-            var onUp = function() {
-                _flsProgressDragging = false;
-                document.removeEventListener('mousemove', onMove);
-                document.removeEventListener('mouseup', onUp);
-            };
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
-        });
-
-        // 移动端触摸拖动
-        bar.addEventListener('touchstart', function(e) {
-            if (e.touches.length !== 1) return;
-            e.preventDefault();
-            _flsProgressDragging = true;
-            seekFromEvent(e.touches[0].clientX);
-        }, { passive: false });
-        bar.addEventListener('touchmove', function(e) {
-            if (!_flsProgressDragging || e.touches.length !== 1) return;
-            e.preventDefault();
-            seekFromEvent(e.touches[0].clientX);
-        }, { passive: false });
-        bar.addEventListener('touchend', function() {
-            _flsProgressDragging = false;
-        });
-        bar.addEventListener('touchcancel', function() {
-            _flsProgressDragging = false;
-        });
-    }
-
-    function stopFlsProgressRAF() {
-        if (state._flsProgressRAF) {
-            cancelAnimationFrame(state._flsProgressRAF);
-            state._flsProgressRAF = null;
-        }
     }
 
     function updatePlayheadPosition() {
@@ -5140,13 +4974,6 @@
             if (ic) ic.className = playing ? 'fa-solid fa-pause' : 'fa-solid fa-play';
             if (playing) pb.classList.add('playing');
             else pb.classList.remove('playing');
-        }
-        var flsPlay = $('fls-btn-play');
-        if (flsPlay) {
-            var ic2 = flsPlay.querySelector('i');
-            if (ic2) ic2.className = playing ? 'fa-solid fa-pause' : 'fa-solid fa-play';
-            if (playing) flsPlay.classList.add('playing');
-            else flsPlay.classList.remove('playing');
         }
     }
 
@@ -5228,12 +5055,6 @@
             updatePlayButtonForRecording();
         }
         stopContinuousMetronome();
-        // 隐藏播放头
-        var flsPh = $('fls-playhead');
-        if (flsPh) flsPh.classList.remove('visible');
-        if (state.flsEnabled && state.flsPlaylist) {
-            state.flsPlaylist.updatePlayhead(0);
-        }
         // 隐藏钢琴卷帘播放头 (null = 隐藏)
         if (state.pianoRoll) {
             state.pianoRoll.playheadTick = null;
@@ -5247,11 +5068,7 @@
     function startPlaybackLoop() {
         stopPlaybackLoop();
         if (!state.noteIndex || state.noteIndex.size === 0) {
-            if (state.flsEnabled && state.flsModel) {
-                syncNotesFromFLS();
-            } else {
-                buildNoteIndex(state.notes);
-            }
+            buildNoteIndex(state.notes);
         }
         if (state.pianoRoll) state.pianoRoll._smoothedPlayheadTick = state.currentTick;
 
@@ -5303,10 +5120,6 @@
 
                 if (state.pianoRoll && state.highlightAnimationEnabled) {
                     state.pianoRoll.highlightPlayingNotes(notesAtTick);
-                }
-
-                if (state.flsEnabled && state.flsPlaylist) {
-                    state.flsPlaylist.updatePlayhead(tick);
                 }
 
                 if (state.pianoRoll) {
@@ -6990,7 +6803,7 @@
             dot.textContent = '';
             dot.classList.remove('instrument-icon-fallback');
             var icon = document.createElement('img');
-            icon.src = '/static/sprites/spr_instrumenticons/inst_' + norm + '.png';
+            icon.src = window.STATIC_BASE + '/sprites/spr_instrumenticons/inst_' + norm + '.png';
             icon.alt = '';
             icon.setAttribute('aria-hidden', 'true');
             icon.onerror = function() {
@@ -7699,7 +7512,6 @@
         state.tempo = val;
         $setText('settings-tempo-value', val.toFixed(3).replace(/\.?0+$/, ''));
         $('tempo-value').value = val.toFixed(1);
-        $setValue('fls-tempo-input', Math.round(val));
         $setValue('settings-tempo-input', val);
         updateRadioTempoSlider();
         markDirty();
@@ -8156,12 +7968,17 @@
 
     // 清除空轨: 删除所有没有任何音符的 layer
     // ============ 歌曲压缩 (有损压缩) ============
-    // 用滑块选择质量 (仅 1/10/20/40/60/80/99 七档), 99% 等于原「消除重复音符」(完全去重)。
+    // 滑块为「压缩等级」5 档 (近乎无损/高质量/中等质量/较低质量/最低质量), 近乎无损=仅完全去重。
     // 可通过「算法模型」选择器在 务实启发式 / 感知引擎 之间切换。
     // 每删除一批音符后都填补空洞; 整次压缩为单个可撤销步骤。
-    var COMPRESS_PCT = [1, 10, 20, 40, 60, 80, 99];
-    var COMPRESS_Q = [0.01, 0.1, 0.2, 0.4, 0.6, 0.8, 0.99];
-    var COMPRESS_WARN_BELOW = 20; // 质量低于该值(%)时显示黄色警示
+    var COMPRESS_LEVELS = [
+        { label: '近乎无损', q: 0.99 },
+        { label: '高质量',   q: 0.60 },
+        { label: '中等质量', q: 0.40 },
+        { label: '较低质量', q: 0.20 },
+        { label: '最低质量', q: 0.05 }
+    ];
+    var COMPRESS_WARN_BELOW_IDX = 4; // 「最低质量」档显示黄色警示
 
     function compressResolveTicksPerBeat() {
         var spb = state.song && state.song.ticks_per_beat;
@@ -8175,8 +7992,26 @@
             // 跨"选轨往返"保留的配置
             var cfg = {
                 qualityIdx: (function () {
-                    var i = COMPRESS_PCT.indexOf(parseInt(localStorage.getItem('nbs_compress_quality'), 10));
-                    return i < 0 ? COMPRESS_PCT.length - 1 : i;
+                    // 迁移旧版百分比持久化: 优先读新档名, 旧值按最近的 q 反查档位
+                    var saved = localStorage.getItem('nbs_compress_quality');
+                    if (saved !== null) {
+                        // 新版存档名(近乎无损等)
+                        for (var li = 0; li < COMPRESS_LEVELS.length; li++) {
+                            if (saved === COMPRESS_LEVELS[li].label) return li;
+                        }
+                        // 旧版存百分比数字 → 最近的 q
+                        var oldPct = parseInt(saved, 10);
+                        if (!isNaN(oldPct)) {
+                            var oldQ = oldPct / 100;
+                            var best = 0, bestDiff = 99;
+                            for (var lj = 0; lj < COMPRESS_LEVELS.length; lj++) {
+                                var d = Math.abs(COMPRESS_LEVELS[lj].q - oldQ);
+                                if (d < bestDiff) { bestDiff = d; best = lj; }
+                            }
+                            return best;
+                        }
+                    }
+                    return 0; // 默认「近乎无损」(最安全)
                 })(),
                 model: (function () {
                     var m = localStorage.getItem('nbs_compress_model');
@@ -8275,35 +8110,35 @@
                 var body = box.querySelector('.settings-body');
                 body.style.whiteSpace = 'normal';
 
-                // 质量滑块
+                // 压缩等级滑块
                 var qWrap = document.createElement('div');
                 qWrap.style.cssText = 'margin-bottom:16px;';
                 var qLabel = document.createElement('label');
                 qLabel.style.cssText = 'display:block;font-size:13px;color:var(--text-primary,#fff);margin-bottom:6px;';
-                qLabel.textContent = i18nText('质量') + ': ';
+                qLabel.textContent = i18nText('压缩等级') + ': ';
                 var qVal = document.createElement('span');
                 qVal.style.cssText = 'color:var(--accent,#4c9aff);font-weight:bold;';
-                qVal.textContent = COMPRESS_PCT[cfg.qualityIdx] + '%';
+                qVal.textContent = i18nText(COMPRESS_LEVELS[cfg.qualityIdx].label);
                 qLabel.appendChild(qVal);
                 var qSlider = document.createElement('input');
                 qSlider.type = 'range';
-                qSlider.min = '0'; qSlider.max = String(COMPRESS_PCT.length - 1); qSlider.step = '1'; qSlider.value = String(cfg.qualityIdx);
+                qSlider.min = '0'; qSlider.max = String(COMPRESS_LEVELS.length - 1); qSlider.step = '1'; qSlider.value = String(cfg.qualityIdx);
                 qSlider.style.cssText = 'width:100%;';
-                // 质量低于 20% 的黄色警示 (可能过度删除音符)
+                // 最低质量档的黄色警示 (可能过度删除音符)
                 var qWarn = document.createElement('div');
                 qWarn.style.cssText = 'display:none;margin-top:6px;font-size:12px;line-height:1.45;color:#f5c542;';
-                qWarn.textContent = i18nText('质量低于 20%：可能过度删除音符，歌曲听感可能明显受损');
+                qWarn.textContent = i18nText('最低质量：可能过度删除音符，歌曲听感可能明显受损');
                 // 实时预估: 当前档位预计删除/保留的音符数
                 var qEst = document.createElement('div');
                 qEst.style.cssText = 'margin-top:4px;font-size:12px;line-height:1.45;color:var(--text-secondary,#a0a0a0);';
                 var syncQuality = function () {
                     var idx = parseInt(qSlider.value, 10);
                     cfg.qualityIdx = idx;
-                    qVal.textContent = COMPRESS_PCT[idx] + '%';
-                    qWarn.style.display = COMPRESS_PCT[idx] < COMPRESS_WARN_BELOW ? 'block' : 'none';
+                    qVal.textContent = i18nText(COMPRESS_LEVELS[idx].label);
+                    qWarn.style.display = (idx >= COMPRESS_WARN_BELOW_IDX) ? 'block' : 'none';
                     var src = state.pianoRoll ? state.pianoRoll.getNotes() : [];
                     var est = window.compressSongEstimate
-                        ? window.compressSongEstimate(src, COMPRESS_Q[idx], { lightenLayers: cfg.lighten, excludeLayers: cfg.exclude })
+                        ? window.compressSongEstimate(src, COMPRESS_LEVELS[idx].q, { lightenLayers: cfg.lighten, excludeLayers: cfg.exclude, model: cfg.model })
                         : { total: src.length, deleted: 0, kept: src.length };
                     var pct = est.total > 0 ? Math.round(est.deleted / est.total * 100) : 0;
                     qEst.textContent = i18nText('预计删除') + ' ' + est.deleted + ' (' + pct + '%)  ·  '
@@ -8325,7 +8160,7 @@
                 mLabel.textContent = i18nText('算法模型') + ': ';
                 var mSel = document.createElement('select');
                 mSel.style.cssText = 'width:100%;padding:6px 8px;font-size:13px;border:1px solid var(--ctrl-stroke-default,#444);border-radius:var(--radius-sm,6px);background:var(--ctrl-fill-default,#1c1c1c);color:var(--text-primary,#fff);';
-                var modelHint = i18nText('两种模型删除的音符数量相同，区别在于保留哪些音符；感知引擎更贴近听感。');
+                var modelHint = i18nText('两种模型保留的音符略有差异，感知引擎更贴近听感、更保守。');
                 var hDesc = i18nText('务实启发式（快速）：按规则快速打分（根音/三音/五音、八度重复、节拍、力度、时值），速度快、结果稳定。');
                 var pDesc = i18nText('感知引擎（智能）：按声部角色、节拍、时值、力度、掩蔽与打击乐密度综合打分，更贴近听感，速度稍慢。');
                 var oH = document.createElement('option');
@@ -8336,7 +8171,7 @@
                 mSel.appendChild(oH); mSel.appendChild(oP);
                 mSel.value = cfg.model;
                 mSel.title = hDesc + '\n' + pDesc + '\n' + modelHint;
-                mSel.addEventListener('change', function () { cfg.model = mSel.value; });
+                mSel.addEventListener('change', function () { cfg.model = mSel.value; syncQuality(); });
                 var mHint = document.createElement('div');
                 mHint.style.cssText = 'margin-top:4px;font-size:12px;line-height:1.45;color:var(--text-secondary,#a0a0a0);';
                 mHint.textContent = modelHint;
@@ -8390,11 +8225,11 @@
                 var okBtn = _appDialogBtn(i18nText('压缩'), true);
                 okBtn.addEventListener('click', function () {
                     var idx = parseInt(qSlider.value, 10);
-                    localStorage.setItem('nbs_compress_quality', String(COMPRESS_PCT[idx]));
+                    localStorage.setItem('nbs_compress_quality', COMPRESS_LEVELS[idx].label);
                     localStorage.setItem('nbs_compress_model', mSel.value);
                     localStorage.setItem('nbs_compress_reorder', rCb.checked ? '1' : '0');
                     finish({
-                        quality: COMPRESS_Q[idx],
+                        quality: COMPRESS_LEVELS[idx].q,
                         model: mSel.value,
                         reorder: rCb.checked,
                         lighten: cfg.lighten.slice(),
@@ -9608,86 +9443,86 @@
     }
 
     // ============ 文件操作 ============
-    // 上传进度弹窗管理
-    var _uploadProgressTimer = null;
-    var _uploadProgressShown = false;
-    var _uploadLastPercent = 0;        // 上次显示的进度(0-100)
-    var _uploadLastSpeed = 0;          // 上次显示的速度(bytes/s)
-    var _uploadLastEta = 0;            // 上次显示的预计剩余时间(秒)
-    var _uploadLastLoaded = 0;         // 上次累计的 loaded
-    var _uploadLastTotal = 0;          // 上次累计的 total
-    var _uploadLastPhase = '';         // 上次显示的阶段
+    // 任务进度弹窗管理
+    var _taskProgressTimer = null;
+    var _taskProgressShown = false;
+    var _taskLastPercent = 0;        // 上次显示的进度(0-100)
+    var _taskLastSpeed = 0;          // 上次显示的速度(bytes/s)
+    var _taskLastEta = 0;            // 上次显示的预计剩余时间(秒)
+    var _taskLastLoaded = 0;         // 上次累计的 loaded
+    var _taskLastTotal = 0;          // 上次累计的 total
+    var _taskLastPhase = '';         // 上次显示的阶段
 
-    function showUploadProgress(filename, title) {
-        _uploadProgressShown = false;
-        _uploadLastPercent = 0;
-        _uploadLastSpeed = 0;
-        _uploadLastEta = 0;
-        _uploadLastLoaded = 0;
-        _uploadLastTotal = 0;
-        _uploadLastPhase = '';
-        _uploadShowTime = Date.now();
+    function showTaskProgress(filename, title) {
+        _taskProgressShown = false;
+        _taskLastPercent = 0;
+        _taskLastSpeed = 0;
+        _taskLastEta = 0;
+        _taskLastLoaded = 0;
+        _taskLastTotal = 0;
+        _taskLastPhase = '';
+        _taskShowTime = Date.now();
 
         // 清除之前的定时器
-        if (_uploadProgressTimer) { clearTimeout(_uploadProgressTimer); _uploadProgressTimer = null; }
-        if (_hideUploadTimer) { clearTimeout(_hideUploadTimer); _hideUploadTimer = null; }
+        if (_taskProgressTimer) { clearTimeout(_taskProgressTimer); _taskProgressTimer = null; }
+        if (_hideTaskTimer) { clearTimeout(_hideTaskTimer); _hideTaskTimer = null; }
 
         // 1.2 秒后才显示弹窗
-        _uploadProgressTimer = setTimeout(function() {
-            _uploadProgressShown = true;
-            var popup = $('upload-progress-popup');
+        _taskProgressTimer = setTimeout(function() {
+            _taskProgressShown = true;
+            var popup = $('task-progress-popup');
             if (popup) { popup.classList.add('active'); popup.style.display = 'flex'; }
-            var titleEl = $('upload-progress-title');
+            var titleEl = $('task-progress-title');
             if (titleEl) titleEl.textContent = title || '处理中';
-            var nameEl = $('upload-progress-filename');
+            var nameEl = $('task-progress-filename');
             if (nameEl) nameEl.textContent = filename || '';
-            var bar = $('upload-progress-bar');
+            var bar = $('task-progress-bar');
             if (bar) bar.style.width = '0%';
-            var pct = $('upload-progress-percent');
+            var pct = $('task-progress-percent');
             if (pct) pct.textContent = '0%';
-            var spd = $('upload-progress-speed');
+            var spd = $('task-progress-speed');
             if (spd) spd.textContent = formatBytes(0) + '/s';
-            var eta = $('upload-progress-eta');
+            var eta = $('task-progress-eta');
             if (eta) eta.textContent = '计算中…';
-            var phaseEl = $('upload-progress-phase');
+            var phaseEl = $('task-progress-phase');
             if (phaseEl) phaseEl.textContent = '';
             // 如果已有进度，立即更新
-            if (_uploadLastPercent > 0) {
-                applyUploadProgress(_uploadLastLoaded, _uploadLastTotal, _uploadLastSpeed, _uploadLastPercent, _uploadLastEta, _uploadLastPhase);
+            if (_taskLastPercent > 0) {
+                applyTaskProgress(_taskLastLoaded, _taskLastTotal, _taskLastSpeed, _taskLastPercent, _taskLastEta, _taskLastPhase);
             }
         }, 1200);
     }
 
-    var _uploadShowTime = 0;  // 弹窗开始显示的时间
+    var _taskShowTime = 0;  // 弹窗开始显示的时间
 
-    function hideUploadProgress() {
-        if (_uploadProgressTimer) { clearTimeout(_uploadProgressTimer); _uploadProgressTimer = null; }
-        if (_hideUploadTimer) { clearTimeout(_hideUploadTimer); _hideUploadTimer = null; }
-        var popup = $('upload-progress-popup');
+    function hideTaskProgress() {
+        if (_taskProgressTimer) { clearTimeout(_taskProgressTimer); _taskProgressTimer = null; }
+        if (_hideTaskTimer) { clearTimeout(_hideTaskTimer); _hideTaskTimer = null; }
+        var popup = $('task-progress-popup');
         if (popup) { popup.classList.remove('active'); popup.style.display = ''; }
-        _uploadProgressShown = false;
-        _uploadLastPercent = 0;
+        _taskProgressShown = false;
+        _taskLastPercent = 0;
     }
-    var _hideUploadTimer = null;
+    var _hideTaskTimer = null;
 
     // 把最新进度写入缓存（弹窗未到 1.2s 也会被记录）
-    function updateUploadProgress(loaded, total, speed, percent, eta, phase) {
-        _uploadLastLoaded = loaded;
-        _uploadLastTotal = total;
-        _uploadLastSpeed = speed;
-        _uploadLastPercent = percent;
-        _uploadLastEta = eta;
-        _uploadLastPhase = phase || _uploadLastPhase;
+    function updateTaskProgress(loaded, total, speed, percent, eta, phase) {
+        _taskLastLoaded = loaded;
+        _taskLastTotal = total;
+        _taskLastSpeed = speed;
+        _taskLastPercent = percent;
+        _taskLastEta = eta;
+        _taskLastPhase = phase || _taskLastPhase;
 
-        if (!_uploadProgressShown) {
+        if (!_taskProgressShown) {
             // 1.2s 之前收到的进度，先缓存
             return;
         }
-        applyUploadProgress(loaded, total, speed, percent, eta, phase);
+        applyTaskProgress(loaded, total, speed, percent, eta, phase);
     }
 
     var _phaseNames = {
-        'upload': '正在上传...',
+        'saving': '正在保存...',
         'parse': '正在解析...',
         'process': '正在处理...',
         'complete': '处理完成',
@@ -9695,20 +9530,20 @@
     };
 
     // 实际应用进度到 DOM
-    function applyUploadProgress(loaded, total, speed, percent, eta, phase) {
-        var bar = $('upload-progress-bar');
+    function applyTaskProgress(loaded, total, speed, percent, eta, phase) {
+        var bar = $('task-progress-bar');
         if (bar) bar.style.width = percent + '%';
-        var pct = $('upload-progress-percent');
+        var pct = $('task-progress-percent');
         if (pct) pct.textContent = percent + '%';
-        var spd = $('upload-progress-speed');
+        var spd = $('task-progress-speed');
         if (spd) {
-            if (phase === 'upload' || (loaded > 0 && total > 0)) {
+            if (phase === 'saving' || (loaded > 0 && total > 0)) {
                 spd.textContent = formatBytes(speed) + '/s';
             } else {
                 spd.textContent = '';
             }
         }
-        var etaEl = $('upload-progress-eta');
+        var etaEl = $('task-progress-eta');
         if (etaEl) {
             if (eta >= 0 && isFinite(eta)) {
                 etaEl.textContent = '预计 ' + formatTime(eta);
@@ -9716,7 +9551,7 @@
                 etaEl.textContent = '';
             }
         }
-        var phaseEl = $('upload-progress-phase');
+        var phaseEl = $('task-progress-phase');
         if (phaseEl) {
             phaseEl.textContent = _phaseNames[phase] || (phase ? phase : '');
         }
@@ -9756,11 +9591,11 @@
             $setText('midi-duration', '...');
             $setText('midi-tracks', '...');
             $setText('midi-notes', '...');
-            showUploadProgress(file.name);
+            showTaskProgress(file.name);
             API.getMidiInfo(file, function(loaded, total, speed, percent, eta) {
-                updateUploadProgress(loaded, total, speed, percent, eta);
+                updateTaskProgress(loaded, total, speed, percent, eta);
             }).then(function(data) {
-                hideUploadProgress();
+                hideTaskProgress();
                 if (data.success && data.info) {
                     state._midiInfo = data.info;
                     populateMidiDialog(data.info);
@@ -9768,7 +9603,7 @@
                     showAppAlert('无法读取 MIDI 信息: 返回数据异常', {title: 'MIDI 信息', icon: 'fa-solid fa-file-audio'});
                 }
             }).catch(function(err) {
-                hideUploadProgress();
+                hideTaskProgress();
                 var msg = formatError(err, '无法读取 MIDI 信息');
                 $setText('midi-type', '错误: ' + msg);
                 showAppAlert('读取 MIDI 信息失败: ' + msg, {title: 'MIDI 信息', icon: 'fa-solid fa-file-audio'});
@@ -9780,11 +9615,11 @@
         // NBS 文件直接加载
         // 新文件, 重置文件 ID
         state.currentFileId = null;
-        showUploadProgress(file.name);
+        showTaskProgress(file.name);
         API.loadSong(file, function(loaded, total, speed, percent, eta) {
-            updateUploadProgress(loaded, total, speed, percent, eta);
+            updateTaskProgress(loaded, total, speed, percent, eta);
         }).then(function(data) {
-            hideUploadProgress();
+            hideTaskProgress();
             if (!data || !data.song) throw new Error('解析返回空数据');
             // 缺失自定义音色处理: 可选择替换后继续加载, 或稍后导入取消本次加载
             return resolveMissingCustomInstruments(data.song).then(function(proceed) {
@@ -9792,7 +9627,7 @@
                 applyLoadedSongData(data, file, e.target);
             });
         }).catch(function(err) {
-            hideUploadProgress();
+            hideTaskProgress();
             showAppAlert('加载失败: ' + formatError(err, '无法加载文件'), {title: '加载失败', icon: 'fa-solid fa-triangle-exclamation'});
         });
     }
@@ -9817,7 +9652,6 @@
 
         $setValue('tempo-slider', state.tempo);
         $('tempo-value').value = state.tempo;
-        $setValue('fls-tempo-input', Math.round(state.tempo));
         $setValue('settings-tempo-slider', Math.max(5, Math.min(655, state.tempo)));
         $setValue('settings-tempo-input', state.tempo);
         $setText('settings-tempo-value', (state.tempo).toFixed(1));
@@ -9827,14 +9661,7 @@
         state.redoStack = [];
         updateUndoRedoButtons();
 
-        if (state.flsEnabled && state.flsModel) {
-            state.flsModel = new FLS.Model();
-            state.flsModel.loadFromFlatNotes(state.notes, state.tempo);
-            state.flsPlaylist = null;
-            state.flsTrackPanel = null;
-            state.flsPianoRoll = null;
-            enterFLSModeFromLoaded();
-        } else if (state.pianoRoll) {
+        if (state.pianoRoll) {
             state.pianoRoll._setupCanvas();
             state.pianoRoll.setNotes(state.notes);
         }
@@ -9852,7 +9679,6 @@
     function handleSave() {
         // 导出锁: 防止与 exportNBS 冲突
         if (_isExporting) return;
-        if (state.flsEnabled && state.flsModel) syncNotesFromFLS(true);
 
         var song = state.song || {
             name: 'Untitled', song_name: 'Untitled',
@@ -9886,11 +9712,11 @@
         }
 
         var saveName = (state.importedFileName || song.name || song.song_name || 'Untitled') + '.nbs';
-        showUploadProgress(saveName, '保存 NBS');
+        showTaskProgress(saveName, '保存 NBS');
         API.saveSong(song, function(loaded, total, speed, percent, eta, phase) {
-            updateUploadProgress(loaded, total, speed, percent, eta, phase);
+            updateTaskProgress(loaded, total, speed, percent, eta, phase);
         }).then(function(result) {
-            hideUploadProgress();
+            hideTaskProgress();
             var filename = result.filename || saveName;
             // 使用 <a download> 触发下载，保留文件名
             var a = document.createElement('a');
@@ -9904,7 +9730,7 @@
             }, 5000);
             clearAutoSaveLocal();
         }).catch(function(err) {
-            hideUploadProgress();
+            hideTaskProgress();
             showAppAlert('保存失败: ' + formatError(err, '无法保存文件'), {title: '保存失败', icon: 'fa-solid fa-triangle-exclamation'});
         });
     }
@@ -11317,17 +11143,17 @@
         $setText('midi-notes', '...');
 
         // 请求 MIDI 信息
-        showUploadProgress(file.name);
+        showTaskProgress(file.name);
         API.getMidiInfo(file, function(loaded, total, speed, percent, eta) {
-            updateUploadProgress(loaded, total, speed, percent, eta);
+            updateTaskProgress(loaded, total, speed, percent, eta);
         }).then(function(data) {
-            hideUploadProgress();
+            hideTaskProgress();
             if (data.success && data.info) {
                 state._midiInfo = data.info;
                 populateMidiDialog(data.info);
             }
         }).catch(function(err) {
-            hideUploadProgress();
+            hideTaskProgress();
             var msg = formatError(err, '无法读取 MIDI 信息');
             $setText('midi-type', '错误: ' + msg);
             showAppAlert('读取 MIDI 信息失败: ' + msg, {title: 'MIDI 信息', icon: 'fa-solid fa-file-audio'});
@@ -14819,11 +14645,11 @@ function buildTimbreFittingRows(info) {
         // 新文件, 重置文件 ID
         state.currentFileId = null;
 
-        showUploadProgress(file.name);
+        showTaskProgress(file.name);
         API.importMidi(file, settings, function(loaded, total, speed, percent, eta) {
-            updateUploadProgress(loaded, total, speed, percent, eta);
+            updateTaskProgress(loaded, total, speed, percent, eta);
         }).then(function(data) {
-            hideUploadProgress();
+            hideTaskProgress();
             state.song = data.song;
             state.notes = data.song.notes || [];
             // 恢复音轨状态（用于 NBS 播放时过滤静音/排除的音轨）
@@ -14838,7 +14664,6 @@ function buildTimbreFittingRows(info) {
             state.tempo = t;
             $setValue('tempo-slider', state.tempo);
             $('tempo-value').value = state.tempo;
-            $setValue('fls-tempo-input', Math.round(state.tempo));
             $setValue('settings-tempo-slider', Math.max(5, Math.min(655, state.tempo)));
             $setValue('settings-tempo-input', state.tempo);
             $setText('settings-tempo-value', (state.tempo).toFixed(1));
@@ -14847,11 +14672,7 @@ function buildTimbreFittingRows(info) {
             state.redoStack = [];
             updateUndoRedoButtons();
 
-            if (state.flsEnabled && state.flsModel) {
-                state.flsModel = new FLS.Model();
-                state.flsModel.loadFromFlatNotes(state.notes, state.tempo);
-                enterFLSModeFromLoaded();
-            } else if (state.pianoRoll) {
+            if (state.pianoRoll) {
                 state.pianoRoll.setNotes(state.notes);
             }
 
@@ -14865,7 +14686,7 @@ function buildTimbreFittingRows(info) {
             state._midiFile = null;
             state._midiInfo = null;
         }).catch(function(err) {
-            hideUploadProgress();
+            hideTaskProgress();
             // 弹窗已关闭, showMidiNotice 会写入隐藏的弹窗导致用户看不到错误
             // 改用 showAppAlert 显示可见的错误提示
             showAppAlert('MIDI 导入失败: ' + formatError(err, '无法导入 MIDI'), {
@@ -14875,14 +14696,6 @@ function buildTimbreFittingRows(info) {
         });
     }
 
-    // ============ FLS 模式 ============
-    function toggleFLSMode() {
-        state.flsEnabled = !state.flsEnabled;
-        if (state.flsEnabled) enterFLSMode();
-        else exitFLSMode();
-    }
-
-    // 更新吸附网格信息显示
     function updateSnapGridInfo() {
         var snapEnabled = $('midi-snap-enabled') && $('midi-snap-enabled').checked;
         var snapBeat = $('midi-snap-beat') ? parseInt($('midi-snap-beat').value) : 4;
@@ -14907,153 +14720,6 @@ function buildTimbreFittingRows(info) {
     if ($('midi-snap-beat')) $('midi-snap-beat').addEventListener('change', updateSnapGridInfo);
     if ($('midi-precision')) $('midi-precision').addEventListener('change', updateSnapGridInfo);
     updateSnapGridInfo();
-
-    function enterFLSMode() {
-        state.isPlaying = false;
-        stopPlaybackLoop();
-
-        if (!state.flsModel) state.flsModel = new FLS.Model();
-
-        if (state.notes.length > 0 && state.flsModel.tracks.length === 0) {
-            state.flsModel.loadFromFlatNotes(state.notes, state.tempo);
-        } else if (state.flsModel.tracks.length === 0) {
-            var t = state.flsModel.addTrack(0, '音轨 1');
-            state.flsModel.addClip(t.id, 0, 32, 'Clip 1');
-        }
-
-        hideElement('main-content');
-        hideElement('toolbar');
-        hideByClass('status-bar');
-        hideByQuery('.status-normal');
-
-        var flsApp = $('fls-app');
-        if (flsApp) flsApp.style.display = '';
-        var flsBottom = $('fls-bottom-bar');
-        if (flsBottom) flsBottom.style.display = '';
-
-        if (!state.flsPlaylist) {
-            state.flsPlaylist = new FLSPlaylist(state.flsModel, {
-                onClipClick: function(clip) { openPianoRoll(clip); },
-                onTrackIconClick: function(trackId) {
-                    if (!state.flsTrackPanel) return;
-                    state.flsTrackPanel.toggle(trackId);
-                },
-                onTrackChanged: function() { renderFLS(); },
-                onModelChanged: function() { syncNotesFromFLS(); renderFLS(); }
-            });
-        }
-
-        if (!state.flsTrackPanel) {
-            state.flsTrackPanel = new FLSTrackPanel(state.flsModel, {
-                onModelChanged: function() { syncNotesFromFLS(); renderFLS(); }
-            });
-        }
-
-        if (!state.flsPianoRoll && window.FLSPianoRoll) {
-            state.flsPianoRoll = new FLSPianoRoll(state.flsModel, {
-                onBack: function() { closePianoRoll(); },
-                onModelChanged: function() {
-                    syncNotesFromFLS();
-                    if (state.flsPlaylist) state.flsPlaylist.render();
-                },
-                onTickPlay: function(inst, key, vel) {
-                    if (window.AudioEngine && AudioEngine.playNote) {
-                        AudioEngine.playNote(inst, key, vel || 100);
-                    }
-                }
-            });
-        }
-
-        renderFLS();
-    }
-
-    function exitFLSMode() {
-        syncNotesFromFLS(true);
-
-        var flsApp = $('fls-app');
-        if (flsApp) flsApp.style.display = 'none';
-        var flsBottom = $('fls-bottom-bar');
-        if (flsBottom) flsBottom.style.display = 'none';
-
-        showElement('main-content');
-        showElement('toolbar');
-        showByClass('status-bar');
-
-        if (state.flsPianoRoll) closePianoRoll();
-
-        if (state.pianoRoll) {
-            state.pianoRoll.setNotes(state.notes);
-            state.pianoRoll._setupCanvas();
-            state.pianoRoll.render();
-        }
-        updateTrackPanelUI();
-    }
-
-    function openPianoRoll(clip) {
-        if (state.flsPianoRoll) state.flsPianoRoll.openClip(clip);
-    }
-
-    function closePianoRoll() {
-        if (state.flsPianoRoll) state.flsPianoRoll.close();
-    }
-
-    function renderFLS() {
-        if (state.flsPlaylist) state.flsPlaylist.render();
-        if (state.flsModel) {
-            var total = 0;
-            for (var i = 0; i < state.flsModel.clips.length; i++) {
-                total += state.flsModel.clips[i].notes.length;
-            }
-            var songName = state.song ? (state.song.name || state.song.song_name || '未命名') : '未加载歌曲';
-            $setText('fls-song-name', songName + ' · ' + state.flsModel.tracks.length + ' 音轨 · ' + total + ' 音符');
-            $setText('song-name', songName);
-        }
-        updateNoteCount();
-    }
-
-    function syncNotesFromFLS(includeAll) {
-        if (!state.flsModel) return;
-        state.notes = state.flsModel.toFlatNotes(includeAll);
-        buildNoteIndex(state.notes);
-    }
-
-    function enterFLSModeFromLoaded() {
-        hideElement('main-content');
-        hideElement('toolbar');
-        hideByClass('status-bar');
-        var flsApp = $('fls-app');
-        if (flsApp) flsApp.style.display = '';
-        var flsBottom = $('fls-bottom-bar');
-        if (flsBottom) flsBottom.style.display = '';
-
-        state.flsPlaylist = new FLSPlaylist(state.flsModel, {
-            onClipClick: function(clip) { openPianoRoll(clip); },
-            onTrackIconClick: function(trackId) {
-                if (!state.flsTrackPanel) return;
-                state.flsTrackPanel.toggle(trackId);
-            },
-            onTrackChanged: function() { renderFLS(); },
-            onModelChanged: function() { syncNotesFromFLS(); renderFLS(); }
-        });
-        state.flsTrackPanel = new FLSTrackPanel(state.flsModel, {
-            onModelChanged: function() { syncNotesFromFLS(); renderFLS(); }
-        });
-        if (window.FLSPianoRoll && !state.flsPianoRoll) {
-            state.flsPianoRoll = new FLSPianoRoll(state.flsModel, {
-                onBack: function() { closePianoRoll(); },
-                onModelChanged: function() {
-                    syncNotesFromFLS();
-                    if (state.flsPlaylist) state.flsPlaylist.render();
-                },
-                onTickPlay: function(inst, key, vel) {
-                    if (window.AudioEngine && AudioEngine.playNote) {
-                        AudioEngine.playNote(inst, key, vel || 100);
-                    }
-                }
-            });
-        }
-        renderFLS();
-    }
 
     // ============ UI 辅助 ============
     function updateSongInfo() {
@@ -15325,7 +14991,6 @@ function buildTimbreFittingRows(info) {
     }
 
     function saveFileToLocalStorage(silent) {
-        if (state.flsEnabled && state.flsModel) syncNotesFromFLS(true);
         // 保存歌曲元数据 (author/original_author/description/name)
         var songMeta = state.song || {};
         var data = {
@@ -15438,7 +15103,6 @@ function buildTimbreFittingRows(info) {
             // 同步速度 UI
             $setValue('tempo-slider', state.tempo);
             $('tempo-value').value = state.tempo;
-            $setValue('fls-tempo-input', Math.round(state.tempo));
             $setValue('settings-tempo-slider', Math.max(5, Math.min(655, state.tempo)));
             $setValue('settings-tempo-input', state.tempo);
             $setText('settings-tempo-value', (state.tempo).toFixed(1));
@@ -15520,7 +15184,6 @@ function buildTimbreFittingRows(info) {
     function exportNBS() {
         // 导出锁: 防止重复导出
         if (_isExporting) return;
-        if (state.flsEnabled && state.flsModel) syncNotesFromFLS(true);
         if (!state.song || !state.notes) { showAppAlert('没有可导出的歌曲', {title: '导出', icon: 'fa-solid fa-triangle-exclamation'}); return; }
 
         // 收集作品使用到的自定义音色 (instrument >= 20)
@@ -15729,11 +15392,11 @@ function buildTimbreFittingRows(info) {
         try {
             var song = buildExportSongData(input);
             var exportName = input.name + '.nbs';
-            showUploadProgress(exportName, '导出 NBS');
+            showTaskProgress(exportName, '导出 NBS');
             API.saveSong(song, function(loaded, total, speed, percent, eta, phase) {
-                updateUploadProgress(loaded, total, speed, percent, eta, phase);
+                updateTaskProgress(loaded, total, speed, percent, eta, phase);
             }).then(function(result) {
-                hideUploadProgress();
+                hideTaskProgress();
                 var filename = result.filename || exportName;
                 // 使用 <a download> 触发下载，保留文件名
                 var a = document.createElement('a');
@@ -15747,11 +15410,11 @@ function buildTimbreFittingRows(info) {
                 }, 5000);
                 clearAutoSaveLocal();
             }).catch(function(err) {
-                hideUploadProgress();
+                hideTaskProgress();
                 showAppAlert('导出失败: ' + formatError(err, '无法导出文件'), {title: '导出失败', icon: 'fa-solid fa-triangle-exclamation'});
             });
         } catch (e) {
-            hideUploadProgress();
+            hideTaskProgress();
             showAppAlert('导出失败: ' + (e && e.message ? e.message : '未知错误'), {title: '导出失败', icon: 'fa-solid fa-triangle-exclamation'});
         } finally {
             // 无论成功或失败, 都释放导出锁
@@ -15767,7 +15430,7 @@ function buildTimbreFittingRows(info) {
             return;
         }
         _isExporting = true;
-        showUploadProgress(input.name + '.zip', '打包作品包…');
+        showTaskProgress(input.name + '.zip', '打包作品包…');
         try {
             var song = buildExportSongData(input);
             NBSClient.saveNBS(song).then(function(nbsBlob) {
@@ -15802,15 +15465,15 @@ function buildTimbreFittingRows(info) {
                     zip.file('metadata.json', JSON.stringify(meta, null, 2));
                     return zip.generateAsync({ type: 'blob', mimeType: 'application/zip' });
                 }).then(function(blob) {
-                    hideUploadProgress();
+                    hideTaskProgress();
                     dlBlob(blob, input.name + '.zip');
                     showAppAlert('作品包已导出，包含 ' + metaInstruments.length + ' 个自定义音色音频。\n把 zip 分享给他人，导入后即可完整还原音色与歌曲。', { title: '导出完成', icon: 'fa-solid fa-circle-check' });
                 }).catch(function(err) {
-                    hideUploadProgress();
+                    hideTaskProgress();
                     showAppAlert('作品包导出失败: ' + (err && err.message ? err.message : '未知错误'), {title: '导出失败', icon: 'fa-solid fa-triangle-exclamation'});
                 });
             }).catch(function(err) {
-                hideUploadProgress();
+                hideTaskProgress();
                 showAppAlert('NBS 打包失败: ' + (err && err.message ? err.message : '未知错误'), {title: '导出失败', icon: 'fa-solid fa-triangle-exclamation'});
             });
         } finally {
@@ -15995,7 +15658,7 @@ function buildTimbreFittingRows(info) {
             showAppAlert('ZIP 解析库未加载，无法导入 zip 文件。请刷新页面重试。', {title: '导入', icon: 'fa-solid fa-triangle-exclamation'});
             return;
         }
-        showUploadProgress(file.name, '解析压缩包…');
+        showTaskProgress(file.name, '解析压缩包…');
         JSZip.loadAsync(file).then(function(zipFile) {
             var metaFile = zipFile.file('metadata.json');
             if (!metaFile) throw new Error('缺少 metadata.json，不是有效的作品包/备份文件');
@@ -16006,7 +15669,7 @@ function buildTimbreFittingRows(info) {
                 return { kind: meta.type, zipFile: zipFile, meta: meta };
             });
         }).then(function(ctx) {
-            hideUploadProgress();
+            hideTaskProgress();
             if (ctx.kind === 'noteblock-web-instrument-backup') {
                 return ciImportPackInstruments(ctx.meta, ctx.zipFile).then(function(mapped) {
                     renderCustomInstList();
@@ -16047,7 +15710,7 @@ function buildTimbreFittingRows(info) {
             showAppAlert('无法识别的压缩包类型: ' + ctx.kind, {title: '导入失败', icon: 'fa-solid fa-triangle-exclamation'});
             return Promise.resolve();
         }).catch(function(err) {
-            hideUploadProgress();
+            hideTaskProgress();
             showAppAlert('导入失败: ' + (err && err.message ? err.message : '未知错误'), {title: '导入失败', icon: 'fa-solid fa-triangle-exclamation'});
         });
     }
@@ -16304,7 +15967,6 @@ function buildTimbreFittingRows(info) {
 
             $setValue('tempo-slider', state.tempo);
             $('tempo-value').value = state.tempo;
-            $setValue('fls-tempo-input', Math.round(state.tempo));
             $setValue('settings-tempo-slider', Math.max(5, Math.min(655, state.tempo)));
             $setValue('settings-tempo-input', state.tempo);
             $setText('settings-tempo-value', (state.tempo).toFixed(1));

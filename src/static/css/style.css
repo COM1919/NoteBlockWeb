@@ -245,8 +245,6 @@ body.material-acrylic {
 }
 body.bg-active .toolbar,
 body.bg-active .status-bar,
-body.bg-active .fls-toolbar,
-body.bg-active .fls-bottom-bar,
 body.bg-active .tool-bar {
     background-color: rgba(20, 20, 34, var(--surface-bg-alpha)) !important;
     backdrop-filter: var(--surface-blur);
@@ -271,32 +269,16 @@ body.bg-active #piano-roll-container {
     backdrop-filter: var(--grid-blur);
     -webkit-backdrop-filter: var(--grid-blur);
 }
-/* 背景激活时: FLS 视图同样透出背景图 */
-body.bg-active .fls-track-rows,
-body.bg-active .fls-playlist {
-    background: rgba(18, 18, 38, var(--grid-bg-alpha)) !important;
-    backdrop-filter: var(--grid-blur);
-    -webkit-backdrop-filter: var(--grid-blur);
-}
-body.bg-active .fls-track-row-line {
-    background: rgba(18, 18, 38, var(--grid-bg-alpha)) !important;
-}
 /* 不支持 backdrop-filter 的浏览器: 关闭模糊, 提高底色不透明度保证可读性 */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
     body.bg-active .toolbar,
     body.bg-active .status-bar,
-    body.bg-active .fls-toolbar,
-    body.bg-active .fls-bottom-bar,
     body.bg-active .tool-bar,
-    body.bg-active #piano-roll-container,
-    body.bg-active .fls-track-rows,
-    body.bg-active .fls-playlist {
+    body.bg-active #piano-roll-container {
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
     }
-    body.bg-active #piano-roll-container,
-    body.bg-active .fls-track-rows,
-    body.bg-active .fls-playlist {
+    body.bg-active #piano-roll-container {
         background: rgba(18, 18, 38, 0.72) !important;
     }
 }
@@ -615,7 +597,7 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     font-size: 12px;
 }
 
-/* 兼容旧 .toolbar-tempo 节点 (FLS 区还在用) */
+/* 工具栏/更多菜单中的速度调节区 */
 .toolbar-tempo {
     display: flex;
     align-items: center;
@@ -2686,9 +2668,9 @@ input[type="number"]:hover::-webkit-outer-spin-button {
 }
 
 /* ==================================================================
-   7b. 上传进度弹窗 — WinUI 3 ContentDialog
+   7b. 任务进度弹窗 — WinUI 3 ContentDialog
    ================================================================== */
-.upload-progress-dialog {
+.task-progress-dialog {
     background: var(--mica-base);
     border: 1px solid var(--ctrl-stroke-default);
     border-radius: var(--radius-md);
@@ -2699,7 +2681,7 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     animation: dialogShow var(--anim-control);
 }
 
-.upload-progress-header {
+.task-progress-header {
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -2711,18 +2693,18 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     color: var(--text-primary);
 }
 
-.upload-progress-header i {
+.task-progress-header i {
     font-size: 20px;
     color: var(--accent);
-    animation: upload-pulse 1.5s ease-in-out infinite;
+    animation: task-pulse 1.5s ease-in-out infinite;
 }
 
-@keyframes upload-pulse {
+@keyframes task-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
 }
 
-.upload-progress-header h3 {
+.task-progress-header h3 {
     font-size: var(--font-size-subtitle);
     font-weight: 600;
     margin: 0;
@@ -2730,11 +2712,11 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     flex: 1;
 }
 
-.upload-progress-body {
+.task-progress-body {
     padding: var(--space-3) 0 0 0;
 }
 
-.upload-progress-filename {
+.task-progress-filename {
     font-size: var(--font-size-body);
     color: var(--text-secondary);
     margin-bottom: var(--space-4);
@@ -2742,7 +2724,7 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     line-height: 1.4;
 }
 
-.upload-progress-bar-wrap {
+.task-progress-bar-wrap {
     width: 100%;
     height: 4px;
     background: var(--ctrl-fill-default);
@@ -2751,7 +2733,7 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     margin-bottom: var(--space-2);
 }
 
-.upload-progress-bar {
+.task-progress-bar {
     height: 100%;
     width: 0%;
     background: linear-gradient(90deg, var(--accent), var(--accent-teal));
@@ -2760,7 +2742,7 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     position: relative;
 }
 
-.upload-progress-bar::after {
+.task-progress-bar::after {
     content: '';
     position: absolute;
     top: 0;
@@ -2773,15 +2755,15 @@ input[type="number"]:hover::-webkit-outer-spin-button {
         rgba(255, 255, 255, 0.3) 50%,
         transparent 100%
     );
-    animation: upload-shimmer 1.5s linear infinite;
+    animation: task-shimmer 1.5s linear infinite;
 }
 
-@keyframes upload-shimmer {
+@keyframes task-shimmer {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
 }
 
-.upload-progress-stats {
+.task-progress-stats {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -2789,835 +2771,21 @@ input[type="number"]:hover::-webkit-outer-spin-button {
     color: var(--text-dim);
 }
 
-.upload-progress-percent {
+.task-progress-percent {
     font-weight: 600;
     color: var(--accent-teal);
     min-width: 36px;
 }
 
-.upload-progress-speed {
+.task-progress-speed {
     color: var(--text-dim);
 }
 
-.upload-progress-eta {
+.task-progress-eta {
     color: var(--text-dim);
     text-align: right;
 }
 
-/* ==================================================================
-   8. FLS 模式
-   ================================================================== */
-#fls-app {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: flex;
-    flex-direction: row;
-    background: var(--app-bg);
-    z-index: 10;
-}
-/* 背景激活时: FLS 应用层透明, 由内部容器透出背景图 */
-body.bg-active #fls-app {
-    background: transparent;
-}
-/* FLS 左侧音轨列表 — WinUI 3 NavigationView 风格 */
-.fls-track-list-panel {
-    width: 220px;
-    min-width: 220px;
-    flex-shrink: 0;
-    background: var(--mica-base-alt);
-    border-right: 1px solid var(--ctrl-stroke-default);
-    overflow-y: auto;
-    overflow-x: hidden;
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-}
-
-.fls-track-row {
-    display: flex;
-    align-items: center;
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--ctrl-stroke-default);
-    cursor: pointer;
-    user-select: none;
-    min-height: 48px;
-    box-sizing: border-box;
-    transition: background var(--anim-fast);
-}
-
-.fls-track-row:hover {
-    background: var(--ctrl-fill-hover);
-}
-
-.fls-track-row.muted {
-    opacity: 0.5;
-}
-
-.fls-track-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: var(--radius-sm);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: var(--space-2);
-    cursor: pointer;
-    box-shadow: none;
-    flex-shrink: 0;
-    transition: transform var(--anim-fast);
-}
-
-.fls-track-icon:hover {
-    transform: scale(1.05);
-}
-
-.fls-track-icon-inner {
-    font-size: 16px;
-    color: #fff;
-}
-
-.fls-track-text {
-    flex: 1;
-    min-width: 0;
-}
-
-.fls-track-name {
-    font-size: var(--font-size-body);
-    font-weight: 500;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.fls-track-sub {
-    font-size: var(--font-size-caption);
-    color: var(--text-tertiary);
-    margin-top: 2px;
-}
-
-.fls-track-ms {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    margin-left: 6px;
-}
-
-.fls-ms-flag {
-    font-size: 10px;
-    font-weight: bold;
-    padding: 1px 4px;
-    border-radius: 3px;
-    text-align: center;
-}
-
-.fls-ms-flag.muted {
-    background: var(--accent-red);
-    color: var(--text-on-accent);
-}
-
-.fls-ms-flag.solo {
-    background: var(--accent-yellow);
-    color: #000;
-}
-
-.fls-add-track {
-    padding: 14px;
-    text-align: center;
-    color: var(--text-tertiary);
-    font-size: 13px;
-    cursor: pointer;
-    border-top: 1px solid var(--ctrl-stroke-default);
-    background: var(--neutral-2);
-    transition: color var(--anim-fast), background var(--anim-fast);
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.fls-add-track:hover {
-    color: var(--accent);
-    background: var(--ctrl-fill-hover);
-}
-
-/* --- FLS 时间线 --- */
-.fls-timeline {
-    flex: 1;
-    overflow: auto;
-    position: relative;
-    background: var(--neutral-1);
-}
-
-.fls-timeline-ruler {
-    height: 28px;
-    position: sticky;
-    top: 0;
-    background: var(--neutral-2);
-    border-bottom: 1px solid var(--ctrl-stroke-default);
-    z-index: 5;
-    min-width: 5000px;
-}
-
-.fls-ruler-mark {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    background: var(--neutral-4);
-    color: var(--text-tertiary);
-    font-size: 10px;
-    padding-top: 6px;
-    padding-left: 4px;
-    white-space: nowrap;
-}
-
-.fls-ruler-mark.big {
-    background: var(--neutral-5);
-    color: var(--text-secondary);
-    font-weight: bold;
-}
-
-.fls-timeline-body {
-    position: relative;
-    min-width: 5000px;
-}
-
-.fls-track-row-line {
-    position: relative;
-    border-bottom: 1px solid var(--ctrl-stroke-default);
-    background: var(--neutral-2);
-    min-height: 64px;
-    box-sizing: border-box;
-}
-
-.fls-step-line {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    background: rgba(255, 255, 255, 0.04);
-    pointer-events: none;
-}
-
-.fls-step-line.big {
-    background: rgba(255, 255, 255, 0.08);
-}
-
-.fls-clip {
-    position: absolute;
-    top: 4px;
-    bottom: 4px;
-    border-radius: 6px;
-    cursor: pointer;
-    overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-    z-index: 2;
-    transition: transform 0.1s, box-shadow 0.1s;
-}
-
-.fls-clip:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-}
-
-.fls-clip-name {
-    position: absolute;
-    top: 4px;
-    left: 8px;
-    right: 8px;
-    font-size: 11px;
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    pointer-events: none;
-}
-
-.fls-clip-notes {
-    position: absolute;
-    bottom: 6px;
-    left: 6px;
-    right: 6px;
-    top: 22px;
-    pointer-events: none;
-}
-
-.fls-clip-note {
-    position: absolute;
-    bottom: 0;
-    background: rgba(255, 255, 255, 0.5);
-    border-radius: 1px 1px 0 0;
-}
-
-.fls-empty-track {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 1;
-}
-
-/* FLS 播放头 — WinUI 3 细线 + Mica 指示 */
-.fls-playhead {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    background: var(--accent);
-    pointer-events: none;
-    z-index: 50;
-    box-shadow: 0 0 6px var(--accent);
-    transition: left 0.08s linear;
-    will-change: left;
-    display: none;
-    left: 0;
-}
-
-.fls-playhead::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -5px;
-    width: 12px;
-    height: 12px;
-    background: var(--accent);
-    border-radius: 50%;
-    box-shadow: 0 0 6px var(--accent);
-}
-
-.fls-playhead.visible {
-    display: block;
-}
-
-/* --- FLS Clip 右键菜单 — WinUI 3 MenuFlyout --- */
-.fls-clip-menu {
-    position: fixed;
-    z-index: 9999;
-    background: var(--mica-acrylic);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--ctrl-stroke-default);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1) 0;
-    min-width: 160px;
-    box-shadow: var(--shadow-flyout);
-    display: none;
-}
-
-.fls-clip-menu-item {
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--font-size-body);
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: background var(--anim-fast);
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-height: 28px;
-}
-
-.fls-clip-menu-item:hover {
-    background: var(--ctrl-fill-hover);
-}
-
-.fls-clip-menu-item.danger {
-    color: var(--accent-red);
-}
-
-.fls-clip-menu-item.danger:hover {
-    background: rgba(255, 107, 107, 0.15);
-}
-
-.fls-clip-menu-item i {
-    width: 16px;
-    text-align: center;
-    font-size: 12px;
-}
-
-/* --- FLS 右侧设置抽屉 — WinUI 3 --- */
-.fls-settings-drawer {
-    width: 0;
-    flex-shrink: 0;
-    overflow: hidden;
-    background: var(--mica-base-alt);
-    border-left: 0px solid var(--ctrl-stroke-default);
-    transition: width 0.25s ease, border-left-width 0.25s ease;
-    display: flex;
-    flex-direction: column;
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-}
-
-.fls-settings-drawer.open {
-    width: 280px;
-    min-width: 280px;
-    border-left: 1px solid var(--ctrl-stroke-default);
-}
-
-.fls-settings-header {
-    padding: var(--space-3) var(--space-4);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid var(--ctrl-stroke-default);
-}
-
-.fls-settings-header h4 {
-    font-size: var(--font-size-subtitle);
-    font-weight: 600;
-    color: var(--text-primary);
-    font-family: var(--font-family);
-    margin: 0;
-}
-
-#fls-settings-close {
-    width: 28px;
-    height: 28px;
-    border: none;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 14px;
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background var(--anim-fast), color var(--anim-fast);
-}
-
-#fls-settings-close:hover {
-    background: var(--ctrl-fill-hover);
-    color: var(--text-primary);
-}
-
-.fls-settings-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-}
-
-.fls-setting-item {
-    margin-bottom: 16px;
-}
-
-.fls-setting-item label {
-    display: block;
-    font-size: 11px;
-    color: var(--text-tertiary);
-    margin-bottom: 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.fls-setting-item input[type="text"],
-.fls-setting-item select {
-    width: 100%;
-    padding: 8px 10px;
-    background: var(--ctrl-fill-default);
-    border: 1px solid var(--ctrl-stroke-default);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-size: 13px;
-    box-sizing: border-box;
-    font-family: var(--font-family);
-    transition: border-color var(--anim-fast);
-}
-
-.fls-setting-item input[type="text"]:focus,
-.fls-setting-item select:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
-.fls-setting-item input[type="range"] {
-    width: 100%;
-    -webkit-appearance: none;
-    appearance: none;
-    height: 4px;
-    background: var(--ctrl-fill-default);
-    border-radius: var(--radius-pill);
-    outline: none;
-    transition: background var(--anim-fast);
-}
-
-.fls-setting-item input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
-    background: var(--accent);
-    border-radius: 50%;
-    cursor: pointer;
-    border: 2px solid var(--neutral-2);
-}
-
-.fls-setting-item input[type="range"]::-moz-range-thumb {
-    width: 14px;
-    height: 14px;
-    background: var(--accent);
-    border-radius: 50%;
-    cursor: pointer;
-    border: 2px solid var(--neutral-2);
-}
-
-.fls-setting-row {
-    display: flex;
-    gap: 8px;
-}
-
-.fls-btn-solo-big,
-.fls-btn-mute-big {
-    flex: 1;
-    padding: var(--space-2);
-    font-size: var(--font-size-caption);
-    font-weight: 600;
-    background: var(--ctrl-fill-default);
-    border: 1px solid var(--ctrl-stroke-default);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: background var(--anim-fast), color var(--anim-fast), border-color var(--anim-fast);
-    min-height: 32px;
-    font-family: var(--font-family);
-}
-
-.fls-btn-solo-big:hover,
-.fls-btn-mute-big:hover {
-    color: var(--text-primary);
-    background: var(--ctrl-fill-hover);
-    border-color: var(--accent);
-}
-
-.fls-btn-solo-big.on {
-    background: var(--accent-yellow);
-    color: #000;
-    border-color: var(--accent-yellow);
-}
-
-.fls-btn-mute-big.on {
-    background: var(--accent-red);
-    color: var(--text-on-accent);
-    border-color: var(--accent-red);
-}
-
-.fls-setting-danger button {
-    width: 100%;
-    padding: 10px;
-    background: transparent;
-    border: 1px solid var(--accent-red);
-    border-radius: var(--radius-sm);
-    color: var(--accent-red);
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.15s;
-    min-height: 44px;
-}
-
-.fls-setting-danger button:hover {
-    background: var(--accent-red);
-    color: var(--text-on-accent);
-}
-
-/* --- FLS 钢琴卷帘 --- */
-.fls-piano-roll {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--neutral-1);
-    z-index: 20;
-    display: flex;
-    flex-direction: column;
-}
-
-.fls-pr-header {
-    height: 48px;
-    min-height: 48px;
-    background: var(--mica-base-alt);
-    border-bottom: 1px solid var(--ctrl-stroke-default);
-    display: flex;
-    align-items: center;
-    padding: 0 16px;
-    gap: 16px;
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-}
-
-.fls-back-btn {
-    padding: 0 var(--space-3);
-    background: var(--ctrl-fill-default);
-    border: 1px solid var(--ctrl-stroke-default);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-size: var(--font-size-body);
-    font-family: var(--font-family);
-    cursor: pointer;
-    min-height: 32px;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    transition: background var(--anim-fast), border-color var(--anim-fast);
-}
-
-.fls-back-btn:hover {
-    background: var(--ctrl-fill-hover);
-    border-color: var(--ctrl-stroke-hover);
-}
-
-.fls-back-btn:active {
-    background: var(--ctrl-fill-pressed);
-}
-
-.fls-pr-title {
-    font-size: var(--font-size-subtitle);
-    font-weight: 600;
-    color: var(--text-primary);
-    font-family: var(--font-family);
-}
-
-.fls-pr-info {
-    font-size: var(--font-size-caption);
-    color: var(--text-tertiary);
-    margin-left: auto;
-}
-
-.fls-pr-body {
-    flex: 1;
-    overflow: auto;
-    position: relative;
-    background: var(--neutral-1);
-}
-
-#fls-pr-canvas {
-    display: block;
-    cursor: pointer;
-}
-
-.fls-pr-playhead {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    background: var(--accent);
-    pointer-events: none;
-    z-index: 10;
-    display: none;
-    /* WinUI 3 风格: 弱化发光, 顶部 8px 三角指示器 */
-    box-shadow: 0 0 4px rgba(76, 194, 255, 0.4);
-}
-
-.fls-pr-playhead::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -4px;
-    width: 10px;
-    height: 10px;
-    background: var(--accent);
-    clip-path: polygon(0 0, 100% 0, 50% 100%);
-}
-
-/* 演奏模式录制中播放按钮 */
-#btn-play.perf-recording {
-    background: var(--accent-red);
-    color: var(--accent-on-accent);
-}
-#btn-play.perf-recording:hover {
-    background: #ff5555;
-}
-
-#btn-performance-record {
-    align-items: center;
-    justify-content: center;
-}
-#btn-performance-record .fa-circle {
-    color: var(--accent-red);
-    font-size: 10px;
-}
-#btn-performance-record.perf-recording {
-    background: var(--accent-red);
-    color: var(--accent-on-accent);
-}
-#btn-performance-record.perf-recording .fa-stop {
-    color: var(--accent-on-accent);
-}
-
-/* --- FLS 底部播放栏 --- */
-.fls-bottom-bar {
-    height: 60px;
-    min-height: 60px;
-    background: var(--mica-base-alt);
-    border-top: 1px solid var(--ctrl-stroke-default);
-    display: flex;
-    align-items: center;
-    padding: 0 16px;
-    gap: 16px;
-    position: relative;
-    z-index: 15;
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-}
-
-.fls-bottom-status {
-    font-size: 13px;
-    color: var(--text-tertiary);
-    min-width: 120px;
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.fls-bottom-controls {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    flex-shrink: 0;
-}
-
-.fls-bottom-btn {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    background: var(--ctrl-fill-default);
-    border: 1px solid var(--ctrl-stroke-default);
-    color: var(--text-primary);
-    font-size: 14px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background var(--anim-fast), border-color var(--anim-fast), color var(--anim-fast);
-}
-
-.fls-bottom-btn:hover {
-    background: var(--ctrl-fill-hover);
-    border-color: var(--accent);
-    color: var(--accent);
-}
-
-.fls-bottom-btn.play {
-    width: 46px;
-    height: 46px;
-    background: var(--accent);
-    color: var(--accent-on-accent);
-    border-color: var(--accent);
-    font-size: 16px;
-}
-
-.fls-bottom-btn.play:hover {
-    background: var(--accent-hover);
-    color: var(--accent-on-accent);
-    border-color: var(--accent-hover);
-    transform: scale(1.05);
-}
-
-.fls-bottom-btn.play i {
-    margin-left: 2px;
-}
-
-.fls-bottom-btn.play.playing i {
-    margin-left: 0;
-}
-
-#fls-tempo-input {
-    width: 60px;
-    padding: 6px 8px;
-    background: var(--ctrl-fill-default);
-    border: 1px solid var(--ctrl-stroke-default);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-size: 13px;
-    text-align: center;
-    font-family: var(--font-family);
-    transition: border-color var(--anim-fast);
-}
-
-#fls-tempo-input:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
-.fls-bottom-tempo-label {
-    color: var(--text-tertiary);
-    font-size: 12px;
-    margin-left: -4px;
-}
-
-/* FLS 进度条 */
-.fls-progress-wrap {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-width: 0;
-}
-
-.fls-progress-bar {
-    flex: 1;
-    height: 4px;
-    background: var(--ctrl-fill-default);
-    border-radius: var(--radius-pill);
-    position: relative;
-    cursor: pointer;
-    border: none;
-    transition: height var(--anim-fast);
-    overflow: visible;
-}
-
-.fls-progress-bar:hover {
-    height: 6px;
-}
-
-.fls-progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent), var(--accent-hover));
-    border-radius: 3px;
-    width: 0%;
-    /* 丝滑 RAF 驱动: 不再依赖 CSS transition, 避免双重动画 */
-    pointer-events: none;
-    will-change: width;
-}
-
-.fls-progress-handle {
-    position: absolute;
-    top: 50%;
-    width: 14px;
-    height: 14px;
-    background: var(--neutral-12);
-    border: 2px solid var(--accent);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    left: 0%;
-    pointer-events: none;
-    box-shadow: 0 0 4px rgba(76, 194, 255, 0.4);
-    /* 丝滑 RAF 驱动: left 由 JS 持续更新 */
-    will-change: left;
-}
-
-.fls-progress-bar:hover .fls-progress-handle {
-    transform: translate(-50%, -50%) scale(1.2);
-}
-
-.fls-progress-time {
-    color: var(--text-tertiary);
-    font-size: 12px;
-    font-family: var(--font-family-mono);
-    min-width: 90px;
-    text-align: right;
-}
-
-.fls-bottom-right {
-    display: flex;
-    gap: 12px;
-    color: var(--text-dim);
-    font-size: 11px;
-}
 
 /* ==================================================================
    8.5. 设置弹窗 (Settings) — WinUI 3 ContentDialog
@@ -4440,44 +3608,6 @@ textarea:disabled {
         padding: 6px 8px;
     }
 
-    /* FLS */
-    .fls-track-list-panel {
-        width: 120px;
-        min-width: 120px;
-    }
-
-    .fls-track-icon {
-        width: 34px;
-        height: 34px;
-        margin-right: 6px;
-    }
-
-    .fls-track-name {
-        font-size: 11px;
-    }
-
-    .fls-track-sub {
-        display: none;
-    }
-
-    .fls-settings-drawer.open {
-        width: 240px;
-        min-width: 240px;
-    }
-
-    .fls-bottom-status {
-        display: none;
-    }
-
-    .fls-bottom-right {
-        display: none;
-    }
-
-    .fls-timeline-ruler,
-    .fls-timeline-body {
-        min-width: 2000px;
-    }
-
     /* 钢琴键盘 (已移除)
     .piano-white-key {
         min-width: 20px;
@@ -4572,13 +3702,13 @@ textarea:disabled {
         justify-content: center;
     }
 
-    /* 上传进度弹窗移动端 */
-    .upload-progress-dialog {
+    /* 任务进度弹窗移动端 */
+    .task-progress-dialog {
         width: 88vw;
         max-width: 88vw;
     }
 
-    .upload-progress-body {
+    .task-progress-body {
         padding: 16px 18px;
     }
 }
@@ -4677,12 +3807,7 @@ textarea:disabled {
     .popup-content button,
     .context-menu-item,
     .instrument-popup-item,
-    .status-btn,
-    .fls-back-btn,
-    .fls-add-track,
-    .fls-btn-solo-big,
-    .fls-btn-mute-big,
-    .fls-setting-danger button {
+    .status-btn {
         min-width: 44px;
         min-height: 44px;
     }
@@ -4916,13 +4041,13 @@ textarea:disabled {
         justify-content: center;
     }
 
-    /* 上传进度弹窗移动端 */
-    .upload-progress-dialog {
+    /* 任务进度弹窗移动端 */
+    .task-progress-dialog {
         width: 88vw;
         max-width: 88vw;
     }
 
-    .upload-progress-body {
+    .task-progress-body {
         padding: 16px 18px;
     }
 
@@ -6129,10 +5254,9 @@ textarea:disabled {
 .functions-menu,
 .toolbar-more-menu,
 .fab-context-menu,
-.track-context-menu,
-.fls-clip-menu,
-.timbre-slot-menu,
-#track-more-menu,
+    .track-context-menu,
+    .timbre-slot-menu,
+    #track-more-menu,
 #track-volume-popup,
 #numpad-range-popover,
 #instrument-submenu,
@@ -6153,10 +5277,9 @@ textarea:disabled {
 .functions-menu,
 .toolbar-more-menu,
 .fab-context-menu,
-.track-context-menu,
-.fls-clip-menu,
-.timbre-slot-menu,
-#track-more-menu,
+    .track-context-menu,
+    .timbre-slot-menu,
+    #track-more-menu,
 #track-volume-popup,
 #numpad-range-popover,
 #instrument-submenu,

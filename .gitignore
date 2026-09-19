@@ -3,3 +3,5 @@ package.json
 package-lock.json
 src-tauri/
 .git/
+__pycache__/
+*.pyc
